@@ -1,0 +1,227 @@
+#ADI solver parameters
+
+FPPREC ?= 1 # Floating point precision: 0 - single precision (float); 1 - double precision (double)
+NX     ?= 256 
+NY     ?= 256 
+NZ     ?= 256 
+ITER   ?= 1
+PROF    = 1 # 0 - don't profile kernels; 1 - profile kernels (might affect performance a bit) 
+
+N_MAX   ?= 1024 #65536 #1024 
+
+# COMPILER = intel OR gnu
+COMPILER=intel
+
+ADI_PARAMS_ACC = -DFPPREC=$(FPPREC) -DPROF=$(PROF) -DN_MAX=$(N_MAX) -DNX=$(NX) -DNY=$(NY) -DNZ=$(NZ) -DITER=$(ITER)
+ADI_PARAMS = -DFPPREC=$(FPPREC) -DN_MAX=$(N_MAX)
+
+#Compilers paths
+PGI_CUDAVERSION = 5.5
+#INTEL_PATH  = /opt/intel/composerxe
+#GCC_PATH  = /usr
+#CUDA_PATH = /usr/local/cuda-5.5
+##CUDA_PATH = /usr/local/cuda-6.0
+##PGI_PATH  = /opt/pgi/linux86-64/2013
+##PGI_PATH  = /opt/pgi/linux86-64/2014
+#PGI_PATH  = /mnt/test/pgi/linux86-64/2014
+##PGI_PATH  = /opt/pgi/linux86-64/13.6
+##PGI_CUDA_PATH = /opt/pgi/linux86-64/2013/cuda/$(PGI_CUDAVERSION)
+#PGI_CUDA_PATH = /opt/pgi/linux86-64/2014/cuda/$(PGI_CUDAVERSION)
+
+#Include and source path
+SRCDIR = ./src 
+
+INCS_CUDA = -I./include -I./libtrid -I./libtrid/cuda/generics
+LIBS_CUDA = -lcusparse
+
+INCS_CC = -I./include -I./libtrid 
+#LIBS_CC = -L/opt/intel/composerxe/composer_xe_2013.3.163/compiler/lib/mic/ -limf -lsvml -lintlc -lirng #-L./libtrid/lib #-ltrid_cpu
+#LIBS_CC = -L$(INTEL_PATH)/lib/mic -L$(INTEL_PATH)/lib/intel64 -limf -lsvml -lintlc -lirng #-L./libtrid/lib #-ltrid_cpu
+
+#INCS_LAPACKE = -I./include -I./libtrid -I$(MKL_PATH)/include #-I$(LAPACK_PATH)/lapacke/include  
+INCS_LAPACKE = -I./include -I./libtrid -I$(LAPACK_PATH)/lapacke/include  
+#LIBS_LAPACKE = -L$(MKL_PATH)/lib/intel64 -lmkl_core -lmkl_lapack95_ilp64 -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -lgfortran
+LIBS_LAPACKE = -L$(LAPACK_PATH) -llapacke -llapack -lrefblas -ltmglib -lgfortran -liomp5 -lpthread
+
+INCS_MKL = -I./include -I./libtrid -I$(INTEL_PATH)/mkl/include  
+#LIBS_MKL = -L$(INTEL_PATH)/mkl/lib/intel64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -L$(INTEL_PATH)/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts
+LIBS_MKL = $(INTEL_PATH)/mkl/lib/intel64/libmkl_intel_lp64.a \
+	   $(INTEL_PATH)/mkl/lib/intel64/libmkl_intel_thread.a \
+	   $(INTEL_PATH)/mkl/lib/intel64/libmkl_core.a
+
+INCS_MKL_MIC = -I./include -I./libtrid -I$(INTEL_PATH)/mkl/include  
+LIBS_MKL_MIC = -L$(INTEL_PATH)/mkl/lib/mic -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -L$(INTEL_PATH)/compiler/lib/mic -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts
+
+INCS_PHI = -I./include -I./libtrid 
+LIBS_PHI = -L./libtrid/lib -limf -lintlc -lsvml -lirng #-ltrid_phi
+
+INCS_PHI_LAPACKE = -I./include -I./libtrid -I$(INTEL_PATH)/mkl/include
+#LIBS_PHI_LAPACKE = -L./libtrid/lib -limf -lintlc -lsvml -lirng -L$(INTEL_PATH)/mkl/lib/mic -lmkl_core -lmkl_rt -lmkl_lapack95_ilp64 -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -lgfortran #-ltrid_phi
+#LIBS_PHI_LAPACKE = -L./libtrid/lib -limf -lintlc -lsvml -lirng -L$(INTEL_PATH)/mkl/lib/mic -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_rt -liomp5 -lpthread -lm -lgfortran #-ltrid_phi
+LIBS_PHI_LAPACKE = -L./libtrid/lib -limf -lintlc -lsvml -lirng #-L$(INTEL_PATH)/mkl/lib/mic -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_rt -liomp5 -lpthread -lm -lgfortran #-ltrid_phi
+	
+
+INCS_ACC = -I./include -I./libtrid #-I$(PGI_CUDA_PATH)/include #  -I$(CUDA_PATH)/include                       
+LIBS_ACC = -L$(PGI_PATH)/lib64 -L$(PGI_CUDA_PATH)/lib64 -lcudart -lcusparse
+
+#ICC  = $(INTEL_PATH)/bin/icc
+#ICPC = $(INTEL_PATH)/bin/icpc
+ICC  = $(INTEL_PATH)/bin/intel64/icc
+ICPC = $(INTEL_PATH)/bin/intel64/icpc
+GCC  = $(GCC_PATH)/bin/gcc
+NVCC = $(CUDA_PATH)/bin/nvcc
+PGCC = $(PGI_PATH)/bin/pgcc
+PGCPP= $(PGI_PATH)/bin/pgc++
+MPICC= $(MPI_PATH)/bin/mpiCC
+
+#CFLAGS_CUDA_DBG= -g -G -O0 -ftz=false -fmad=false -arch sm_35 --ptxas-options=-v -Xptxas -dlcm=cg -I./generics #-lineinfo 
+#CFLAGS_CUDA_DBG= -ccbin=g++ -g -G -ftz=false -fmad=false -arch sm_35 --ptxas-options=-v -Xptxas -dlcm=cg -I./generics #-lineinfo
+#CFLAGS_CUDA_DBG= -g -G -Xcompiler -fPIC -ftz=false -fmad=false -arch sm_35 --ptxas-options=-v -Xptxas -dlcm=cg -I./generics #-lineinfo
+CFLAGS_CUDA_DBG= -g -G -ftz=false -fmad=false -arch sm_35 --ptxas-options=-v -Xptxas -dlcm=cg -I./generics #-lineinfo
+CFLAGS_CUDA_OPTCG= -O3 -arch sm_35 --ptxas-options=-v -Xptxas -dlcm=cg
+CFLAGS_CUDA_OPTCA= -O3 -arch sm_35 --ptxas-options=-v -Xptxas -dlcm=ca
+#LDFLAGS_NVCC=-O2 -L$(CUDA_PATH)/lib64 -lcusparse  
+#LDFLAGS_NVCC_DEBUG=-g -O0 -L$(CUDA_PATH)/lib64 -lcusparse  
+
+#CPU Compiler
+ifeq ($(COMPILER),intel)
+	#CC          = $(ICC)
+	#CFLAGS_SIMD     = -O1 -xAVX -vec-report2 #-xHost
+	#CFLAGS_SIMD_DBG = -g -O0 -xAVX
+	#CFLAGS_CPU_OPT  = -guide -O3 -xAVX -parallel -fopenmp -vec-report2 -openmp-report2 #-xHost
+	CFLAGS_CPU_OPT  = -O3 -xAVX -ip -restrict -parallel -fopenmp -openmp-report2 -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par #-opt-report-phase=offload #-offload-option,mic,compiler"-xIMCI" #-opt-report #-opt-report-phaseipo_inl #-xHost
+	CFLAGS_CPU_DBG  = -g -O0 -xAVX -parallel -fopenmp -vec-report2 -openmp-report2  -opt-report-phase=offload #-xHost
+	#CFLAGS_PHI_OFFLOAD_OPT  = -O3 -xAVX -ip -restrict -parallel -fopenmp -qopt-report=2 -qopt-report-phase=vec -qopt-report-phase=par -mkl=parallel -offload-attribute-target=mic #-offload-option,mic,ld,"-rpath /opt/intel/mic/myo/lib/ -rpath /opt/intel/mic/coi/device-linux-release/lib/" #-opt-report-phase=offload #-offload-option,mic,compiler"-xIMCI" #-opt-report #-opt-report-phaseipo_inl #-xHost
+	#CFLAGS_PHI_OFFLOAD_OPT  = -O3 -xAVX -ip -restrict -parallel -fopenmp -qopt-report=2 -qopt-report-phase=vec -qopt-report-phase=par -offload-attribute-target=mic -mkl -offload-option,mic,ld,"-L$(INTEL_PATH)/mkl/lib/mic -Wl,-lmkl_intel_lp64 -Wl,-lmkl_intel_thread -Wl,-lmkl_core"
+	#ICC_PHI   := $(INTEL_PATH)/bin/icc -mmic -g -O0
+else
+ifeq ($(COMPILER),gnu)
+	#CC         = $(ICC)
+	#CFLAGS_SIMD     = -O1 -mAVX 
+	#CFLAGS_SIMD_DBG = -g -O0 -mAVX 
+	CFLAGS_CPU_OPT = -O3 -mAVX -openmp 
+	CFLAGS_CPU_DBG = -g -O0 -xAVX -parallel -fopenmp -vec-report2 -openmp-report2 #-xHost
+else
+$(info Invalid value for COMPILER! )
+endif
+endif
+
+#Intel MIC Compiler
+ifneq (,$(wildcard $(ICC)))
+	CFLAGS_PHI_NATIVE_OPT = -mmic -O3 -ipo -restrict -fno-alias -parallel -fopenmp -vec-report2 -openmp-report2  
+	CFLAGS_PHI_NATIVE_DBG = -mmic -O0 -ipo -restrict -fno-alias -parallel -fopenmp -vec-report2 -openmp-report2
+
+	CFLAGS_PHI_OFFLOAD_OPT  = -O3 -xAVX -ipo -restrict -parallel -fopenmp -qopt-report=2 -qopt-report-phase=vec -qopt-report-phase=par -offload-attribute-target=mic -mkl -offload-option,mic,ld,"-L$(INTEL_PATH)/mkl/lib/mic -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -L$(INTEL_PATH)/compiler/lib/mic -limf -lintlc -lsvml -lirng -liomp5 -loffload -lcilkrts"
+	CFLAGS_PHI_OFFLOAD_DBG  = -g -O0 -xAVX -ipo -restrict -parallel -fopenmp -qopt-report=2 -qopt-report-phase=vec -qopt-report-phase=par -offload-attribute-target=mic -mkl -offload-option,mic,ld,"-L$(INTEL_PATH)/mkl/lib/mic -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -L$(INTEL_PATH)/compiler/lib/mic -limf -lintlc -lsvml -lirng -liomp5 -loffload -lcilkrts"
+
+	#ICC_PHI   = $(INTEL_PATH)/bin/icc -mmic -opt-streaming-stores never -O3 -ipo -fno-alias -parallel -fopenmp -vec-report2 -openmp-report2 #-opt-report-phase hlo -opt-report 3
+	#ICC_PHI   = $(INTEL_PATH)/bin/icc -mmic -O3 -fno-alias -mP2OPT_hlo_use_const_pref_dist=64 -mP2OPT_hlo_use_const_second_pref_dist=32 -mGLOB_default_function_attrs="knc_stream_store_controls=2" -parallel -fopenmp -vec-report2 -openmp-report2  
+	#ICC_PHI   = $(INTEL_PATH)/bin/icc -mmic -O3 -ipo -fno-alias -parallel -fopenmp -vec-report2 -openmp-report2 -no-opt-prefetch 
+	#ICC_PHI   = $(INTEL_PATH)/bin/icc -mmic -O3 -ipo -fno-alias -parallel -fopenmp -vec-report2 -openmp-report2 -opt-report-phase hpo -opt-report-phase hlo -opt-report 1 
+	#ICC_PHI   = $(INTEL_PATH)/bin/icc -mmic -O1 -fopenmp # -ipo -fno-alias -parallel -fopenmp -vec-report2 -openmp-report2 -opt-report-phase hpo -opt-report-phase hlo -opt-report 1   
+else 
+$(info Intel icc compiler not found! Skipping compilation for MIC architecture. )
+endif
+
+#PGI Compiler for OpenACC
+ifneq (,$(wildcard $(PGCC)))
+	PGI_PROF       = #-Minfo=ccff -Mprof=lines #-Mprof=func 
+	#CFLAGS_ACC_OPT = $(ADI_PARAMS_ACC) -acc -O1 -Msafeptr -Minline -Mcache_align -Minfo=all -ta=nvidia,cuda$(PGI_CUDAVERSION),cc35,keepptx,keepgpu,keepbin $(PGI_PROF)
+	CFLAGS_ACC_OPT = $(ADI_PARAMS_ACC) -acc -O1 -Msafeptr -Minline -Mcache_align -Minfo=all -ta=nvidia,cuda$(PGI_CUDAVERSION),cc35 #$(PGI_PROF)
+	CFLAGS_ACC_DBG = $(ADI_PARAMS_ACC) -acc -g -O0 -Minfo=all -ta=nvidia,cuda$(PGI_CUDAVERSION),cc35 #$(PGI_PROF)
+else 
+$(info PGI pgcc compiler not found! Skipping compilation for OpenACC accelerator architecture. )
+endif
+
+all: clean release debug 
+
+release: adi_orig adi_cpu_valid adi_cpu adi_mkl adi_phi_offload adi_phi_native adi_phi_offload_mkl adi_phi_native_mkl adi_cuda adi_acc adi_acc_CUDAkernel compare 
+
+debug: $(DBGBIN)/adi_cpu_orig $(DBGBIN)/adi_simd $(DBGBIN)/adi_simd_omp $(DBGBIN)/adi_cuda $(DBGBIN)/adi_acc $(DBGBIN)/adi_acc_CUDAkernel $(DBGBIN)/compare 
+
+#adi_acc_CUDAkernel
+
+# Original ADI implementation for validation and to support debugging
+adi_orig: src/adi_orig.c src/print_array.c src/compare.c Makefile
+	$(ICC) $(CFLAGS_CPU_DBG) $(ADI_PARAMS) src/adi_orig.c -o $@
+
+# CPU: OPENMP+SIMD implementation
+adi_cpu: src/adi_cpu.cpp include/adi_cpu.h src/print_array.c src/compare.c Makefile
+	#$(ICC) $(CFLAGS_CPU_OPT) $(ADI_PARAMS) $(INCS_CC) src/adi_cpu.c src/preproc.c $(LIBS_CC) -o $@
+	$(ICPC) $(CFLAGS_CPU_OPT) $(ADI_PARAMS) $(INCS_CC) src/adi_cpu.cpp $(LIBS_CC) -o $@
+
+# MPI+CPU: MPI+OPENMP+SIMD implementation
+adi_mpi_cpu: src/adi_mpi_cpu.cpp src/preproc.hpp include/adi_cpu.h src/print_array.c src/compare.c Makefile
+	$(MPICC) $(CFLAGS_CPU_DBG) $(ADI_PARAMS) $(INCS_CC) -I/usr/include/c++/4.4.4/ src/adi_mpi_cpu.cpp $(LIBS_CC) -o $@_dbg
+	$(MPICC) $(CFLAGS_CPU_OPT) $(ADI_PARAMS) $(INCS_CC) -I/usr/include/c++/4.4.4/ src/adi_mpi_cpu.cpp $(LIBS_CC) -o $@
+	
+adi_mkl: src/adi_cpu.cpp include/adi_cpu.h src/print_array.c src/compare.c Makefile
+	#$(ICC) $(CFLAGS_CPU_OPT) $(ADI_PARAMS) $(INCS_CC) $(INCS_LAPACKE) -D__LAPACKE__ src/adi_cpu.cpp $(LIBS_LAPACKE) -o $@
+	$(ICC) $(CFLAGS_CPU_OPT) $(ADI_PARAMS) $(INCS_CC) $(INCS_MKL) -D__LAPACKE__ src/adi_cpu.cpp $(LIBS_MKL) -o $@
+
+# CPU: baseline implementation for validation
+adi_cpu_valid: src/adi_cpu.cpp include/adi_cpu.h src/print_array.c src/compare.c Makefile
+	$(ICPC) $(CFLAGS_CPU_DBG) $(ADI_PARAMS) $(INCS_CC) -DVALID src/adi_cpu.cpp $(LIBS_CC) -o $@
+
+#$(DBGBIN)/adi_simd_omp: adi_simd.c adi_simd.h preproc.c trid.c compare.c Makefile
+#	$(CC_DBG) $(ADI_PARAMS) adi_simd.c preproc.c trid.c -o $@
+
+# Xeon Phi: OPENMP+SIMD implementation
+adi_phi_offload: src/adi_cpu.cpp include/adi_cpu.h src/print_array.c src/compare.c Makefile
+	#$(ICC) $(CFLAGS_PHI_OPT) $(ADI_PARAMS) $(INCS_PHI) src/adi_cpu.c src/preproc.c $(LIBS_PHI) -o $@
+	#$(ICPC) $(CFLAGS_PHI_OFFLOAD_DBG) $(ADI_PARAMS) $(INCS_PHI) -D__OFFLOAD__ src/adi_phi.cpp $(LIBS_PHI) -o $@
+	#$(ICPC) $(CFLAGS_PHI_OFFLOAD_OPT) $(ADI_PARAMS) $(INCS_PHI) -D__OFFLOAD__ src/adi_phi.cpp $(LIBS_PHI) -o $@
+	$(ICPC) $(CFLAGS_PHI_OFFLOAD_OPT) $(ADI_PARAMS) $(INCS_PHI) -D__OFFLOAD__ src/adi_cpu.cpp $(LIBS_PHI) -o $@
+	#$(CC_OMP) $(ADI_PARAMS) -D__MIC__=1 -fno-alias -ipo adi_simd.c preproc.c trid.c -o $@
+	#$(ICC_PHI) $(ADI_PARAMS) adi_simd.c -o $@
+	#$(ICC_PHI) $(ADI_PARAMS) adi_simd.c -S -fcode-asm -fsource-asm -o $@.asm
+	#icc $(ADI_PARAMS) -mmic -fast -parallel -openmp -opt-prefetch -ip -ipo -vec-report2 -openmp-report2 -opt-streaming-stores auto adi_phi.c -o adi_phi
+
+# Xeon Phi: OPENMP+SIMD implementation
+adi_phi_native: src/adi_cpu.cpp include/adi_cpu.h src/print_array.c src/compare.c Makefile
+	#$(ICC) $(CFLAGS_PHI_OPT) $(ADI_PARAMS) $(INCS_PHI) src/adi_cpu.c src/preproc.c $(LIBS_PHI) -o $@
+	#$(ICPC) $(CFLAGS_PHI_OPT) $(ADI_PARAMS) $(INCS_CC) -D__OFFLOAD__ src/adi_cpu.cpp $(LIBS_CC) -o $@
+	#$(ICPC) $(CFLAGS_PHI_NATIVE_OPT) $(ADI_PARAMS) $(INCS_PHI) src/adi_phi.cpp $(LIBS_PHI) -o $@
+	$(ICPC) $(CFLAGS_PHI_NATIVE_OPT) $(ADI_PARAMS) $(INCS_PHI) src/adi_cpu.cpp $(LIBS_PHI) -o $@
+	#$(ICPC) $(CFLAGS_PHI_NATIVE_DBG) $(ADI_PARAMS) $(INCS_PHI) src/adi_cpu.cpp $(LIBS_PHI) -o $@
+
+# Xeon Phi: LAPACK implementation
+adi_phi_offload_mkl: src/adi_cpu.cpp include/adi_cpu.h src/print_array.c src/compare.c Makefile
+	$(ICPC) $(CFLAGS_PHI_OFFLOAD_OPT) $(ADI_PARAMS) $(INCS_PHI_LAPACKE) -D__OFFLOAD__ -D__LAPACKE__ src/adi_cpu.cpp $(LIBS_PHI_LAPACKE) -o $@
+
+# Xeon Phi: LAPACK implementation
+adi_phi_native_mkl: src/adi_cpu.cpp include/adi_cpu.h src/print_array.c src/compare.c Makefile
+	$(ICPC) $(CFLAGS_PHI_NATIVE_OPT) $(ADI_PARAMS) $(INCS_MKL_MIC) -D__LAPACKE__ src/adi_cpu.cpp $(LIBS_MKL_MIC) -o $@
+
+# GPU: CUDA implementation - optimized
+adi_cuda: src/adi_cuda.cu src/preproc.cu src/compare.c Makefile
+	#$(NVCC) $(CFLAGS_CUDA_DBG) $(ADI_PARAMS) $(INCS_CUDA) src/adi_cuda.cu src/preproc.cu -lcusparse -o $@
+	$(NVCC) $(CFLAGS_CUDA_OPTCG) $(ADI_PARAMS) $(INCS_CUDA) src/adi_cuda.cu src/preproc.cu -lcusparse -o $@
+
+# Pure OpenACC implementation - Release
+adi_acc: src/adi_acc.c src/print_array.c src/compare.c Makefile 
+	#pgcc -DNX=$(NX) -DNY=$(NY) -DNZ=$(NZ) -DITER=$(ITER) -g -O0 -Minfo -acc -Msafeptr -Mcuda=cuda5.0 adi_acc.c -o adi_acc
+	#pgcc -DNX=$(NX) -DNY=$(NY) -DNZ=$(NZ) -DITER=$(ITER) -DBLOCK_X=$(BLOCK_X) -DBLOCK_Y=$(BLOCK_Y) -fast -Minfo -acc -Msafeptr -Mcuda=cuda5.0 -ta=nvidia,keepptx adi_acc.c -o adi_acc
+	#pgcc -DNX=$(NX) -DNY=$(NY) -DNZ=$(NZ) -DITER=$(ITER) -DBLOCK_X=$(BLOCK_X) -DBLOCK_Y=$(BLOCK_Y) -fast -Minline -Mautoinline -Msafeptr -Minfo -acc -Mcuda=cuda5.0 -ta=nvidia,time adi_acc.c -o adi_acc
+	$(PGCC) $(CFLAGS_ACC_DBG) $(ADI_PARAMS) $(INCS_ACC) src/adi_acc.c $(LIBS_ACC) -o $@
+	#$(PGCC) $(ADI_PARAMS_ACC) -fast -Msafeptr -Minfo=all -ta=nvidia,cuda5.0,cc35,keepptx,keepgpu,keepbin $(PGI_PROF) -acc adi_acc.c -o $@
+	#$(PGCC) $(ADI_PARAMS) -acc -ta=nvidia -Minfo=accel adi_acc.c -o $@
+	#$(PGCC) $(ADI_PARAMS) -acc -Minfo=accel adi_acc.c -o $@
+
+# OpenACC + libtrid implementation - Release
+adi_acc_libtrid: src/adi_acc_libtrid.c src/adi_acc_wrapper.cu src/print_array.c src/compare.c Makefile 
+	$(NVCC) -c $(CFLAGS_CUDA_OPTCG) $(ADI_PARAMS) $(INCS_CUDA) src/adi_acc_wrapper.cu -o adi_acc_wrapper.o
+	$(PGCC) $(CFLAGS_ACC_OPT) $(ADI_PARAMS) $(INCS_ACC) adi_acc_wrapper.o src/adi_acc_libtrid.c $(LIBS_ACC) -o $@
+	
+adi_acc_libtrid_cpp: src/adi_acc_libtrid.cpp src/adi_acc_wrapper.cu src/print_array.c src/compare.c Makefile 
+	$(NVCC) -c $(CFLAGS_CUDA_DBG) $(ADI_PARAMS) $(INCS_CUDA) src/adi_acc_wrapper.cu -o adi_acc_wrapper.o
+	$(PGCPP) $(CFLAGS_ACC_DBG) $(ADI_PARAMS) $(INCS_ACC) adi_acc_wrapper.o src/adi_acc_libtrid.cpp $(LIBS_ACC) -o $@
+	
+compare: src/compare.c Makefile
+	gcc $(ADI_PARAMS) $(INCS_CC) -g -O0 src/compare.c -o $@
+
+# Don't do anything with file "clean" if there is any
+.PHONY: clean 
+
+clean:
+	rm -if adi_orig adi_cpu_valid adi_cpu adi_mkl adi_phi_offload adi_phi_native adi_phi_offload_mkl adi_phi_native_mkl adi_cuda adi_acc compare

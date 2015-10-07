@@ -1,0 +1,92 @@
+/*
+ * Open source copyright declaration based on BSD open source template:
+ * http://www.opensource.org/licenses/bsd-license.php
+ *
+ * This file is part of the block-tridiagonal solver distribution.
+ *
+ * Copyright (c) 2015, Endre László and others. Please see the AUTHORS file in
+ * the main source directory for a full list of copyright holders.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * The name of Endre László may not be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY Endre László ''AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL Endre László BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Bock tridiagonal solver for CPU, MIC and GPU
+============================================
+by Endre László12, Mike Giles1, James Whittle1 and Catherine Hastings1
+laszlo.endre@itk.ppke.hu 
+
+1) University of Oxford, Oxford, UK
+2) Pázmány Péter Catholic University, Budapest, HU
+
+
+Last modified: 7 October 2015
+
+
+Introduction
+============
+The present directory contains the library for block tridiagonal batch solvers. The system to be solved is a tridiagonal system of equations, where elements in the equations are blocks 
+of size MxM, where M=1,..,10 typically . 
+
+The tridiagonal system to be solved is of the form Ax=d where
+
+     ( B[0]  C[0]                                  )      ( x[0]   )      ( d[0]   )
+     ( A[1]  B[1]  C[1]                            )      ( x[1]   )      ( d[1]   )
+     (       A[2]  B[2]  C[2]                      )      ( x[2]   )      ( d[2]   )
+ A = (               .     .    .                  ), x = (   .    ), d = (   .    )
+     (                     .    .    .             )      (   .    )      (   .    )
+     (                                             )      (   .    )      (   .    )
+     (                               A[N-1] B[N-1] )      ( x[N-1] )      ( d[N-1] )
+ 
+A[i],B[i],C[i] are MxM blocks and x[i],d[i] are Mx1 blocks over the real numbers.
+
+The underlying algorithm is the Thomas algorithm for the CPU, MIC and GPU implementation. In the case of the GPU implementation a new thread work-sharing approach has be used to increase parallelism of the block Thomas algorithm.
+
+
+Building the project
+====================
+
+Software requirements: 
+1. Intel compiler (version >=13.0) or GCC compiler (version >=4.9)
+2. Intel Math Kernel Library (version >=11.2)
+3. NVIDIA CUDA compiler (version >=7.0) 
+4. CMake (version >=2.8.8)
+5. Make utilities
+
+Hardware requirements: 
+1. CPU: AVX or AVX2 support (Sandy Bridge architecture and beyond)
+2. GPU: CUDA Compute Capability >=3.5 (Kepler architecture and beyond)
+3. MIC: IMCI support (Knights Corner architecture and beyond)
+
+The block tridiagonal solver project is built using the standard CMake procedure. It is recommended to build the library with the out-of-source build method. Eg.:
+</home/user/tridsolver/block/>
+$ mkdir build
+$ cd build
+$ cmake .. -DCMAKE_BUILD_TYPE=Release
+$ make
+$ make install
+
+Notes: 
+1. `make install` copies files into the build library: build/include and build/lib
+2. The default compiler is the Intel compiler. To use GCC, specify the CC and CXX compilers and disable the Intel compiler: CC=gcc-4.9 CXX=g++04.9 cmake .. -DCMAKE_BUILD_TYPE=Release -DINTEL_CC=OFF
+
+For debugging the build procedure use the `VERBOSE=1 make` instead of `make`. This will report all the steps (compile and link lines) made by the make build system.

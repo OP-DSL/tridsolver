@@ -1,0 +1,265 @@
+/*
+ * Open source copyright declaration based on BSD open source template:
+ * http://www.opensource.org/licenses/bsd-license.php
+ *
+ * This file is part of the scalar-tridiagonal solver distribution.
+ *
+ * Copyright (c) 2015, Endre László and others. Please see the AUTHORS file in
+ * the main source directory for a full list of copyright holders.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * The name of Endre László may not be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY Endre László ''AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL Endre László BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Scalar tridiagonal solver for CPU, MIC and GPU 
+==============================================
+by Endre László12, Mike Giles1 and Jeremy Appleyard3
+laszlo.endre@itk.ppke.hu 
+
+1) University of Oxford, Oxford, UK
+2) Pázmány Péter Catholic University, Budapest, HU
+3) NVIDIA Corporation Ltd., San Jose, CA, US
+
+Last modified: 7 October 2015
+
+
+Introduction
+============
+
+The present directory contains the library for scalar tridiagonal batch solvers. Two API is provided for convenient use: 1) a conventional batch tridiagonal solver and 2) a batch tridiagonal solver in multiple dimensions. 
+
+The tridiagonal system to be solved is of the form Ax=d where
+
+     ( b[0]  c[0]                                  )      ( x[0]   )      ( d[0]   )
+     ( a[1]  b[1]  c[1]                            )      ( x[1]   )      ( d[1]   )
+     (       a[2]  b[2]  c[2]                      )      ( x[2]   )      ( d[2]   )
+ A = (               .     .    .                  ), x = (   .    ), d = (   .    )
+     (                     .    .    .             )      (   .    )      (   .    )
+     (                                             )      (   .    )      (   .    )
+     (                               a[N-1] b[N-1] )      ( x[N-1] )      ( d[N-1] )
+
+This project is aimed to speed up the solution of tridiagonal systems of equations on Intel CPU, CUDA-enabled GPU and Intel MIC architectures. The available solver in the library is designed with the assuption that in certain engineering, scientific and financial problems the number of tridiagonal system of equations is large enough to saturate the memory bandwidth of the memory controllers. Since the solution of a tridiagonal system of equations is typically memory bounded, the obvious aim of an optimal implementation is to pursue the memery interface utilization. The current library provides different algorithms with different optimizations to achieve this goal. The base algorithm is the Thomas algorithm which is optimized using local data (register level) transposition techniques. Additionally, a new Thomas+PCR hybrid algorithm is also used to accelerate the solution. This implementation pushes the bandwidth limited problem closer to being compute limited by performing computation in registers.
+
+
+Building the project
+====================
+
+Software requirements: 
+1. Intel compiler (version >=13.0)
+2. Intel Math Kernel Library (version >=11.2)
+3. NVIDIA CUDA compiler (version >=7.0) 
+4. CMake (version >=2.8.8)
+5. Make utilities
+
+Hardware requirements: 
+1. CPU: AVX or AVX2 support (Sandy Bridge architecture and beyond)
+2. GPU: CUDA Compute Capability >=3.5 (Kepler architecture and beyond)
+3. MIC: IMCI support (Knights Corner architecture and beyond)
+
+The scalar tridiagonal solver project is built using the standard CMake procedure. It is recommended to build the library with the out-of-source build method. Eg.:
+</home/user/tridsolver/scalar/>
+$ mkdir build
+$ cd build
+$ cmake .. -DCMAKE_BUILD_TYPE=Release
+$ make
+$ make install
+
+Note: `make install` copies files into the build library: build/include and build/lib
+
+For debugging the build procedure use the `VERBOSE=1 make` instead of `make`. This will report all the steps (compile and link lines) made by the make build system.
+
+
+API reference guide
+===================
+In the following reference description REAL may refer both to single precision and double precision representation. To functions are avaibale for use: one with a more standard API signature and a new API function for convenient multidimensional use.
+
+
+tridBatchSolve() function
+-------------------------
+This function is used to solve a large number of tridiagonal systems of equations along a given dimension with the given coefficients of that particular dimension, ie. A matrices and d vectors are given for only one dimension. The function signature and usage is similar to the cuSPARSE gtsv?BatchStride() functions.
+
+  tridBatchSolve<typename REAL, typename VECTOR, int INC>(REAL* a, REAL *b, REAL *c, REAL *d, REAL *u, int sys_size, int sys_stride, int sys_n) 
+
+  sys_size   - size or length of an individual tridiagonal system of equations, eg. size_sys=N in the example
+  sys_stride - stride between elements within a system. Eg. if the system is linearly layed out, then stride_sys=1
+  sys_n      - number of systems to be solved. 
+  INC        - flag signing if increments with *inc need to be done. 
+
+
+
+tridMultiDimBatchSolve() function
+---------------------------------
+This function is used to solve a large number of tridiagonal systems of equations along multiple dimensions in a multidimensional datastructure, ie. one defines the multidimensional datastructure in *a,*b,*c,*d along with the metadata (ndim,*dims,*dims_pad) and then chooses the dimension of solve (solvedim). 
+
+  tridMultiDimBatchSolve<typename REAL, typename VECTOR, int INCFLAG>(int ndim, int solvedim, int *dims, int *pads, REAL* a, REAL *b, REAL *c, REAL *d, REAL *u)
+
+  ndim     - number of dimensions of the (hyper)cubic data structure. 
+             Note: ndim <= MAXDIM=8 is supposed
+  solvedim - user chosen dimension for which the solution is performed
+  *dims    - (?active working set) array containing the sizes of each ndim dimensions. size(dims) == ndim <=MAXDIM
+  *pads    - padded sizes along each ndim number of dimensions
+  *a,*b,*c - left hand side coefficients of a multidimensional problem. An array containing A matrices of individual problems
+  *d       - right hand side coefficients of a multidimensional problem. An array containing d column vectors of individual problems
+  *u       - incremental array if needed. Might be a NULL pointer if INC = 0.
+  INC      - flag signing if increments with *inc need to be done. 
+
+
+Limitations/Bugs/Issue Repoorts:
+--------------------------------
+
+1) trid_linear_shared() only works if ny*nz is divisible by 8. Otherwise invalid global memory reads/writes occure. Possible solution: take care of reads and optimization code segments with if statemnets just like in trid_x_reg16() to avoid optimized execution where it is not possible.
+
+2) trid_linear_thomaspcr() is not equiped to work with sys_pads values
+
+3) Non of the tridiagonal solvers were tested to run with sys_pads != sys_size !
+
+4) transpose() function used in cuSPARSE functions only work on 32*N size square matrices! Out of dimension index checking is needed.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+The present directory contains source code, Makefile, benchmark scripts and results for the improvement of tridiagonal solvers used to solve ADI problems.
+
+The 3D Poisson equation is solved using the ADI method. The ADI method requires solving 3 systems of tridiagonal equations. In the present implementation the tridiagonal solver along the X dimension requires data access in global memory with long stride. This gives a poor performance for the trid_x solver comapred to the Y and Z dimensional trid_y and trid_z solvers. Different optimization techniques are used to overcome this issue. Implementations for CPUs (multicore with SIMD), Xeon Phi and CUDA based GPUs (nVidia Fermi and Kepler) are realized. 
+
+The kernels for different trid_x optimization can be found in different files. Descrioption of files:
+
+generics/*                 - nVidia header for __shfl() overloading by Bryan Catanzaro, GitHub: https://github.com/BryanCatanzaro/generics
+
+Makefile                   - Makefile for GNU make 
+ 
+adi_acc.c                  - Host code for OpenACC-based solver requires PGI compiler to compile
+
+adi_cpu.c                  - (will be removed soon)
+ 
+adi_cpu_orig.c             - Gold host code. Used as reference to validate other implementations. Contains all the kernel/functions to solve the ADI problem.
+
+adi_cuda.cu                - CUDA host code. Encapsulates all the CUDA-related host codes. One can choose optimization, iteration number and problem size with program arguments. FPPREC macro has to be set in compile time to defien floating point precision 
+
+adi_cuda.h                 - CUDA-realted implementation header file
+
+adi_cusparse.cu            - (will be removed soon) Host code for cuSPARSE-based solution. Now merged into adi_cuda.cu
+
+adi_simd.c                 - CPU code for calling functions implemented with vector intrinsics and OpenMP pragmas
+
+adi_simd.h                 - Header file to interface CPU functions.
+
+compare.c                  - Host code for comparing results. Every implementation writes its output into a binary file with a name indentical to the executable, e.g. adi_cuda.dat. This program compares two such files
+
+cutil_inline.h             - CUDA realted utility functions, macros.
+
+preproc.c                  - CPU function for calculating coefficients.
+
+preproc.cu                 - GPU kernel for calculating coefficients.
+
+print_array.c              - Host code to print result to std output and *.dat file. This *.dat file is used by comapre.c to calculate error.
+
+sweep.sh                   - Shell script to perform benchmarking by sweeping through different problem sizes.
+
+validate.sh                - Shell script to validate adi implementations by sweeping through different problem sizes.
+
+trid.c                     - Scalar tridiagonal solver for CPU code.
+
+trid_cusparse.cu           - Wrapper like funcation for cuSPARSE based solutions. trid_y and trid_z also does tranposition of data. Functions in this file encapsulate this behaviour.
+
+trid_x.cu                  - CUDA course Thomas algorithm implementation. Gives poor performance do to long strided, uncoalasced access pattern. 
+
+trid_x_cr.cu               - CUDA course-based Cyclic Reduction implementation. Has some bug!
+
+trid_x_float4.cu           - Trid-X implementation with float4 vector loads. Code not maintained. Might be removed later.
+
+trid_x_reg16_float4.cu     - Trid-X implementation with register shuffling of float4 vectors. Does data load of 16 float values (by issueing 4 float4 loads) for 32 threads in a warp and transposes it.
+
+trid_x_reg16_float4_unaligned.cu  - Scratch implementations
+
+trid_x_reg16_float4_unaligned2.cu - Scratch implementations
+
+trid_x_reg8_double2.cu     - Trid-X implementation with register shuffling of double2 vectors. Does data load of 8 double values (by issueing 4 double2 loads) for 32 threads in a warp and transposes it.
+
+trid_x_reg8_float4.cu      - Trid-X implementation with register shuffling of float4 vectros. Does data load of 8 float values (by issueing 2 float4 loads) for 32 threads in a warp and transposes it - uses less register than trid_x_reg8_float4.cu
+
+trid_x_shared.cu           - Trid-X implementation using shared memory to load and process data. 32 threads in a warp cooperate to load a 32x8 tile of data. Does data load of 8 float values by reading 8 consecutive floats. Doesn't require aligned access.
+
+trid_x_shared_float4.cu    - Loads data with float4 vector loads and stores it to shared memory. In the forward pass, instead of local (register) arrays, this version uses shared memory to load from buffer, ie. it doesn't use register arrays for calculation. It is significantly slower than other optimized versions. Points out the benefit of using register arrays over shared memory. 
+
+trid_x_shared_reg.cu       - Loads 16(or 8) float values with float4 vector loads and uses shared memory to transpose data. Not more efficient than trid_x_shared. (will be removed?)
+
+trid_y.cu                  - Does Trid-Y solve.
+
+trid_y_float4.cu           - Does Trid-Y solve with float4-s. Every thread loads data and does operations on float4-s, ie. 4 systems are solved by one thread at a time. 15% faster than trid_y.cu
+
+trid_z.cu                  - Does Trid-Z solve and adds contribution to state variables. 
+
+trid_z_float4.cu           - Does Trid-Z solve with float4-s. Every thread loads data and does operations on float4-s, ie. 4 systems are solved by one thread at a time. 15% faster than trid_z.cu
+
+
+MIC Offload
+-----------
+When executin adi_phi_offload the MIC_LD_LIBRARY_PATH needs to be set properly:
+eg.
+MIC_LD_LIBRARY_PATH=/opt/intel/composer_xe_2015.2.164/compiler/lib/mic
+
+The COI (offload library) runtime picks up the library path from this variable and automatically trasnfers it to the MIC.  
+
+
+
+

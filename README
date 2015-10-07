@@ -1,0 +1,35 @@
+
+The TridSolver project is maintained by 
+=======================================
+
+Endre László
+Pázmány Péter Catholic University, Budapest, HU
+(2012-2014, University of Oxford, Oxford, UK)
+laszlo.endre [at] itk.ppke.hu
+
+Mike Giles
+University of Oxford, Oxford, UK
+mike.giles [at] maths.oc.ac.uk
+
+Jeremy Appleyard
+NVIDIA Corporation
+jappleyard [at] nvidia.com
+
+
+7 October 2015
+============================================
+
+TRIDIAGONAL SOLVERS
+-------------------
+The project includes batch scalar and block tridiagonal solver libraries for GPU, CPU and Intel MIC  -- in the /scalar and /block directories -- as well as test applications in the /apps directory.
+
+As the use cases of scalar and block tridiagonal solvers differ significantly in most applications the implementation of the two libraries is separated in two subprojects in /scalar and /block directories. These subprojects can be built from corresponding directories using CMake. Note: the scalar solver only supports Intel compiler as it relies on AVX and IMCI intrinsics.
+
+
+TEST APPLICATIONS
+-----------------
+Test applications in /apps include: 1) the solution of the heat diffusion PDE using the ADI (Atlernating Direction Implicit) method and 2) the solution of a general block tridiagonal system of equations. 
+
+BUILDING
+--------
+Details on building the subprojects (solvers and test applications) can be found in the README file of the appropriate subdirectories. 

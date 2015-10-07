@@ -1,0 +1,86 @@
+# Define these variables as environment variables
+# Eg.
+# export CUDA_PATH=/usr/local/cuda-7.0
+# export INTEL_PATH=/opt/intel/composerxe_2015_3.1.164
+
+# Choose precision 0 - float (32bit), 1 - double (64bit)
+FPPREC=0 
+
+#ADI solver parameters
+
+#FPPREC ?= 0 # Floating point precision: 0 - single precision (float); 1 - double precision (double)
+NX     ?= 256 
+NY     ?= 256 
+NZ     ?= 256 
+ITER   ?= 1
+PROF    = 1 # 0 - don't profile kernels; 1 - profile kernels (might affect performance a bit) 
+
+N_MAX   ?= 1024 #65536 #1024 
+
+# COMPILER = intel OR gnu
+COMPILER=intel
+
+ADI_PARAMS_ACC = -DFPPREC=$(FPPREC) -DPROF=$(PROF) -DN_MAX=$(N_MAX) -DNX=$(NX) -DNY=$(NY) -DNZ=$(NZ) -DITER=$(ITER)
+ADI_PARAMS = -DFPPREC=$(FPPREC) -DN_MAX=$(N_MAX)
+
+INCS     := -I. 
+LIBS     := -L$(INTEL_PATH)/compiler/lib/intel64 -liomp5 
+
+INCS_CUDA := -I. -I../scalar/libtrid -I../scalar/libtrid/cuda/generics 
+LIBS_CUDA := -L$(CUDA_PATH)/lib64 -lcudart -lcusparse # cuSPARSE for scalar solver 
+
+INCS_MKL = -I./include -I./libtrid -I$(INTEL_PATH)/mkl/include  
+LIBS_MKL = -L$(INTEL_PATH)/mkl/lib/intel64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_rt 
+#LIBS_MKL = $(INTEL_PATH)/mkl/lib/intel64/libmkl_intel_lp64.a \
+#	   $(INTEL_PATH)/mkl/lib/intel64/libmkl_intel_thread.a \
+#	   $(INTEL_PATH)/mkl/lib/intel64/libmkl_core.a \
+#	   -L$(INTEL_PATH)/mkl/lib/intel64 -lmkl_rt
+
+INCS_MKL_MIC = -I./include -I./libtrid -I$(INTEL_PATH)/mkl/include  
+LIBS_MKL_MIC = -L$(INTEL_PATH)/mkl/lib/mic -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_rt -L$(INTEL_PATH)/compiler/lib/mic -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts
+#LIBS_MKL = $(INTEL_PATH)/mkl/lib/mic/libmkl_intel_lp64.a \
+#	   $(INTEL_PATH)/mkl/lib/mic/libmkl_intel_thread.a \
+#	   $(INTEL_PATH)/mkl/lib/mic/libmkl_core.a \
+#	   $(INTEL_PATH)/mkl/lib/mic/libmkl_rt.a
+
+NVCC=$(CUDA_PATH)/bin/nvcc
+CXX=$(INTEL_PATH)/bin/intel64/icpc
+
+NVCCFLAGS     := -O3 -arch=sm_35 --use_fast_math -w -Xptxas -v,-dlcm=cg -Xcompiler -fopenmp -DFPPREC=$(FPPREC)
+NVCCFLAGS_DBG := -g -G -arch=sm_35 --use_fast_math -w -Xptxas -v,-dlcm=cg -DFPPREC=$(FPPREC)
+
+CXXFLAGS     := -O3 -xAVX -restrict -parallel -openmp -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par -DFPPREC=$(FPPREC)
+CXXFLAGS_DBG := -g -O0 -DFPPREC=$(FPPREC)
+
+CXXFLAGS_MIC := -mmic -O3 -fno-alias -parallel -openmp -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par -DFPPREC=$(FPPREC)
+
+all: clean blktrid_cpu blktrid_cpu_mkl blktrid_mic blktrid_mic_mkl blktrid_gpu
+
+blktrid_cpu: blktrid.cpp blk_thomas_cpu.cpp util.h blktrid.h blktrid_cpu.h Makefile
+	$(CXX) $(CXXFLAGS) $(INCS) -c blk_thomas_cpu.cpp -o blk_thomas_cpu.o
+	$(CXX) $(CXXFLAGS) $(INCS) -D__CPU__ blktrid.cpp blk_thomas_cpu.o $(LIBS_MKL) -o $@  
+
+blktrid_cpu_mkl: blktrid.cpp blk_thomas_cpu.cpp util.h blktrid.h blktrid_cpu.h blktrid_gpu.h Makefile
+	$(CXX) $(CXXFLAGS) $(INCS_MKL) -c blk_thomas_cpu.cpp -o blk_thomas_cpu.o
+	$(CXX) $(CXXFLAGS) $(INCS_MKL) -D__CPU__ -D__MKL__ $(LIBS_MKL) blktrid.cpp blk_thomas_cpu.o $(LIBS_MKL) -o $@
+
+blktrid_mic: blktrid.cpp blk_thomas_cpu.cpp util.h blktrid.h blktrid_cpu.h Makefile
+	$(CXX) $(CXXFLAGS_MIC) $(INCS) -c blk_thomas_cpu.cpp -o blk_thomas_cpu.o
+	$(CXX) $(CXXFLAGS_MIC) $(INCS) -D__CPU__ blktrid.cpp blk_thomas_cpu.o $(LIBS_MKL_MIC) -o $@  
+
+blktrid_mic_mkl: blktrid.cpp blk_thomas_cpu.cpp util.h blktrid.h blktrid_cpu.h blktrid_gpu.h Makefile
+	$(CXX) $(CXXFLAGS_MIC) $(INCS_MKL_MIC) -c blk_thomas_cpu.cpp -o blk_thomas_cpu.o
+	$(CXX) $(CXXFLAGS_MIC) $(INCS_MKL_MIC) -D__CPU__ -D__MKL__ $(LIBS_MKL_MIC) blktrid.cpp blk_thomas_cpu.o $(LIBS_MKL_MIC) -o $@
+
+blktrid_gpu: blktrid.cpp blktrid_gpu.cu blk_thomas_gpu.cuh blk_thomas_cpu.cpp util.h blktrid.h blktrid_cpu.h blktrid_gpu.h Makefile
+	$(CXX)  $(CXXFLAGS)  $(INCS) $(INCS_CUDA) $(INCS_MKL) -c blk_thomas_cpu.cpp $(LIBS) $(LIBS_CUDA) $(LIBS_MKL) -o blk_thomas_cpu.o
+	$(NVCC) $(NVCCFLAGS) $(INCS) $(INCS_CUDA) $(INCS_MKL) $(ADI_PARAMS) -c blktrid_gpu.cu          $(LIBS) $(LIBS_CUDA) $(LIBS_MKL) -o blktrid_gpu.o
+	$(NVCC) $(NVCCFLAGS) $(INCS) $(INCS_CUDA) $(INCS_MKL) -D__GPU__ blktrid.cpp blktrid_gpu.o blk_thomas_cpu.o $(LIBS) $(LIBS_CUDA) $(LIBS_MKL) -o $@
+
+blktrid_gpu_debug: blktrid.cpp blktrid_gpu.cu blk_thomas_gpu.cuh blk_thomas_cpu.cpp util.h blktrid.h blktrid_cpu.h blktrid_gpu.h Makefile
+	$(CXX)  $(CXXFLAGS_DBG)  $(INCS) -c blk_thomas_cpu.cpp -o blk_thomas_cpu.o
+	$(NVCC) $(NVCCFLAGS_DBG) $(INCS) -c blktrid_gpu.cu -o blktrid_gpu.o  
+	$(NVCC) $(NVCCFLAGS_DBG) $(INCS) $(INCS_MKL) -D__GPU__ -D__CPU__ -D__MKL__ blktrid.cpp blktrid_gpu.o blk_thomas_cpu.o $(LIBS) $(LIBS_MKL) -o $@
+	  
+clean:
+	rm -rf *.o blktrid_cpu blktrid_cpu_mkl blktrid_mic blktrid_mic_mkl blktrid_gpu
