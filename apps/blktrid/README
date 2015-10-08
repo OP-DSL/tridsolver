@@ -62,7 +62,7 @@ A[i],B[i],C[i] are MxM blocks and x[i],d[i] are Mx1 blocks over the real numbers
 The underlying algorithm is the Thomas algorithm for the CPU, MIC and GPU implementation. In the case of the GPU implementation a new thread work-sharing approach has be used to increase parallelism of the block Thomas algorithm.
 
 Software requirements
----------------------
+--------------------- 
 1. Intel compiler (version >=15.0) or GCC compiler (version >=4.9)
 2. Intel Math Kernel Library (version >=11.2)
 3. NVIDIA CUDA compiler (version >=7.0) 
@@ -70,7 +70,7 @@ Software requirements
 5. Make utilities
 
 Hardware requirements
---------------------- 
+---------------------
 1. CPU: AVX or AVX2 support (Sandy Bridge architecture and beyond)
 2. GPU: CUDA Compute Capability >=3.5 (Kepler architecture and beyond)
 3. MIC: IMCI support (Knights Corner architecture and beyond)
@@ -85,13 +85,19 @@ $ cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_FOR_CPU=ON -DBUILD_FOR_GPU=ON
 $ make
 $ make install
 
+Executing the code
+--------------------
+Before exeucting the binaries set the path to the libtridblk libraries. On Linux systems with Bash shell eg.: export LD_LIBRARY_PATH+=:/home/user/tridsolver/block/build/lib.
+
+
 Notes
------ 
+-----
 1. `make install` copies files into the build library: build/include and build/lib
 2. The default compiler is the Intel compiler. To use GCC, specify the CC and CXX compilers and disable the Intel compiler: CC=gcc-4.9 CXX=g++04.9 cmake .. -DCMAKE_BUILD_TYPE=Release -DINTEL_CC=OFF
 3. By default building code for any architecture (CPU,GPU and MIC) is disabled. To enable the build for a specified architecture set the BUILD_FOR_<CPU|GPU|MIC> CMake definitions to ON as in the example above: -DBUILD_FOR_CPU=ON 
 4. Build works both with GCC and Intel compilers.
 5. For debugging the Make build procedure use the `VERBOSE=1 make` instead of `make`. This will report all the steps (compile and link lines) made by the make build system.
+6. When building the code for CPU or MIC a version of the project with the Intel MKL library is also built automatically.
 
 
 API reference guide

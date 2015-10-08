@@ -31,7 +31,7 @@
  */
 
 Scalar tridiagonal solver for CPU, MIC and GPU 
-==============================================
+====================================================
 by Endre László12, Mike Giles1 and Jeremy Appleyard3
 laszlo.endre@itk.ppke.hu 
 
@@ -39,7 +39,7 @@ laszlo.endre@itk.ppke.hu
 2) Pázmány Péter Catholic University, Budapest, HU
 3) NVIDIA Corporation Ltd., San Jose, CA, US
 
-Last modified: 7 October 2015
+Last modified: 7th October 2015
 
 
 Introduction
@@ -59,33 +59,36 @@ The tridiagonal system to be solved is of the form Ax=d where
 
 This project is aimed to speed up the solution of tridiagonal systems of equations on Intel CPU, CUDA-enabled GPU and Intel MIC architectures. The available solver in the library is designed with the assuption that in certain engineering, scientific and financial problems the number of tridiagonal system of equations is large enough to saturate the memory bandwidth of the memory controllers. Since the solution of a tridiagonal system of equations is typically memory bounded, the obvious aim of an optimal implementation is to pursue the memery interface utilization. The current library provides different algorithms with different optimizations to achieve this goal. The base algorithm is the Thomas algorithm which is optimized using local data (register level) transposition techniques. Additionally, a new Thomas+PCR hybrid algorithm is also used to accelerate the solution. This implementation pushes the bandwidth limited problem closer to being compute limited by performing computation in registers.
 
-
-Building the project
-====================
-
-Software requirements: 
-1. Intel compiler (version >=13.0)
+Software requirements
+---------------------
+1. Intel compiler (version >=15.0)
 2. Intel Math Kernel Library (version >=11.2)
 3. NVIDIA CUDA compiler (version >=7.0) 
 4. CMake (version >=2.8.8)
 5. Make utilities
 
-Hardware requirements: 
+Hardware requirements
+--------------------- 
 1. CPU: AVX or AVX2 support (Sandy Bridge architecture and beyond)
 2. GPU: CUDA Compute Capability >=3.5 (Kepler architecture and beyond)
 3. MIC: IMCI support (Knights Corner architecture and beyond)
 
+Building the project
+--------------------
 The scalar tridiagonal solver project is built using the standard CMake procedure. It is recommended to build the library with the out-of-source build method. Eg.:
 </home/user/tridsolver/scalar/>
 $ mkdir build
 $ cd build
-$ cmake .. -DCMAKE_BUILD_TYPE=Release
+$ cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_FOR_CPU=ON -DBUILD_FOR_GPU=ON
 $ make
 $ make install
 
-Note: `make install` copies files into the build library: build/include and build/lib
-
-For debugging the build procedure use the `VERBOSE=1 make` instead of `make`. This will report all the steps (compile and link lines) made by the make build system.
+Notes
+-----
+1. `make install` copies files into the build library: build/include and build/lib
+2. By default building code for any architecture (CPU,GPU and MIC) is disabled. To enable the build for a specified architecture set the BUILD_FOR_<CPU|GPU|MIC> CMake definitions to ON as in the example above: -DBUILD_FOR_CPU=ON 
+3. Please note, that the build works only with Intel compilers as the dvec.h header file and its dependencies are not part of the GCC project.
+4. For debugging the build procedure use the `VERBOSE=1 make` instead of `make`. This will report all the steps (compile and link lines) made by the make build system.
 
 
 API reference guide

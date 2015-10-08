@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 2.8.8)
 
 option(INTEL_CC "Use the Intel compiler." ON) 
-option(BUILD_FOR_CPU "Build library for CPU architecture." ON) 
+option(BUILD_FOR_CPU "Build library for CPU architecture." OFF) 
 option(BUILD_FOR_MIC "Build library for MIC architecture." OFF) 
-option(BUILD_FOR_GPU "Build library for GPU architecture." ON) 
+option(BUILD_FOR_GPU "Build library for GPU architecture." OFF) 
 
 if (INTEL_CC) 
   # Detect/find Intel compilers

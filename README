@@ -1,6 +1,6 @@
 
-The TridSolver project is maintained by 
-=======================================
+The TridSolver project is provided by 
+=====================================
 
 Endre László
 Pázmány Péter Catholic University, Budapest, HU
@@ -16,8 +16,8 @@ NVIDIA Corporation
 jappleyard [at] nvidia.com
 
 
-7 October 2015
-============================================
+Last modified: 7th October 2015
+
 
 TRIDIAGONAL SOLVERS
 -------------------
@@ -29,6 +29,7 @@ As the use cases of scalar and block tridiagonal solvers differ significantly in
 TEST APPLICATIONS
 -----------------
 Test applications in /apps include: 1) the solution of the heat diffusion PDE using the ADI (Atlernating Direction Implicit) method and 2) the solution of a general block tridiagonal system of equations. 
+
 
 BUILDING
 --------

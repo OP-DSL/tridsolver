@@ -35,8 +35,6 @@
 #ifndef __BLKTRID_GPU_H
 #define __BLKTRID_GPU_H
 
-//#include "blktrid.h"
-
 void sbtsv_gpu(float *A, float *B, float *C, float *d, float *Cstar, float *dstar, float *u, const int N, const int P, const int blkdim);
 
 void dbtsv_gpu(double *A, double *B, double *C, double *d, double *Cstar, double *dstar, double *u, const int N, const int P, const int blkdim);

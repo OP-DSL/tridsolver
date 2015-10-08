@@ -35,8 +35,6 @@
 #ifndef __BLKTRID_CPU_H
 #define __BLKTRID_CPU_H
 
-//#include "blktrid.h"
-
 void sbtsv_cpu(float*  A, float*  B, float*  C, float*  CAdj, float*  dAdj, float*  d, float*  u, const int N, const int P, const int dim);
 
 void dbtsv_cpu(double*  A, double*  B, double*  C, double*  CAdj, double*  dAdj, double*  d, double*  u, const int N, const int P, const int dim);

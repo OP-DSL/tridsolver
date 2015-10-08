@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 2.8.8)
 
 option(INTEL_CC "Use the Intel compiler." ON) 
-option(BUILD_FOR_CPU "Build library for CPU architecture." ON) 
+option(BUILD_FOR_CPU "Build library for CPU architecture." OFF) 
 option(BUILD_FOR_MIC "Build library for MIC architecture." OFF) 
-option(BUILD_FOR_GPU "Build library for GPU architecture." ON) 
+option(BUILD_FOR_GPU "Build library for GPU architecture." OFF) 
 
 if (INTEL_CC) 
   # Detect/find Intel compilers
@@ -56,7 +56,7 @@ else (INTEL_CC)
 endif (INTEL_CC) 
 
 # Define maximal length of a scalar tridiagonal system 
-set(N_MAX 1024 CACHE STRING "Maximal lenght of the internal buffer for storing intermediate c and d vectors of the Thomas algorithm") 
+set(N_MAX 1024 CACHE STRING "Maximal length of the internal buffer for storing intermediate c and d vectors of the Thomas algorithm") 
 add_definitions(-DN_MAX=${N_MAX}) 
 
 # Invoke subprojects
