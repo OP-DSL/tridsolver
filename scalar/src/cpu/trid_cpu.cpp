@@ -30,7 +30,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014 
+// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014
 
 #include "trid_common.h"
 #include "trid_simd.h"
@@ -80,20 +80,20 @@ inline void store(FP * __restrict__ dst, SIMD_REG * __restrict__ src, int n, int
   }
 }
 
-#ifdef __MIC__ 
-  #if FPPREC == 0 
-     #define LOAD(reg,array,n,N) load(reg,array,n,N); transpose16x16_intrinsic(reg); 
+#ifdef __MIC__
+  #if FPPREC == 0
+     #define LOAD(reg,array,n,N) load(reg,array,n,N); transpose16x16_intrinsic(reg);
      #define STORE(array,reg,n,N) transpose16x16_intrinsic(reg); store(array,reg,n,N);
-  #elif FPPREC == 1 
-     #define LOAD(reg,array,n,N) load(reg,array,n,N); transpose8x8_intrinsic(reg); 
+  #elif FPPREC == 1
+     #define LOAD(reg,array,n,N) load(reg,array,n,N); transpose8x8_intrinsic(reg);
      #define STORE(array,reg,n,N) transpose8x8_intrinsic(reg); store(array,reg,n,N);
   #endif
 #elif __AVX__
   #if FPPREC == 0
-     #define LOAD(reg,array,n,N) load(reg,array,n,N); transpose8x8_intrinsic(reg); 
+     #define LOAD(reg,array,n,N) load(reg,array,n,N); transpose8x8_intrinsic(reg);
      #define STORE(array,reg,n,N) transpose8x8_intrinsic(reg); store(array,reg,n,N);
   #elif FPPREC == 1
-     #define LOAD(reg,array,n,N) load(reg,array,n,N); transpose4x4_intrinsic(reg); 
+     #define LOAD(reg,array,n,N) load(reg,array,n,N); transpose4x4_intrinsic(reg);
      #define STORE(array,reg,n,N) transpose4x4_intrinsic(reg); store(array,reg,n,N);
   #endif
 #endif
@@ -113,7 +113,7 @@ void trid_x_transpose(const FP* __restrict a, const FP* __restrict b, const FP* 
   assert( (((long long)a)%SIMD_WIDTH) == 0);
 
   int   i, ind = 0;
-  SIMD_REG aa;  
+  SIMD_REG aa;
   SIMD_REG bb;
   SIMD_REG cc;
   SIMD_REG dd;
@@ -121,7 +121,7 @@ void trid_x_transpose(const FP* __restrict a, const FP* __restrict b, const FP* 
   SIMD_REG tmp1;
   SIMD_REG tmp2;
 
-  SIMD_REG a_reg[SIMD_VEC];  
+  SIMD_REG a_reg[SIMD_VEC];
   SIMD_REG b_reg[SIMD_VEC];
   SIMD_REG c_reg[SIMD_VEC];
   SIMD_REG d_reg[SIMD_VEC];
@@ -154,7 +154,7 @@ void trid_x_transpose(const FP* __restrict a, const FP* __restrict b, const FP* 
   dd = SIMD_MUL_P(bb,dd);
   c2[0] = cc;
   d2[0] = dd;
-  
+
   //d_reg[0] = dd;
 
   for(i=1; i<SIMD_VEC; i++) {
@@ -203,7 +203,7 @@ void trid_x_transpose(const FP* __restrict a, const FP* __restrict b, const FP* 
       dd    = SIMD_MUL_P(bb,dd);
       c2[n+i] = cc;
       d2[n+i] = dd;
-      
+
     //tmp1 = cc;
     //tmp2 = dd;
     //d_reg[i] = dd;
@@ -247,7 +247,7 @@ void trid_x_transpose(const FP* __restrict a, const FP* __restrict b, const FP* 
       dd    = SIMD_MUL_P(bb,dd);
       c2[n+i] = cc;
       d2[n+i] = dd;
-      
+
       //d_reg[i] = dd;
     }
     //STORE(u,d_reg,n,sys_pad);
@@ -418,7 +418,7 @@ void tridMultiDimBatchSolve(const FP* a, const FP* b, const FP* c, FP* d, FP* u,
     int sys_size   = dims[0]; // Size (length) of a system
     int sys_pads   = pads[0]; // Padded sizes along each ndim number of dimensions
     int sys_n_lin  = dims[1]*dims[2]; // = cumdims[solve] // Number of systems to be solved
-    
+
     //if((sys_pads % SIMD_VEC) == 0) {
       #pragma omp parallel for collapse(2)
       for(int k=0; k<dims[2]; k++) {
@@ -445,17 +445,35 @@ void tridMultiDimBatchSolve(const FP* a, const FP* b, const FP* c, FP* d, FP* u,
     //      trid_scalar(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind], sys_size, sys_stride);
     //    }
     //  }
-    //} 
+    //}
   }
-  //else if(solvedim==1) {
-  //  int sys_stride = dims[0]; // Stride between the consecutive elements of a system
-  //  int sys_size   = dims[1]; // Size (length) of a system
-  //  int sys_pads   = pads[1]; // Padded sizes along each ndim number of dimensions
-  //  int sys_n_lin  = dims[0]*dims[2]; // = cumdims[solve] // Number of systems to be solved
-  //
-  //  trid_scalar_vec<FP,VECTOR,0>(a, b, c, d, u, sys_size, sys_stride);
+  else if(solvedim==1) {
+    int sys_stride = dims[0]; // Stride between the consecutive elements of a system
+    int sys_size   = dims[1]; // Size (length) of a system
+    int sys_pads   = pads[1]; // Padded sizes along each ndim number of dimensions
+    int sys_n_lin  = dims[0]*dims[2]; // = cumdims[solve] // Number of systems to be solved
 
-  //} else if(solvedim==2) {
+    trid_scalar_vec<FP,VECTOR,0>(a, b, c, d, u, sys_size, sys_stride);
+
+    /*#pragma omp parallel for collapse(2)  //schedule(guided)
+    for(int k=0; k<dims[2]; k++) {
+      for(int i=0; i<ROUND_DOWN(dims[0],SIMD_VEC); i+=SIMD_VEC) {
+        int ind = k*pads[0]*dims[1] + i;
+        trid_scalar_vec<FP,VECTOR,0>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind], sys_size, sys_stride);
+      }
+    }
+    if(ROUND_DOWN(dims[0],SIMD_VEC) < dims[0]) { // If there is leftover, fork threads an compute it
+      #pragma omp parallel for collapse(2)
+      for(int k=0; k<dims[2]; k++) {
+        for(int i=ROUND_DOWN(dims[0],SIMD_VEC); i<dims[0]; i++) {
+          int ind = k*pads[0]*dims[1] + i;
+          trid_scalar(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind], sys_size, pads[0]);
+        }
+      }
+    }*/
+  }
+
+  //else if(solvedim==2) {
   //  int numTrids = dims[0]*dims[1];
   //  int length   = dims[2];
   //  int stride1  = dims[0]*dims[1];
@@ -557,9 +575,9 @@ tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b, const float *
 
 
 void trid_scalarS(float* __restrict a, float* __restrict b, float* __restrict c, float* __restrict d, float* __restrict u, int N, int stride) {
-  
+
   trid_scalar(a, b, c, d, u, N, stride);
-  
+
 }
 
 void trid_x_transposeS(float* __restrict a, float* __restrict b, float* __restrict c, float* __restrict d, float* __restrict u, int sys_size, int sys_pad, int stride) {
@@ -588,7 +606,7 @@ tridStatus_t tridDmtsvStridedBatch(const double *a, const double *b, const doubl
 }
 
 void trid_scalarD(double* __restrict a, double* __restrict b, double* __restrict c, double* __restrict d, double* __restrict u, int N, int stride) {
-  
+
   trid_scalar(a, b, c, d, u, N, stride);
 
 }

@@ -77,6 +77,6 @@ if (BUILD_FOR_MIC AND INTEL_CC)
 		ARCHIVE DESTINATION ${CMAKE_BINARY_DIR}/lib)
 	install(FILES ${PROJECT_SOURCE_DIR}/include/trid_cpu.h ${PROJECT_SOURCE_DIR}/include/trid_common.h ${PROJECT_SOURCE_DIR}/include/trid_simd.h
 		DESTINATION ${CMAKE_BINARY_DIR}/include)
-endif (BUILD_FOR_MIC)
+endif (BUILD_FOR_MIC AND INTEL_CC)
 
 
