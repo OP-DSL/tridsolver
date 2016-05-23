@@ -268,7 +268,15 @@ int main(int argc, char* argv[]) {
     // perform tridiagonal solves in z-direction
     //
     timing_start(prof, &timer);
-    #pragma omp parallel for collapse(2) private(j,i,k,ind) schedule(static,1) // Interleaved scheduling for better data locality and thus lower TLB miss rate
+
+    solvedim = 2;   // user chosen dimension for which the solution is performed
+    #if FPPREC == 0
+      tridSmtsvStridedBatch(h_az, h_bz, h_cz, h_du, h_u, ndim, solvedim, dims, pads);
+    #elif FPPREC == 1
+      tridDmtsvStridedBatch(h_az, h_bz, h_cz, h_du, h_u, ndim, solvedim, dims, pads);
+    #endif
+
+    /*#pragma omp parallel for collapse(2) private(j,i,k,ind) schedule(static,1) // Interleaved scheduling for better data locality and thus lower TLB miss rate
     for(j=0; j<ny; j++) {
       for(i=0; i<ROUND_DOWN(nx,SIMD_VEC); i+=SIMD_VEC) {
         ind = j*nx_pad + i;
@@ -295,7 +303,9 @@ int main(int argc, char* argv[]) {
           }
         }
       }
-    }
+    }*/
+
+
     timing_end(prof, &timer, &elapsed_trid_z, "trid_z");
   }
   elapsed = elapsed_time(&timer2);

@@ -448,110 +448,50 @@ void tridMultiDimBatchSolve(const FP* a, const FP* b, const FP* c, FP* d, FP* u,
     //}
   }
   else if(solvedim==1) {
-    int sys_stride = dims[0]; // Stride between the consecutive elements of a system
+    int sys_stride = pads[0]; // Stride between the consecutive elements of a system
     int sys_size   = dims[1]; // Size (length) of a system
-    int sys_pads   = pads[1]; // Padded sizes along each ndim number of dimensions
-    int sys_n_lin  = dims[0]*dims[2]; // = cumdims[solve] // Number of systems to be solved
 
-    trid_scalar_vec<FP,VECTOR,0>(a, b, c, d, u, sys_size, sys_stride);
-
-    /*#pragma omp parallel for collapse(2)  //schedule(guided)
+    #pragma omp parallel for collapse(2) //schedule(guided)
     for(int k=0; k<dims[2]; k++) {
       for(int i=0; i<ROUND_DOWN(dims[0],SIMD_VEC); i+=SIMD_VEC) {
         int ind = k*pads[0]*dims[1] + i;
-        trid_scalar_vec<FP,VECTOR,0>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind], sys_size, sys_stride);
+        trid_scalar_vec<FP,VECTOR,0>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind], sys_size, sys_stride/SIMD_VEC);
       }
     }
-    if(ROUND_DOWN(dims[0],SIMD_VEC) < dims[0]) { // If there is leftover, fork threads an compute it
+    if(ROUND_DOWN(dims[0],SIMD_VEC) < dims[0]) { //If there is leftover, fork threads an compute it
       #pragma omp parallel for collapse(2)
       for(int k=0; k<dims[2]; k++) {
         for(int i=ROUND_DOWN(dims[0],SIMD_VEC); i<dims[0]; i++) {
           int ind = k*pads[0]*dims[1] + i;
-          trid_scalar(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind], sys_size, pads[0]);
+          trid_scalar(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind], sys_size, sys_stride);
         }
       }
-    }*/
+    }
   }
+  else if(solvedim==2) {
+    int sys_stride = pads[0]*dims[1]; // Stride between the consecutive elements of a system
+    int sys_size   = dims[2]; // Size (length) of a system
 
-  //else if(solvedim==2) {
-  //  int numTrids = dims[0]*dims[1];
-  //  int length   = dims[2];
-  //  int stride1  = dims[0]*dims[1];
-  //  int stride2  = 1;
-  //  int subBatchSize   = dims[0]*dims[1];
-  //  int subBatchStride = 0;
-  //    solveBatchedTrid<REAL,INC>(numTrids, length, stride1, stride2, subBatchSize, subBatchStride, d_a, d_b, d_c, d_d, d_u);
-  //} else {
-  //  // Test if data is aligned
-  //  long isaligned = 0;
-  //  isaligned  = (long)d_a % CUDA_ALIGN_BYTE;            // Check if base pointers are aligned
-  //  isaligned += (long)d_b % CUDA_ALIGN_BYTE;
-  //  isaligned += (long)d_c % CUDA_ALIGN_BYTE;
-  //  isaligned += (long)d_d % CUDA_ALIGN_BYTE;
-  //  if(d_u != NULL) isaligned += (long)d_u % CUDA_ALIGN_BYTE;
-  //  isaligned += (dims[0]*sizeof(REAL)) % CUDA_ALIGN_BYTE; // Check if X-dimension allows alignment
-
-  //  if(isaligned==0) { // If any of the above is non-zero, vector loads can not be used
-  //    if(sizeof(REAL) == 4) {
-  //      // Kernel launch configuration
-  //      int sys_n_float4 = sys_n/4;
-  //      int blockdimx_float4 = 128; // Has to be the multiple of 32(or maybe 4??)
-  //      int blockdimy_float4 = 1;
-  //      int dimgrid_float4   = 1 + (sys_n_float4-1)/blockdimx_float4; // can go up to 65535
-  //      int dimgridx_float4  = dimgrid_float4 % 65536;         // can go up to max 65535 on Fermi
-  //      int dimgridy_float4  = 1 + dimgrid_float4 / 65536;
-  //      dim3 dimGrid_float4(dimgridx_float4, dimgridy_float4);
-  //      dim3 dimBlock_float4(blockdimx_float4,blockdimy_float4);
-
-  //      // Setup dimension and padding according to float4 loads/stores
-  //      dims[0] = dims[0]/4;
-  //      pads[0] = dims[0];
-  //      //trid_set_consts(ndim, dims, pads);
-  //      initTridMultiDimBatchSolve(ndim, dims, pads);
-
-  //      trid_strided_multidim<float,float4,INC><<<dimGrid_float4, dimBlock_float4>>>((float4*)d_a, (float4*)d_b, (float4*)d_c, (float4*)d_d, (float4*)d_u, ndim, solvedim, sys_n_float4);
-
-  //      dims[0] = dims[0]*4;
-  //      pads[0] = dims[0];
-  //      //trid_set_consts(ndim, dims, pads);
-  //      initTridMultiDimBatchSolve(ndim, dims, pads);
-  //    } else if(sizeof(REAL) == 8) {
-  //      // Kernel launch configuration
-  //      int sys_n_double2 = sys_n/2;
-  //      int blockdimx_double2 = 128; // Has to be the multiple of 32(or maybe 4??)
-  //      int blockdimy_double2 = 1;
-  //      int dimgrid_double2  = 1 + (sys_n_double2-1)/blockdimx_double2; // can go up to 65535
-  //      int dimgridx_double2  = dimgrid_double2 % 65536;         // can go up to max 65535 on Fermi
-  //      int dimgridy_double2  = 1 + dimgrid_double2 / 65536;
-  //      dim3 dimGrid_double2(dimgridx_double2, dimgridy_double2);
-  //      dim3 dimBlock_double2(blockdimx_double2,blockdimy_double2);
-  //      // Setup dimension and padding according to double2 loads/stores
-  //      dims[0] = dims[0]/2;
-  //      pads[0] = dims[0];
-  //      //trid_set_consts(ndim, dims, pads);
-  //      initTridMultiDimBatchSolve(ndim, dims, pads);
-
-  //      trid_strided_multidim<double,double2,INC><<<dimGrid_double2, dimBlock_double2>>>((double2*)d_a, (double2*)d_b, (double2*)d_c, (double2*)d_d, (double2*)d_u, ndim, solvedim, sys_n_double2);
-
-  //      dims[0] = dims[0]*2;
-  //      pads[0] = dims[0];
-  //      //trid_set_consts(ndim, dims, pads);
-  //      initTridMultiDimBatchSolve(ndim, dims, pads);
-  //    }
-  //  } else {
-  //    // Kernel launch configuration
-  //    int blockdimx = 128; // Has to be the multiple of 32(or maybe 4??)
-  //    int blockdimy = 1;
-  //    int dimgrid   = 1 + (sys_n-1)/blockdimx; // can go up to 65535
-  //    int dimgridx  = dimgrid % 65536;         // can go up to max 65535 on Fermi
-  //    int dimgridy  = 1 + dimgrid / 65536;
-  //    dim3 dimGrid(dimgridx, dimgridy);
-  //    dim3 dimBlock(blockdimx,blockdimy);
-
-  //    trid_strided_multidim<REAL,REAL,INC><<<dimGrid, dimBlock>>>(d_a, d_b, d_c, d_d, d_u, ndim, solvedim, sys_n);
-  //  }
-  //}
-  //}
+    #pragma omp parallel for collapse(2) // Interleaved scheduling for better data locality and thus lower TLB miss rate
+    for(int j=0; j<dims[1]; j++) {
+      for(int i=0; i<ROUND_DOWN(dims[0],SIMD_VEC); i+=SIMD_VEC) {
+        int ind = j*pads[0] + i;
+        trid_scalar_vec<FP,VECTOR,1>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind], sys_size, (sys_stride)/SIMD_VEC);
+      }
+    }
+    if(ROUND_DOWN(dims[0],SIMD_VEC) < dims[0]) { // If there is leftover, fork threads an compute it
+      #pragma omp parallel for collapse(2)
+      for(int j=0; j<dims[1]; j++) {
+        for(int i=ROUND_DOWN(dims[0],SIMD_VEC); i<dims[0]; i++) {
+          int ind = j*pads[0] + i;
+          trid_scalar(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind], sys_size, sys_stride);
+          for(int k=0; k<dims[2]; k++) {
+            u[ind + k*pads[0]*dims[1]] += d[ind + k*pads[0]*dims[1]];
+          }
+        }
+      }
+    }
+  }
 }
 
 
@@ -559,7 +499,8 @@ void tridMultiDimBatchSolve(const FP* a, const FP* b, const FP* c, FP* d, FP* u,
 
 
 tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b, const float *c, float *d, float* u, int ndim, int solvedim, int *dims, int *pads) {
-  tridMultiDimBatchSolve(a, b, c, d, NULL, ndim, solvedim, dims, pads);
+  //tridMultiDimBatchSolve(a, b, c, d, NULL, ndim, solvedim, dims, pads); --this was Endre's original
+  tridMultiDimBatchSolve(a, b, c, d, u, ndim, solvedim, dims, pads);
   return TRID_STATUS_SUCCESS;
 }
 
@@ -586,7 +527,7 @@ void trid_x_transposeS(float* __restrict a, float* __restrict b, float* __restri
 
 }
 
-void trid_scalar_vecS(float* __restrict a, float* __restrict b, float* __restrict c, float* __restrict d, float* __restrict u, int N, int stride) {
+void trid_scalar_vecS(const float* __restrict a, const float* __restrict b, const float* __restrict c, float* __restrict d, float* __restrict u, int N, int stride) {
 
   trid_scalar_vec<FP,VECTOR,0>(a, b, c, d, u, N, stride);
 
@@ -601,7 +542,8 @@ void trid_scalar_vecSInc(float* __restrict a, float* __restrict b, float* __rest
 #elif FPPREC == 1
 
 tridStatus_t tridDmtsvStridedBatch(const double *a, const double *b, const double *c, double *d, double* u, int ndim, int solvedim, int *dims, int *pads) {
-  tridMultiDimBatchSolve(a, b, c, d, NULL, ndim, solvedim, dims, pads);
+  //tridMultiDimBatchSolve(a, b, c, d, NULL, ndim, solvedim, dims, pads); -- original
+  tridMultiDimBatchSolve(a, b, c, d, u, ndim, solvedim, dims, pads);
   return TRID_STATUS_SUCCESS;
 }
 
@@ -629,8 +571,3 @@ void trid_scalar_vecDInc(double* __restrict a, double* __restrict b, double* __r
 
 }
 #endif
-
-
-
-
-
