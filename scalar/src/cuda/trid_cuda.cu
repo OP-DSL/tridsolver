@@ -30,7 +30,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014 
+// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014
 
 #include "trid_cuda.h"
 #include "trid_common.h"
@@ -127,9 +127,9 @@ void trid_linearlayout_cuda(const REAL** d_ax, const REAL** d_bx, const REAL** d
       //#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >=300) // Only compiler if register shuffle intrinsics exist on the device
         trid_linear_reg<REAL>(dimGrid_x, dimBlock_x, *d_ax, *d_bx, *d_cx, *d_du, *d_u, sys_size, sys_pads, sys_n);
         cudaCheckMsg("trid_linear_reg16_float4 execution failed\n");
-      //#else 
+      //#else
       //  printf("This option is only valid for __CUDA_ARCH__ >= 300\n");
-      //#endif   
+      //#endif
       break;
     case 3:
       //#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >=300) // Only compiler if register shuffle intrinsics exist on the device
@@ -137,9 +137,9 @@ void trid_linearlayout_cuda(const REAL** d_ax, const REAL** d_bx, const REAL** d
         //solveBatchedTrid<REAL,INC>(numTrids, length, stride1, stride2, subBatchSize, subBatchStride, *d_ax, *d_bx, *d_cx, *d_du, *d_u);
         solveBatchedTrid<REAL,INC>(numTrids, length, stride1, stride2, subBatchSize, subBatchStride, *d_ax, *d_bx, *d_cx, *d_du, *d_du);
         cudaCheckMsg("trid_linear_thomaspcr execution failed\n");
-      //#else 
+      //#else
       //  printf("This option is only valid for __CUDA_ARCH__ >= 300\n");
-      //#endif   
+      //#endif
       break;
     case 4:
       //trid_linear_cusparse(handle_sp, d_ax, d_bx, d_cx, d_du, d_u, sys_stride, sys_size, sys_pads, sys_n);
@@ -155,15 +155,15 @@ void trid_linearlayout_cuda(const REAL** d_ax, const REAL** d_bx, const REAL** d
 // Initialize solver environment. Set CUDA __constant__ variables specifing dimension and padding sizes.
 //
 void initTridMultiDimBatchSolve(int ndim, int *dims, int *pads) {
-  
+
 //  int changed = 0;
 //  for (int i = 0; i < ndim; i++) {
 //    changed = changed || !(dims[i]==prev_dims[i] && pads[i]==prev_pads[i]);
 //  }
-//  
+//
 //  if (changed == 1 || !initialised) {
 //    initialised = 1;
-    
+
     // Initialize CUDA cuSPARSE libraries
     //if(cusparseCreate(&handle_sp) != CUSPARSE_STATUS_SUCCESS) exit(-1);
 
@@ -208,9 +208,9 @@ void tridMultiDimBatchSolve(const REAL* d_a, const REAL* d_b, const REAL* d_c, R
         // y: stride1 = x, stride2 = 1, subBatchSize = x, subBatchStride = x*y
         solveBatchedTrid<REAL,INC>(numTrids, length, stride1, stride2, subBatchSize, subBatchStride, d_a, d_b, d_c, d_d, d_d);
         //solveBatchedTrid<REAL,INC>(numTrids, length, stride1, stride2, subBatchSize, subBatchStride, d_a, d_b, d_c, d_d, d_u);
-      //#else 
+      //#else
       //  printf("This option is only valid for __CUDA_ARCH__ >= 300\n");
-      //#endif   
+      //#endif
     } else if(solvedim==2 && opts[2]==3) { // If z-solve and ThomasPCR
       int numTrids = dims[0]*dims[1];
       int length   = dims[2];
@@ -221,9 +221,9 @@ void tridMultiDimBatchSolve(const REAL* d_a, const REAL* d_b, const REAL* d_c, R
       //#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >=300) // Only compiler if register shuffle intrinsics exist on the device
         // z: stride1 = x*y, stride2 = 1, subBatchSize = x*y, subBatchStride = 0
         solveBatchedTrid<REAL,INC>(numTrids, length, stride1, stride2, subBatchSize, subBatchStride, d_a, d_b, d_c, d_d, d_u);
-      //#else 
+      //#else
       //  printf("This option is only valid for __CUDA_ARCH__ >= 300\n");
-      //#endif   
+      //#endif
     } else {
       // Test if data is aligned
       long isaligned = 0;

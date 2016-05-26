@@ -411,7 +411,6 @@ void trid_scalar(const FP* __restrict a, const FP* __restrict b, const FP* __res
 // Function for selecting the proper setup for solve in a specific dimension
 //
 void tridMultiDimBatchSolve(const FP* a, const FP* b, const FP* c, FP* d, FP* u, int ndim, int solvedim, int *dims, int *pads) {
-  //int sys_n = cumdims[ndim]/dims[solvedim]; // Number of systems to be solved
 
   if(solvedim == 0) {
     int sys_stride = 1;       // Stride between the consecutive elements of a system
@@ -419,7 +418,7 @@ void tridMultiDimBatchSolve(const FP* a, const FP* b, const FP* c, FP* d, FP* u,
     int sys_pads   = pads[0]; // Padded sizes along each ndim number of dimensions
     int sys_n_lin  = dims[1]*dims[2]; // = cumdims[solve] // Number of systems to be solved
 
-    //if((sys_pads % SIMD_VEC) == 0) {
+    if((sys_pads % SIMD_VEC) == 0) {
       #pragma omp parallel for collapse(2)
       for(int k=0; k<dims[2]; k++) {
         for(int j=0; j<ROUND_DOWN(dims[1],SIMD_VEC); j+=SIMD_VEC) {
@@ -436,16 +435,16 @@ void tridMultiDimBatchSolve(const FP* a, const FP* b, const FP* c, FP* d, FP* u,
           }
         }
       }
-    //}
-    //else {
-    //  #pragma omp parallel for collapse(2)
-    //  for(int k=0; k<dims[2]; k++) {
-    //    for(int j=dims[0],SIMD_VEC); j<dims[0]; j++) {
-    //      int ind = k*pads[0]*dims[1] + j*pads[0];
-    //      trid_scalar(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind], sys_size, sys_stride);
-    //    }
-    //  }
-    //}
+    }
+    else {
+      #pragma omp parallel for collapse(2)
+      for(int k=0; k<dims[2]; k++) {
+        for(int j=dims[0]; j<dims[0]; j++) {
+          int ind = k*pads[0]*dims[1] + j*pads[0];
+          trid_scalar(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind], sys_size, sys_stride);
+        }
+      }
+    }
   }
   else if(solvedim==1) {
     int sys_stride = pads[0]; // Stride between the consecutive elements of a system
@@ -499,7 +498,11 @@ void tridMultiDimBatchSolve(const FP* a, const FP* b, const FP* c, FP* d, FP* u,
 
 
 tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b, const float *c, float *d, float* u, int ndim, int solvedim, int *dims, int *pads) {
-  //tridMultiDimBatchSolve(a, b, c, d, NULL, ndim, solvedim, dims, pads); --this was Endre's original
+  tridMultiDimBatchSolve(a, b, c, d, NULL, ndim, solvedim, dims, pads);
+  return TRID_STATUS_SUCCESS;
+}
+
+tridStatus_t tridSmtsvStridedBatchInc(const float *a, const float *b, const float *c, float *d, float* u, int ndim, int solvedim, int *dims, int *pads) {
   tridMultiDimBatchSolve(a, b, c, d, u, ndim, solvedim, dims, pads);
   return TRID_STATUS_SUCCESS;
 }
@@ -509,11 +512,6 @@ tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b, const float *
 //  return TRID_STATUS_SUCCESS;
 //}
 //
-//int* get_opts() {return opts;}
-
-
-
-
 
 void trid_scalarS(float* __restrict a, float* __restrict b, float* __restrict c, float* __restrict d, float* __restrict u, int N, int stride) {
 
@@ -542,7 +540,11 @@ void trid_scalar_vecSInc(float* __restrict a, float* __restrict b, float* __rest
 #elif FPPREC == 1
 
 tridStatus_t tridDmtsvStridedBatch(const double *a, const double *b, const double *c, double *d, double* u, int ndim, int solvedim, int *dims, int *pads) {
-  //tridMultiDimBatchSolve(a, b, c, d, NULL, ndim, solvedim, dims, pads); -- original
+  tridMultiDimBatchSolve(a, b, c, d, NULL, ndim, solvedim, dims, pads);
+  return TRID_STATUS_SUCCESS;
+}
+
+tridStatus_t tridDmtsvStridedBatchInc(const double *a, const double *b, const double *c, double *d, double* u, int ndim, int solvedim, int *dims, int *pads) {
   tridMultiDimBatchSolve(a, b, c, d, u, ndim, solvedim, dims, pads);
   return TRID_STATUS_SUCCESS;
 }
@@ -571,3 +573,5 @@ void trid_scalar_vecDInc(double* __restrict a, double* __restrict b, double* __r
 
 }
 #endif
+
+//int* get_opts() {return opts;}

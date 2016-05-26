@@ -30,7 +30,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014 
+// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -42,12 +42,12 @@
 #include "trid_cuda.h"
 #include "cutil_inline.h"
 
-#define ROUND_DOWN(N,step) (((N)/(step))*step) 
+#define ROUND_DOWN(N,step) (((N)/(step))*step)
 
 __global__ void preproc(FP lambda, FP* u, FP* du, FP* ax, FP* bx, FP* cx, FP* ay, FP* by, FP* cy, FP* az, FP* bz, FP* cz, int nx, int ny, int nz);
 
 extern char *optarg;
-extern int  optind, opterr, optopt; 
+extern int  optind, opterr, optopt;
 static struct option options[] = {
   {"devid",required_argument, 0,  0   },
   {"nx",   required_argument, 0,  0   },
@@ -71,36 +71,36 @@ void print_help() {
 }
 
 inline void timing_start(int prof, double *timer) {
-  if(prof==1) elapsed_time(timer); 
+  if(prof==1) elapsed_time(timer);
 }
 
 //inline void timing_end(int prof, double *timer, double *elapsed_accumulate, char *str) {
 inline void timing_end(int prof, double *timer, double *elapsed_accumulate, std::string str) {
   double elapsed;
   if(prof==1) {
-    cudaSafeCall( cudaDeviceSynchronize() ); 
-    elapsed = elapsed_time(timer); 
-    *elapsed_accumulate += elapsed; 
-    printf("\n elapsed %s (sec): %1.10f (s) \n", str.c_str() ,elapsed); 
+    cudaSafeCall( cudaDeviceSynchronize() );
+    elapsed = elapsed_time(timer);
+    *elapsed_accumulate += elapsed;
+    printf("\n elapsed %s (sec): %1.10f (s) \n", str.c_str() ,elapsed);
   }
 }
 
-int main(int argc, char* argv[]) { 
+int main(int argc, char* argv[]) {
   double timer, timer2, elapsed, elapsed_total, elapsed_preproc, elapsed_trid_x, elapsed_trid_y, elapsed_trid_z;
   int    i, j, k, ind, it;
   int    devid, nx, ny, nz, iter, optx, opty, optz, prof;
 
   // 'h_' prefix - CPU (host) memory space
   FP  *h_u, *h_du,
-      *h_ax, *h_bx, *h_cx, 
-      *h_ay, *h_by, *h_cy, 
-      *h_az, *h_bz, *h_cz, 
+      *h_ax, *h_bx, *h_cx,
+      *h_ay, *h_by, *h_cy,
+      *h_az, *h_bz, *h_cz,
       lambda=1.0f; // lam = dt/dx^2
 
   // 'd_' prefix - GPU (device) memory space
   FP  *d_u,  *d_du, *d_du2, *d_du3,
-      *d_ax, *d_bx, *d_cx, 
-      *d_ay, *d_by, *d_cy, 
+      *d_ax, *d_bx, *d_cx,
+      *d_ay, *d_by, *d_cy,
       *d_az, *d_bz, *d_cz,
       *d_buffer;
 
@@ -113,10 +113,10 @@ int main(int argc, char* argv[]) {
   ny   = 256;
   nz   = 256;
   iter = 10;
-  optx = 0; 
-  opty = 0; 
+  optx = 0;
+  opty = 0;
   optz = 0;
-  prof = 1; 
+  prof = 1;
 
   while( getopt_long_only(argc, argv, "", options, &opt_index) != -1) {
     if(strcmp(options[opt_index].name,"devid") == 0) devid   = atoi(optarg);
@@ -237,7 +237,7 @@ int main(int argc, char* argv[]) {
   // Timing variables
   // Reset elapsed time counters
   elapsed_total   = 0.0;
-  elapsed_preproc = 0.0;  
+  elapsed_preproc = 0.0;
   elapsed_trid_x  = 0.0;
   elapsed_trid_y  = 0.0;
   elapsed_trid_z  = 0.0;
@@ -273,7 +273,7 @@ int main(int argc, char* argv[]) {
       preproc<<<dimGrid1, dimBlock1>>>(lambda,  d_u,  d_du, d_ax, d_bx, d_cx, d_ay, d_by, d_cy, d_az, d_bz, d_cz, nx, ny, nz);
       cudaCheckMsg("preproc execution failed\n");
     timing_end(prof,&timer,&elapsed_preproc,"preproc");
-  
+
     timing_start(prof,&timer);
       solvedim = 0;
       //tridMultiDimBatchSolve<FP,0>(d_ax, d_bx, d_cx, d_du, d_u, ndim, solvedim, dims, pads, opts, sync);
@@ -354,11 +354,11 @@ int main(int argc, char* argv[]) {
   free(h_cz);
 
   cudaDeviceReset();
-  
+
   printf("Done.\n");
 
   // Print execution times
-  if(prof == 0) { 
+  if(prof == 0) {
     printf("Avg(per iter) \n[total]\n");
     printf("%f\n", elapsed_total/iter);
   }
