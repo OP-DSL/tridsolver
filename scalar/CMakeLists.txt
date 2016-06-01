@@ -29,7 +29,7 @@ project("libtrid")
 if (INTEL_CC) 
   # Set compiler flags/options for Intel compiler
   #set(FLAGS_INTEL_DEFAULT "-xCORE_AVX2 -parallel -openmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par -opt-report-phase=offload")
-	set(FLAGS_INTEL_DEFAULT "-xAVX -m64 -parallel -openmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par") #-xCORE_AVX2 
+	set(FLAGS_INTEL_DEFAULT "-xHost -m64 -parallel -openmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par") #-xCORE_AVX2 
 	set(FLAGS_INTEL_DEBUG   "-g -O0")
 	set(FLAGS_INTEL_RELEASE "-O3 -ip -restrict") #-fp-model fast 
 
