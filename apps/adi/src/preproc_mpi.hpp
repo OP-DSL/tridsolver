@@ -33,7 +33,7 @@
 // Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014 
 
 //#include"adi_simd.h"
-#include"cpu/trid_simd.h"
+#include"trid_simd.h"
 
 #include "adi_mpi.h"
 #include "mpi.h"

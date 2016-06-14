@@ -7,7 +7,7 @@
 //#endif
 //#pragma offload_attribute(pop)
 
-#include "trid_params.h"
+//#include "trid_params.h"
 
 //
 // linux timing routine

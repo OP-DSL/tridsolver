@@ -37,11 +37,12 @@
 #include <string.h>
 #include <getopt.h>
 #include <float.h>
+#define FP double
 
 #include "adi_cpu.h"
 #include "adi_mpi.h"
 #include "preproc_mpi.hpp"
-#include "cpu/trid_mpi_cpu.hpp"
+#include "trid_mpi_cpu.hpp"
 
 #include "trid_common.h"
 
@@ -448,10 +449,10 @@ int main(int argc, char* argv[]) {
   for(int i=0; i<TIMERS; i++) 
     app.timers_avg[i] /= mpi.procs;
 
-  sleep(1);
+  //sleep(1);
   for(int i=0; i<mpi.procs; i++) {
     MPI_Barrier(MPI_COMM_WORLD);
-    sleep(0.2);
+    //sleep(0.2);
     if(i==mpi.rank) {
       if(mpi.rank==0) {
         printf("Time in trid-x segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[checksum]\n", 

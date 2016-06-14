@@ -36,13 +36,13 @@
 #define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
 
 // print out left corner of array
-for(k=0; k<2; k++) {
+for(int k=0; k<2; k++) {
 //for (k=nz-4; k<nz; k++) {
   printf("k = %i\n",k);
-  for(j=0; j<MIN(ny,17); j++) {
+  for(int j=0; j<MIN(ny,17); j++) {
   //for (j=ny-9; j<ny; j++) {
     printf(" %d   ", j);
-    for(i=0; i<MIN(nx,17); i++) {
+    for(int i=0; i<MIN(nx,17); i++) {
       //ind = i + j*(nx+STRIDE) + k*(nx+STRIDE)*ny;
       int ind = i + j*ldim + k*ldim*ny;
       printf(" %5.5g ", h_u[ind]);
@@ -54,13 +54,13 @@ for(k=0; k<2; k++) {
 }
 
 // print out right corner of array
-for(k=0; k<2; k++) {
+for(int k=0; k<2; k++) {
 //for (k=nz-4; k<nz; k++) {
   printf("k = %i\n",k);
-  for(j=0; j<MIN(ny,17); j++) {
+  for(int j=0; j<MIN(ny,17); j++) {
   //for (j=ny-9; j<ny; j++) {
     printf(" %d   ", j);
-    for(i=MAX(0,nx-17); i<nx; i++) {
+    for(int i=MAX(0,nx-17); i<nx; i++) {
       //ind = i + j*(nx+STRIDE) + k*(nx+STRIDE)*ny;
       int ind = i + j*ldim + k*ldim*ny;
       printf(" %5.5g ", h_u[ind]);
@@ -82,9 +82,9 @@ if(fout == NULL) {
   printf("ERROR: File stream could not be opened. Data will not be written to file!\n");
 }else{
   //fwrite(h_u,sizeof(float),(nx+STRIDE)*ny*nz,fout);
-  for(k=0; k<nz; k++) {
-    for(j=0; j<ny; j++) {
-      for(i=0; i<nx; i++) {
+  for(int k=0; k<nz; k++) {
+    for(int j=0; j<ny; j++) {
+      for(int i=0; i<nx; i++) {
         int ind = i + j*ldim + k*ldim*ny;
         //h_u[ind] = i + j*nx + k*nx*ny;
         fwrite(&h_u[ind],sizeof(FP),1,fout);
