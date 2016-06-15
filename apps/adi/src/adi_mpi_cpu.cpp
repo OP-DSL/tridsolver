@@ -30,8 +30,8 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014 
- 
+// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -56,12 +56,12 @@
   //#include "mkl.h"
 #endif
 
-#define ROUND_DOWN(N,step) (((N)/(step))*step) 
+#define ROUND_DOWN(N,step) (((N)/(step))*step)
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
 
 extern char *optarg;
-extern int  optind, opterr, optopt; 
+extern int  optind, opterr, optopt;
 static struct option options[] = {
   {"nx",   required_argument, 0,  0   },
   {"ny",   required_argument, 0,  0   },
@@ -131,31 +131,61 @@ int init(app_handle &app, mpi_handle &mpi, int argc, char* argv[]) {
   // Process arguments
   int opt_index = 0;
   while( getopt_long_only(argc, argv, "", options, &opt_index) != -1) {
-    if(strcmp((char*)options[opt_index].name,"nx"  ) == 0) app.nx_g = atoi(optarg); 
-    if(strcmp((char*)options[opt_index].name,"ny"  ) == 0) app.ny_g = atoi(optarg); 
-    if(strcmp((char*)options[opt_index].name,"nz"  ) == 0) app.nz_g = atoi(optarg); 
-    if(strcmp((char*)options[opt_index].name,"iter") == 0) app.iter = atoi(optarg); 
-    if(strcmp((char*)options[opt_index].name,"opt" ) == 0) app.opt  = atoi(optarg); 
-    if(strcmp((char*)options[opt_index].name,"prof") == 0) app.prof = atoi(optarg); 
+    if(strcmp((char*)options[opt_index].name,"nx"  ) == 0) app.nx_g = atoi(optarg);
+    if(strcmp((char*)options[opt_index].name,"ny"  ) == 0) app.ny_g = atoi(optarg);
+    if(strcmp((char*)options[opt_index].name,"nz"  ) == 0) app.nz_g = atoi(optarg);
+    if(strcmp((char*)options[opt_index].name,"iter") == 0) app.iter = atoi(optarg);
+    if(strcmp((char*)options[opt_index].name,"opt" ) == 0) app.opt  = atoi(optarg);
+    if(strcmp((char*)options[opt_index].name,"prof") == 0) app.prof = atoi(optarg);
     if(strcmp((char*)options[opt_index].name,"help") == 0) print_help();
   }
-  
+
   if(mpi.rank==0) printf("\nGlobal grid dimensions: %d x %d x %d\n", app.nx_g, app.ny_g, app.nz_g);
 
-  int nx_tmp = 1+(app.nx_g - 1) / mpi.procs;
+  //create 3D decomposition
+  int ndim = 3;
+  int pdims[3] = {0,0,0};
+  int periodic[3] = {0,0,0}; //false
+  int coords[3];
+  MPI_Dims_create(mpi.procs, ndim, pdims);
+  printf("\nNumber of MPI procs in each dimenstion %d, %d, %d\n",pdims[0],pdims[1],pdims[2]);
+
+  //create 3D cartecian ranks for group
+  MPI_Comm comm;
+  MPI_Cart_create(MPI_COMM_WORLD,  ndim,  pdims,  periodic, 0,  &comm);
+  int my_cart_rank;
+  MPI_Comm_rank(comm, &my_cart_rank);
+  MPI_Cart_coords(comm, my_cart_rank, ndim, coords);
+
+  //Calculate sizes in decomposed x dim
+  int nx_tmp = 1+(app.nx_g - 1) / pdims[0]; //mpi.procs;
   app.nx_pad = (1+((nx_tmp-1)/SIMD_VEC))*SIMD_VEC; // Compute local size with padding for vecotrization
-  app.x_start_g = mpi.rank * nx_tmp; 
-  app.x_end_g   = MIN( ((mpi.rank+1) * nx_tmp)-1, app.nx_g-1);
+  app.x_start_g = coords[0] /*mpi.rank*/ * nx_tmp;
+  app.x_end_g   = MIN( ((coords[0] /*mpi.rank*/+1) * nx_tmp)-1, app.nx_g-1);
   app.nx = app.x_end_g - app.x_start_g + 1;
-  app.ny = app.ny_g;
-  app.nz = app.nz_g;
+
+  //Calculate sizes in decomposed  y dim
+  int ny_tmp = 1+(app.ny_g - 1)/pdims[1];
+  app.y_start_g = coords[1] /*mpi.rank*/ * ny_tmp;
+  app.y_end_g   = MIN( ((coords[1] /*mpi.rank*/+1) * ny_tmp)-1, app.ny_g-1);
+  app.ny = app.y_end_g - app.y_start_g + 1;
+
+  //Calculate sizes in decomposed  z dim
+  int nz_tmp = 1+(app.nz_g - 1)/pdims[1];
+  app.z_start_g = coords[1] /*mpi.rank*/ * nz_tmp;
+  app.z_end_g   = MIN( ((coords[1] /*mpi.rank*/+1) * nz_tmp)-1, app.nz_g-1);
+  app.nz = app.z_end_g - app.z_start_g + 1;
 
   if( app.nx>N_MAX || app.ny>N_MAX || app.nz>N_MAX ) {
     printf("Local dimension can not exceed N_MAX=%d due to hard-coded local array sizes\n", N_MAX);
     return -1;
   }
 
-  printf("Check parameters: SIMD_WIDTH = %d, sizeof(FP) = %d, nx_pad (padded) = %d, nx = %d, x_start_g = %d, x_end_g = %d \n", SIMD_WIDTH, sizeof(FP), app.nx_pad, app.nx, app.x_start_g, app.x_end_g);
+  printf("Check parameters: SIMD_WIDTH = %d, sizeof(FP) = %d\n", SIMD_WIDTH, sizeof(FP));
+  printf("Check parameters: nx_pad (padded) = %d\n", app.nx_pad);
+  printf("Check parameters: nx = %d, x_start_g = %d, x_end_g = %d \n", app.nx, app.x_start_g, app.x_end_g);
+  printf("Check parameters: ny = %d, y_start_g = %d, y_end_g = %d \n", app.ny, app.y_start_g, app.y_end_g);
+  printf("Check parameters: nz = %d, z_start_g = %d, z_end_g = %d \n", app.nz, app.z_start_g, app.z_end_g);
 
   // allocate memory for arrays
   app.h_u = (FP *)_mm_malloc(sizeof(FP) * app.nx_pad * app.ny * app.nz, SIMD_WIDTH);
@@ -190,7 +220,7 @@ int init(app_handle &app, mpi_handle &mpi, int argc, char* argv[]) {
   app.sys_len_l   = mpi.procs*2; // Reduced system size in X dim
   app.n_sys_g     = app.ny_g*app.nz_g; // ny*nz
   int n_sys_l_tmp = app.n_sys_g/mpi.procs;
-  app.n_sys_l     = (1+(n_sys_l_tmp-1)/mpi.procs)*mpi.procs; 
+  app.n_sys_l     = (1+(n_sys_l_tmp-1)/mpi.procs)*mpi.procs;
 
   // Containers used to communicate reduced system
   mpi.halo_sndbuf  = (FP*) _mm_malloc(app.n_sys_l * app.sys_len_l * 3 * sizeof(FP), SIMD_WIDTH); // Send Buffer
@@ -234,7 +264,7 @@ void finalize(app_handle &app, mpi_handle &mpi) {
   _mm_free(app.dd_r);
 }
 
-int main(int argc, char* argv[]) { 
+int main(int argc, char* argv[]) {
   mpi_handle mpi;
   app_handle app;
   int ret;
@@ -243,11 +273,11 @@ int main(int argc, char* argv[]) {
   // Declare and reset elapsed time counters
   double timer           = 0.0;
   double timer2          = 0.0;
-  double elapsed         = 0.0;  
+  double elapsed         = 0.0;
   double elapsed_total   = 0.0;
-  double elapsed_preproc = 0.0; 
-  double elapsed_trid_x  = 0.0; 
-  double elapsed_trid_y  = 0.0; 
+  double elapsed_preproc = 0.0;
+  double elapsed_trid_x  = 0.0;
+  double elapsed_trid_y  = 0.0;
   double elapsed_trid_z  = 0.0;
 
 //#define TIMERS 11
@@ -286,7 +316,7 @@ int main(int argc, char* argv[]) {
 
   // Warm up computation: result stored in h_tmp which is not used later
   //preproc<FP>(lambda, h_tmp, h_du, h_ax, h_bx, h_cx, h_ay, h_by, h_cy, h_az, h_bz, h_cz, nx, nx_pad, ny, nz);
-  
+
   //int i, j, k, ind, it;
     //
     // calculate r.h.s. and set tri-diagonal coefficients
@@ -296,29 +326,29 @@ int main(int argc, char* argv[]) {
       preproc_mpi<FP>(app.lambda, app.h_u, app.du, app.ax, app.bx, app.cx, app.ay, app.by, app.cy, app.az, app.bz, app.cz, app, mpi);
     MPI_Barrier(MPI_COMM_WORLD);
     timing_end(app.prof, &timer, &elapsed_preproc, "preproc");
-  
+
     //
     // perform tri-diagonal solves in x-direction
     //
     MPI_Barrier(MPI_COMM_WORLD);
     timing_start(app.prof, &timer);
-  
+
   for(int it=0; it<app.iter; it++) {
     // Do the modified Thomas
     //MPI_Barrier(MPI_COMM_WORLD);
 
     timing_start(app.prof, &timer2);
-    #pragma omp parallel for  
+    #pragma omp parallel for
     for(int id=0; id<app.n_sys_g; id++) {
       int base = id*app.nx_pad;
       thomas_forward(&app.ax[base],&app.bx[base],&app.cx[base],&app.du[base],&app.h_u[base],&app.aa[base],&app.cc[base],&app.dd[base],app.nx,1);
     }
     timing_end(app.prof, &timer2, &app.elapsed_time[0], app.elapsed_name[0]);
-  
+
     // Communicate boundary values
     // Pack boundary to a single data structure
     timing_start(app.prof, &timer2);
-    #pragma omp parallel for  
+    #pragma omp parallel for
     for(int id=0; id<app.n_sys_g; id++) {
       // Gather coefficients of a,c,d
       mpi.halo_sndbuf[id*3*2 + 0*2     ] = app.aa[id*app.nx_pad           ];
@@ -330,31 +360,31 @@ int main(int argc, char* argv[]) {
     }
     timing_end(app.prof, &timer2, &app.elapsed_time[1], app.elapsed_name[1]);
     //if(mpi.rank==0){
-    //printf("sys_len_l = %d n_sys_l = %d ; n_sys_g = %d \n",app.sys_len_l, app.n_sys_l, app.n_sys_g); 
-  
+    //printf("sys_len_l = %d n_sys_l = %d ; n_sys_g = %d \n",app.sys_len_l, app.n_sys_l, app.n_sys_g);
+
     timing_start(app.prof, &timer2);
     MPI_Alltoall(mpi.halo_sndbuf, app.n_sys_l*3*2, MPI_FLOAT, mpi.halo_rcvbuf, app.n_sys_l*3*2, MPI_FLOAT, MPI_COMM_WORLD);
     timing_end(app.prof, &timer2, &app.elapsed_time[2], app.elapsed_name[2]);
-  
+
     // Unpack boundary data
     timing_start(app.prof, &timer2);
-    #pragma omp parallel for collapse(2) 
+    #pragma omp parallel for collapse(2)
     for(int p=0; p<mpi.procs; p++) {
       for(int id=0; id<app.n_sys_l; id++) {
-        //printf("p = %d is = %d \n",p,id); 
-        app.aa_r[id*app.sys_len_l + p*2    ] = mpi.halo_rcvbuf[p*app.n_sys_l*3*2 + id*3*2 + 0*2     ];   
-        app.aa_r[id*app.sys_len_l + p*2 + 1] = mpi.halo_rcvbuf[p*app.n_sys_l*3*2 + id*3*2 + 0*2 + 1 ];   
-        app.cc_r[id*app.sys_len_l + p*2    ] = mpi.halo_rcvbuf[p*app.n_sys_l*3*2 + id*3*2 + 1*2     ];   
-        app.cc_r[id*app.sys_len_l + p*2 + 1] = mpi.halo_rcvbuf[p*app.n_sys_l*3*2 + id*3*2 + 1*2 + 1 ];   
-        app.dd_r[id*app.sys_len_l + p*2    ] = mpi.halo_rcvbuf[p*app.n_sys_l*3*2 + id*3*2 + 2*2     ];   
-        app.dd_r[id*app.sys_len_l + p*2 + 1] = mpi.halo_rcvbuf[p*app.n_sys_l*3*2 + id*3*2 + 2*2 + 1 ];   
+        //printf("p = %d is = %d \n",p,id);
+        app.aa_r[id*app.sys_len_l + p*2    ] = mpi.halo_rcvbuf[p*app.n_sys_l*3*2 + id*3*2 + 0*2     ];
+        app.aa_r[id*app.sys_len_l + p*2 + 1] = mpi.halo_rcvbuf[p*app.n_sys_l*3*2 + id*3*2 + 0*2 + 1 ];
+        app.cc_r[id*app.sys_len_l + p*2    ] = mpi.halo_rcvbuf[p*app.n_sys_l*3*2 + id*3*2 + 1*2     ];
+        app.cc_r[id*app.sys_len_l + p*2 + 1] = mpi.halo_rcvbuf[p*app.n_sys_l*3*2 + id*3*2 + 1*2 + 1 ];
+        app.dd_r[id*app.sys_len_l + p*2    ] = mpi.halo_rcvbuf[p*app.n_sys_l*3*2 + id*3*2 + 2*2     ];
+        app.dd_r[id*app.sys_len_l + p*2 + 1] = mpi.halo_rcvbuf[p*app.n_sys_l*3*2 + id*3*2 + 2*2 + 1 ];
       }
     }
     timing_end(app.prof, &timer2, &app.elapsed_time[3], app.elapsed_name[3]);
-    
+
     timing_start(app.prof, &timer2);
     // Compute reduced system
-    #pragma omp parallel for  
+    #pragma omp parallel for
     for(int id=0; id<app.n_sys_l; id++) {
       //for(int r=0; r<mpi.procs; r++) {
       //  MPI_Barrier(MPI_COMM_WORLD);
@@ -364,44 +394,44 @@ int main(int argc, char* argv[]) {
       //pcr_on_reduced<FP>(&aa_r[ind], &cc_r[ind], &dd_r[ind], app.sys_len_l, 1);
     }
     timing_end(app.prof, &timer2, &app.elapsed_time[4], app.elapsed_name[4]);
-    
-  
+
+
     // Pack boundary solution data
     timing_start(app.prof, &timer2);
-    #pragma omp parallel for  
+    #pragma omp parallel for
     for(int p=0; p<mpi.procs; p++) {
       for(int id=0; id<app.n_sys_l; id++) {
-        mpi.halo_rcvbuf[p*app.n_sys_l*2 + id*2    ] = app.dd_r[id*app.sys_len_l + p*2    ];    
-        mpi.halo_rcvbuf[p*app.n_sys_l*2 + id*2 + 1] = app.dd_r[id*app.sys_len_l + p*2 + 1];    
+        mpi.halo_rcvbuf[p*app.n_sys_l*2 + id*2    ] = app.dd_r[id*app.sys_len_l + p*2    ];
+        mpi.halo_rcvbuf[p*app.n_sys_l*2 + id*2 + 1] = app.dd_r[id*app.sys_len_l + p*2 + 1];
       }
     }
     timing_end(app.prof, &timer2, &app.elapsed_time[5], app.elapsed_name[5]);
-  
+
     // Send back new values
     timing_start(app.prof, &timer2);
     MPI_Alltoall(mpi.halo_rcvbuf, app.n_sys_l*2, MPI_FLOAT, mpi.halo_sndbuf, app.n_sys_l*2, MPI_FLOAT, MPI_COMM_WORLD);
     timing_end(app.prof, &timer2, &app.elapsed_time[6], app.elapsed_name[6]);
-  
-    // Unpack boundary solution 
+
+    // Unpack boundary solution
     timing_start(app.prof, &timer2);
-    #pragma omp parallel for  
+    #pragma omp parallel for
     for(int id=0; id<app.n_sys_g; id++) {
       // Gather coefficients of a,c,d
-      app.dd[id*app.nx_pad           ] = mpi.halo_sndbuf[id*2    ];  
-      app.dd[id*app.nx_pad + app.nx-1] = mpi.halo_sndbuf[id*2 + 1];  
+      app.dd[id*app.nx_pad           ] = mpi.halo_sndbuf[id*2    ];
+      app.dd[id*app.nx_pad + app.nx-1] = mpi.halo_sndbuf[id*2 + 1];
     }
     timing_end(app.prof, &timer2, &app.elapsed_time[7], app.elapsed_name[7]);
-  
-  
+
+
     // Do the backward pass of modified Thomas
     timing_start(app.prof, &timer2);
-    #pragma omp parallel for  
+    #pragma omp parallel for
     for(int id=0; id<app.n_sys_g; id++) {
       int ind = id*app.nx_pad;
       thomas_backward(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.h_u[ind],app.nx,1);
     }
     timing_end(app.prof, &timer2, &app.elapsed_time[8], app.elapsed_name[8]);
-  } 
+  }
   MPI_Barrier(MPI_COMM_WORLD);
   timing_end(app.prof, &timer, &elapsed_trid_x, "trid-x");
 
@@ -424,29 +454,29 @@ int main(int argc, char* argv[]) {
 //  if(mpi.rank==0) {
 //  printf("Time in trid-x segments[ms]: \n[total] \t%s \t%s \t%s \t%s \t%s \t%s \t%s \t%s \t[checksum]\n", elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4], elapsed_name[5], elapsed_name[6], elapsed_name[7]);
 //  }
-//  printf("RANK %d %lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n", 
+//  printf("RANK %d %lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
 //      mpi.rank,
-//      1000.0*elapsed_trid_x , 
-//      1000.0*elapsed_time[0], 
-//      1000.0*elapsed_time[1], 
-//      1000.0*elapsed_time[2], 
-//      1000.0*elapsed_time[3], 
-//      1000.0*elapsed_time[4], 
-//      1000.0*elapsed_time[5], 
-//      1000.0*elapsed_time[6], 
-//      1000.0*elapsed_time[7], 
+//      1000.0*elapsed_trid_x ,
+//      1000.0*elapsed_time[0],
+//      1000.0*elapsed_time[1],
+//      1000.0*elapsed_time[2],
+//      1000.0*elapsed_time[3],
+//      1000.0*elapsed_time[4],
+//      1000.0*elapsed_time[5],
+//      1000.0*elapsed_time[6],
+//      1000.0*elapsed_time[7],
 //      1000.0*elapsed_time[8],
 //      1000.0*(elapsed_time[0] + elapsed_time[1] + elapsed_time[2] + elapsed_time[3] + elapsed_time[4] + elapsed_time[5] + elapsed_time[6] + elapsed_time[7] + elapsed_time[8]));
 
   // Normalize timers to one iteration
-  for(int i=0; i<TIMERS; i++) 
+  for(int i=0; i<TIMERS; i++)
     app.elapsed_time[i] /= app.iter;
 
   MPI_Barrier(MPI_COMM_WORLD);
   MPI_Reduce(app.elapsed_time,app.timers_min,TIMERS,MPI_DOUBLE,MPI_MIN,0,MPI_COMM_WORLD);
   MPI_Reduce(app.elapsed_time,app.timers_max,TIMERS,MPI_DOUBLE,MPI_MAX,0,MPI_COMM_WORLD);
   MPI_Reduce(app.elapsed_time,app.timers_avg,TIMERS,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
-  for(int i=0; i<TIMERS; i++) 
+  for(int i=0; i<TIMERS; i++)
     app.timers_avg[i] /= mpi.procs;
 
   //sleep(1);
@@ -455,39 +485,39 @@ int main(int argc, char* argv[]) {
     //sleep(0.2);
     if(i==mpi.rank) {
       if(mpi.rank==0) {
-        printf("Time in trid-x segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[checksum]\n", 
+        printf("Time in trid-x segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[checksum]\n",
             app.elapsed_name[0], app.elapsed_name[1], app.elapsed_name[2], app.elapsed_name[3], app.elapsed_name[4], app.elapsed_name[5], app.elapsed_name[6], app.elapsed_name[7], app.elapsed_name[8]);
       }
       printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
-      1000.0*elapsed_trid_x , 
-      1000.0*app.elapsed_time[0], 
-      1000.0*app.elapsed_time[1], 
-      1000.0*app.elapsed_time[2], 
-      1000.0*app.elapsed_time[3], 
-      1000.0*app.elapsed_time[4], 
-      1000.0*app.elapsed_time[5], 
-      1000.0*app.elapsed_time[6], 
-      1000.0*app.elapsed_time[7], 
+      1000.0*elapsed_trid_x ,
+      1000.0*app.elapsed_time[0],
+      1000.0*app.elapsed_time[1],
+      1000.0*app.elapsed_time[2],
+      1000.0*app.elapsed_time[3],
+      1000.0*app.elapsed_time[4],
+      1000.0*app.elapsed_time[5],
+      1000.0*app.elapsed_time[6],
+      1000.0*app.elapsed_time[7],
       1000.0*app.elapsed_time[8],
       1000.0*(app.elapsed_time[0] + app.elapsed_time[1] + app.elapsed_time[2] + app.elapsed_time[3] + app.elapsed_time[4] + app.elapsed_time[5] + app.elapsed_time[6] + app.elapsed_time[7] + app.elapsed_time[8]));
     }
   }
-  
+
   if(mpi.rank==0) {
     //double *timers = (double*) malloc(TIMERS*mpi.procs*sizeof(double));
     //MPI_Gather(elapsed_time, TIMERS, MPI_DOUBLE, timers, TIMERS, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     //for(int i=1; i<TIMERS; i++) {
-    //  timers_min[i]  = MIN(timers_min[i-1],timers[i]); 
-    //  timers_max[i]  = MAX(timers_max[i-1],timers[i]); 
-    //  timers_avg[i] += timers[i]; 
+    //  timers_min[i]  = MIN(timers_min[i-1],timers[i]);
+    //  timers_max[i]  = MAX(timers_max[i-1],timers[i]);
+    //  timers_avg[i] += timers[i];
     //}
     //timers_avg
     printf("TimerID MIN \t\tAVG \t\tMAX \t\tSection \n");
-    for(int i=0; i<TIMERS; i++) 
+    for(int i=0; i<TIMERS; i++)
       printf("%d \t%lf \t%lf \t%lf \t%s \n",i,app.timers_min[i],app.timers_avg[i],app.timers_max[i],app.elapsed_name[i]);
     printf("Done.\n");
     // Print execution times
-    if(app.prof == 0) { 
+    if(app.prof == 0) {
       printf("Avg(per iter) \n[total]\n");
       printf("%f\n", elapsed_total/app.iter);
     }
