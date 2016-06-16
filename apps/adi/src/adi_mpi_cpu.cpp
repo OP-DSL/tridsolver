@@ -144,9 +144,9 @@ int init(app_handle &app, mpi_handle &mpi, int argc, char* argv[]) {
 
   //create 3D decomposition
   int ndim = 3;
-  int pdims[3] = {0,0,0};
-  int periodic[3] = {0,0,0}; //false
-  int coords[3];
+  int* pdims = (int*)calloc(3,sizeof(int));
+  int* periodic = (int*)calloc(3,sizeof(int));; //false
+  int* coords = (int*)calloc(3,sizeof(int));
   MPI_Dims_create(mpi.procs, ndim, pdims);
   printf("\nNumber of MPI procs in each dimenstion %d, %d, %d\n",pdims[0],pdims[1],pdims[2]);
 
@@ -156,6 +156,25 @@ int init(app_handle &app, mpi_handle &mpi, int argc, char* argv[]) {
   int my_cart_rank;
   MPI_Comm_rank(comm, &my_cart_rank);
   MPI_Cart_coords(comm, my_cart_rank, ndim, coords);
+
+  //create separate coommunicators for x, y and z dimension communications
+  int free_coords[3];
+  MPI_Comm x_comm;
+  free_coords[0] = 1;
+  free_coords[1] = 0;
+  free_coords[2] = 0;
+  MPI_Cart_sub(comm, free_coords, &x_comm);
+  MPI_Comm y_comm;
+  free_coords[0] = 0;
+  free_coords[1] = 1;
+  free_coords[2] = 0;
+  MPI_Cart_sub(comm, free_coords, &y_comm);
+  MPI_Comm z_comm;
+  free_coords[0] = 0;
+  free_coords[1] = 0;
+  free_coords[2] = 1;
+  MPI_Cart_sub(comm, free_coords, &z_comm);
+
 
   //Calculate sizes in decomposed x dim
   int nx_tmp = 1+(app.nx_g - 1) / pdims[0]; //mpi.procs;
@@ -204,11 +223,13 @@ int init(app_handle &app, mpi_handle &mpi, int argc, char* argv[]) {
   app.cc  = (FP *)_mm_malloc(sizeof(FP) * app.nx_pad * app.ny * app.nz, SIMD_WIDTH);
   app.dd  = (FP *)_mm_malloc(sizeof(FP) * app.nx_pad * app.ny * app.nz, SIMD_WIDTH);
   // Initialize
-  for(int k=0; k<app.nz_g; k++) {
-    for(int j=0; j<app.ny_g; j++) {
+  for(int k=0; k<app.nz; k++) {
+    for(int j=0; j<app.ny; j++) {
       for(int i=0; i<app.nx; i++) {
-        int ind = k*app.nx_pad*app.ny_g + j*app.nx_pad + i;
-        if( (app.x_start_g==0 && i==0) || (app.x_end_g==app.nx_g-1 && i==app.nx-1) || j==0 || j==app.ny_g-1 || k==0 || k==app.nz_g-1) {
+        int ind = k*app.nx_pad*app.ny + j*app.nx_pad + i;
+        if( (app.x_start_g==0 && i==0) || (app.x_end_g==app.nx_g-1 && i==app.nx-1) ||
+            (app.y_start_g==0 && j==0) || (app.y_end_g==app.ny_g-1 && j==app.ny-1) ||
+            (app.z_start_g==0 && k==0) || (app.z_end_g==app.nz_g-1 && k==app.nz-1) ) {
           app.h_u[ind] = 1.0f;
         } else {
           app.h_u[ind] = 0.0f;
@@ -217,25 +238,48 @@ int init(app_handle &app, mpi_handle &mpi, int argc, char* argv[]) {
     }
   }
 
-  app.sys_len_l   = mpi.procs*2; // Reduced system size in X dim
-  app.n_sys_g     = app.ny_g*app.nz_g; // ny*nz
-  int n_sys_l_tmp = app.n_sys_g/mpi.procs;
-  app.n_sys_l     = (1+(n_sys_l_tmp-1)/mpi.procs)*mpi.procs;
+  /***********NEED TO CHECK WHETHER THE ABOVE INITILAIZATION IS CORRECT ***/
+
+  app.sys_len_l   = pdims[0]*2; // Reduced system size in x dim
+  app.n_sys_g     = app.ny*app.nz;// ny*nz
+  int n_sys_l_tmp = app.n_sys_g/pdims[0]/*mpi.procs*/;
+  app.n_sys_l     = (1+(n_sys_l_tmp-1)/pdims[0])*pdims[0];
+
+  //app.sys_len_l   = pdims[1]*2; // Reduced system size in y dim
+  //app.n_sys_g     = app.nz*app.nx;// nz*nx
+  //int n_sys_l_tmp = app.n_sys_g/pdims[1];
+  //app.n_sys_l     = (1+(n_sys_l_tmp-1)/pdims[1])*pdims[1];
+
+  //app.sys_len_l   = pdims[2]*2; // Reduced system size in z dim
+  //app.n_sys_g     = app.ny*app.nx;// ny*nx
+  //int n_sys_l_tmp = app.n_sys_g/pdims[2];
+  //app.n_sys_l     = (1+(n_sys_l_tmp-1)/pdims[2])*pdims[2];
 
   // Containers used to communicate reduced system
   mpi.halo_sndbuf  = (FP*) _mm_malloc(app.n_sys_l * app.sys_len_l * 3 * sizeof(FP), SIMD_WIDTH); // Send Buffer
   mpi.halo_rcvbuf  = (FP*) _mm_malloc(app.n_sys_l * app.sys_len_l * 3 * sizeof(FP), SIMD_WIDTH); // Receive Buffer
-  mpi.halo_sndbuf2 = (FP*) _mm_malloc(2*app.ny*app.nz*sizeof(FP),SIMD_WIDTH); // Send Buffer
-  mpi.halo_rcvbuf2 = (FP*) _mm_malloc(2*app.ny*app.nz*sizeof(FP),SIMD_WIDTH); // Receive Buffer
+  mpi.halo_sndbuf2 = (FP*) _mm_malloc(2 * app.ny * app.nz * sizeof(FP), SIMD_WIDTH); // Send Buffer
+  mpi.halo_rcvbuf2 = (FP*) _mm_malloc(2 * app.ny * app.nz * sizeof(FP), SIMD_WIDTH); // Receive Buffer
 
   // Containers used to communicate preprocess halo
-  mpi.halo_sndbuf2 = (FP*) _mm_malloc(2 * app.ny_g * app.nz_g * sizeof(FP), SIMD_WIDTH); // Send Buffer
-  mpi.halo_rcvbuf2 = (FP*) _mm_malloc(2 * app.ny_g * app.nz_g * sizeof(FP), SIMD_WIDTH); // Receive Buffer
+  mpi.halo_sndbuf2 = (FP*) _mm_malloc(2 * app.ny * app.nz * sizeof(FP), SIMD_WIDTH); // Send Buffer
+  mpi.halo_rcvbuf2 = (FP*) _mm_malloc(2 * app.ny * app.nz * sizeof(FP), SIMD_WIDTH); // Receive Buffer
 
   // allocate memory for arrays
   app.aa_r = (FP *) _mm_malloc(sizeof(FP) * app.sys_len_l * app.n_sys_l, SIMD_WIDTH);
   app.cc_r = (FP *) _mm_malloc(sizeof(FP) * app.sys_len_l * app.n_sys_l, SIMD_WIDTH);
   app.dd_r = (FP *) _mm_malloc(sizeof(FP) * app.sys_len_l * app.n_sys_l, SIMD_WIDTH);
+
+  //store decomposition in mpi_handle
+  mpi.ndim = ndim;
+  mpi.pdims = pdims;
+  mpi.periodic = periodic;
+  mpi.coords = coords;
+  mpi.my_cart_rank = my_cart_rank;
+  mpi.x_comm = x_comm;
+  mpi.y_comm = y_comm;
+  mpi.z_comm = z_comm;
+
   return 0;
 }
 
@@ -318,25 +362,25 @@ int main(int argc, char* argv[]) {
   //preproc<FP>(lambda, h_tmp, h_du, h_ax, h_bx, h_cx, h_ay, h_by, h_cy, h_az, h_bz, h_cz, nx, nx_pad, ny, nz);
 
   //int i, j, k, ind, it;
-    //
-    // calculate r.h.s. and set tri-diagonal coefficients
-    //
-    MPI_Barrier(MPI_COMM_WORLD);
-    timing_start(app.prof, &timer);
-      preproc_mpi<FP>(app.lambda, app.h_u, app.du, app.ax, app.bx, app.cx, app.ay, app.by, app.cy, app.az, app.bz, app.cz, app, mpi);
-    MPI_Barrier(MPI_COMM_WORLD);
-    timing_end(app.prof, &timer, &elapsed_preproc, "preproc");
+  //
+  // calculate r.h.s. and set tri-diagonal coefficients
+  //
+  MPI_Barrier(MPI_COMM_WORLD);
+  timing_start(app.prof, &timer);
+    preproc_mpi<FP>(app.lambda, app.h_u, app.du, app.ax, app.bx, app.cx, app.ay, app.by, app.cy, app.az, app.bz, app.cz, app, mpi);
+  MPI_Barrier(MPI_COMM_WORLD);
+  timing_end(app.prof, &timer, &elapsed_preproc, "preproc");
 
-    //
-    // perform tri-diagonal solves in x-direction
-    //
-    MPI_Barrier(MPI_COMM_WORLD);
-    timing_start(app.prof, &timer);
+  /***********NEED TO CHECK WHETHER THE ABOVE calculation IS CORRECT ***/
+
+  //
+  // perform tri-diagonal solves in x-direction
+  //
+  MPI_Barrier(MPI_COMM_WORLD);
+  timing_start(app.prof, &timer);
 
   for(int it=0; it<app.iter; it++) {
     // Do the modified Thomas
-    //MPI_Barrier(MPI_COMM_WORLD);
-
     timing_start(app.prof, &timer2);
     #pragma omp parallel for
     for(int id=0; id<app.n_sys_g; id++) {
@@ -363,13 +407,13 @@ int main(int argc, char* argv[]) {
     //printf("sys_len_l = %d n_sys_l = %d ; n_sys_g = %d \n",app.sys_len_l, app.n_sys_l, app.n_sys_g);
 
     timing_start(app.prof, &timer2);
-    MPI_Alltoall(mpi.halo_sndbuf, app.n_sys_l*3*2, MPI_FLOAT, mpi.halo_rcvbuf, app.n_sys_l*3*2, MPI_FLOAT, MPI_COMM_WORLD);
+    MPI_Alltoall(mpi.halo_sndbuf, app.n_sys_l*3*2, MPI_FLOAT, mpi.halo_rcvbuf, app.n_sys_l*3*2, MPI_FLOAT, mpi.x_comm/*MPI_COMM_WORLD*/);
     timing_end(app.prof, &timer2, &app.elapsed_time[2], app.elapsed_name[2]);
 
     // Unpack boundary data
     timing_start(app.prof, &timer2);
     #pragma omp parallel for collapse(2)
-    for(int p=0; p<mpi.procs; p++) {
+    for(int p=0; p<mpi.pdims[0]/*mpi.procs*/; p++) {
       for(int id=0; id<app.n_sys_l; id++) {
         //printf("p = %d is = %d \n",p,id);
         app.aa_r[id*app.sys_len_l + p*2    ] = mpi.halo_rcvbuf[p*app.n_sys_l*3*2 + id*3*2 + 0*2     ];
@@ -386,12 +430,8 @@ int main(int argc, char* argv[]) {
     // Compute reduced system
     #pragma omp parallel for
     for(int id=0; id<app.n_sys_l; id++) {
-      //for(int r=0; r<mpi.procs; r++) {
-      //  MPI_Barrier(MPI_COMM_WORLD);
-      //  if(r==mpi.rank) {
       int base = id*app.sys_len_l;
       thomas_on_reduced(&app.aa_r[base], &app.cc_r[base], &app.dd_r[base], app.sys_len_l, 1);
-      //pcr_on_reduced<FP>(&aa_r[ind], &cc_r[ind], &dd_r[ind], app.sys_len_l, 1);
     }
     timing_end(app.prof, &timer2, &app.elapsed_time[4], app.elapsed_name[4]);
 
@@ -399,7 +439,7 @@ int main(int argc, char* argv[]) {
     // Pack boundary solution data
     timing_start(app.prof, &timer2);
     #pragma omp parallel for
-    for(int p=0; p<mpi.procs; p++) {
+    for(int p=0; p<mpi.pdims[0]/*mpi.procs*/; p++) {
       for(int id=0; id<app.n_sys_l; id++) {
         mpi.halo_rcvbuf[p*app.n_sys_l*2 + id*2    ] = app.dd_r[id*app.sys_len_l + p*2    ];
         mpi.halo_rcvbuf[p*app.n_sys_l*2 + id*2 + 1] = app.dd_r[id*app.sys_len_l + p*2 + 1];
@@ -409,7 +449,7 @@ int main(int argc, char* argv[]) {
 
     // Send back new values
     timing_start(app.prof, &timer2);
-    MPI_Alltoall(mpi.halo_rcvbuf, app.n_sys_l*2, MPI_FLOAT, mpi.halo_sndbuf, app.n_sys_l*2, MPI_FLOAT, MPI_COMM_WORLD);
+    MPI_Alltoall(mpi.halo_rcvbuf, app.n_sys_l*2, MPI_FLOAT, mpi.halo_sndbuf, app.n_sys_l*2, MPI_FLOAT, mpi.x_comm/*MPI_COMM_WORLD*/);
     timing_end(app.prof, &timer2, &app.elapsed_time[6], app.elapsed_name[6]);
 
     // Unpack boundary solution
@@ -432,7 +472,7 @@ int main(int argc, char* argv[]) {
     }
     timing_end(app.prof, &timer2, &app.elapsed_time[8], app.elapsed_name[8]);
   }
-  MPI_Barrier(MPI_COMM_WORLD);
+  MPI_Barrier(mpi.x_comm/*MPI_COMM_WORLD*/);
   timing_end(app.prof, &timer, &elapsed_trid_x, "trid-x");
 
 {

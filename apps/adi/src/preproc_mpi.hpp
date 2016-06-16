@@ -30,7 +30,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014 
+// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014
 
 //#include"adi_simd.h"
 #include"trid_simd.h"
@@ -47,68 +47,71 @@ inline void preproc_mpi(REAL lambda, REAL* __restrict u, REAL* __restrict du, RE
   //
   // calculate r.h.s. and set tri-diagonal coefficients
   //
-//#ifndef VALID
-//  #pragma omp parallel for collapse(2) private(i,ind,a,b,c,d)
-//#endif
+  //#ifndef VALID
+  //  #pragma omp parallel for collapse(2) private(i,ind,a,b,c,d)
+  //#endif
 
-//  REAL *halo_sndbuf = (REAL*) _mm_malloc(2*app.ny*app.nz*sizeof(REAL),SIMD_WIDTH); // Send Buffer
-//  REAL *halo_rcvbuf = (REAL*) _mm_malloc(2*app.ny*app.nz*sizeof(REAL),SIMD_WIDTH); // Receive Buffer
+  //  REAL *halo_sndbuf = (REAL*) _mm_malloc(2*app.ny*app.nz*sizeof(REAL),SIMD_WIDTH); // Send Buffer
+  //  REAL *halo_rcvbuf = (REAL*) _mm_malloc(2*app.ny*app.nz*sizeof(REAL),SIMD_WIDTH); // Receive Buffer
 
   timing_start(app.prof, &timer);
   // Gather halo
-  for(k=0; k<app.nz_g; k++) {
-    for(j=0; j<app.ny_g; j++) {
+  for(k=0; k<app.nz; k++) {
+    for(j=0; j<app.ny; j++) {
       mpi.halo_sndbuf2[0*app.nz*app.ny + k*app.ny + j] = u[k*app.ny*app.nx_pad + j*app.nx_pad +        0];
       mpi.halo_sndbuf2[1*app.nz*app.ny + k*app.ny + j] = u[k*app.ny*app.nx_pad + j*app.nx_pad + app.nx-1];
     }
   }
-  if(mpi.rank > 0) { 
+  if(mpi.rank > 0) {
     //printf("SENDING mpirank = %d  left buffer\n",mpi.rank);
     MPI_Isend(&mpi.halo_sndbuf2[0*app.nz*app.ny], app.nz*app.ny, MPI_FLOAT, mpi.rank-1, 0, MPI_COMM_WORLD, mpi.req);
     //printf("Done\n");
   }
-  if(mpi.rank < mpi.procs-1) { 
+  if(mpi.rank < mpi.procs-1) {
     //printf("SENDING mpirank = %d  right buffer\n",mpi.rank);
     MPI_Isend(&mpi.halo_sndbuf2[1*app.nz*app.ny], app.nz*app.ny, MPI_FLOAT, mpi.rank+1, 1, MPI_COMM_WORLD, mpi.req);
     //printf("Done\n");
   }
   // Receive halo
-  if(mpi.rank < mpi.procs-1) 
+  if(mpi.rank < mpi.procs-1)
     MPI_Recv(&mpi.halo_rcvbuf2[1*app.nz*app.ny], app.nz*app.ny, MPI_FLOAT, mpi.rank+1, 0, MPI_COMM_WORLD, mpi.stat);
-  if(mpi.rank > 0) 
+  if(mpi.rank > 0)
     MPI_Recv(&mpi.halo_rcvbuf2[0*app.nz*app.ny], app.nz*app.ny, MPI_FLOAT, mpi.rank-1, 1, MPI_COMM_WORLD, mpi.stat);
   timing_end(app.prof, &timer, &app.elapsed_time[9], app.elapsed_name[9]);
 
   REAL tmp;
 
   timing_start(app.prof, &timer);
-  for(k=0; k<app.nz_g; k++) {
-    for(j=0; j<app.ny_g; j++) {
+  for(k=0; k<app.nz; k++) {
+    for(j=0; j<app.ny; j++) {
       for(i=0; i<app.nx; i++) {   // i loop innermost for sequential memory access
-        ind = k*app.nx_pad*app.ny_g + j*app.nx_pad + i;
-        if((i==0 && app.x_start_g==0) || (i==app.nx-1 && app.x_end_g==app.nx_g-1)  || j==0 || j==app.ny_g-1 || k==0 || k==app.nz_g-1) {
+        ind = k*app.nx_pad*app.ny + j*app.nx_pad + i;
+        if( (app.x_start_g==0 && i==0) || (app.x_end_g==app.nx_g-1 && i==app.nx-1) ||
+            (app.y_start_g==0 && j==0) || (app.y_end_g==app.ny_g-1 && j==app.ny-1) ||
+            (app.z_start_g==0 && k==0) || (app.z_end_g==app.nz_g-1 && k==app.nz-1) ) {
+
           d = 0.0f; // Dirichlet b.c.'s
           a = 0.0f;
           b = 1.0f;
           c = 0.0f;
         }
         else {
-          if(i==0 && mpi.rank>0) {
+          if(i==0 && mpi.coords[0]>0) {
             tmp = mpi.halo_rcvbuf2[0*app.nz*app.ny + k*app.ny + j];
             d = lambda*(  tmp                        + u[ind+1                  ]
                         + u[ind-app.nx_pad         ] + u[ind+app.nx_pad         ]
-                        + u[ind-app.nx_pad*app.ny_g] + u[ind+app.nx_pad*app.ny_g]
+                        + u[ind-app.nx_pad*app.ny] + u[ind+app.nx_pad*app.ny]
                         - 6.0f*u[ind]);
-          } else if(i==app.nx-1 && mpi.rank<mpi.procs-1) {
+          } else if(i==app.nx-1 && mpi.coords[0]<mpi.pdims[0]-1) {
             tmp = mpi.halo_rcvbuf2[1*app.nz*app.ny + k*app.ny + j];
             d = lambda*(  u[ind-1]                   + tmp
                         + u[ind-app.nx_pad         ] + u[ind+app.nx_pad         ]
-                        + u[ind-app.nx_pad*app.ny_g] + u[ind+app.nx_pad*app.ny_g]
+                        + u[ind-app.nx_pad*app.ny] + u[ind+app.nx_pad*app.ny]
                         - 6.0f*u[ind]);
           } else {
             d = lambda*(  u[ind-1                  ] + u[ind+1                  ]
                         + u[ind-app.nx_pad         ] + u[ind+app.nx_pad         ]
-                        + u[ind-app.nx_pad*app.ny_g] + u[ind+app.nx_pad*app.ny_g]
+                        + u[ind-app.nx_pad*app.ny] + u[ind+app.nx_pad*app.ny]
                         - 6.0f*u[ind]);
           }
 

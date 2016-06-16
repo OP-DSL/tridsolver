@@ -12,6 +12,19 @@ struct mpi_handle {
   FP          *halo_rcvbuf;  // Receive Buffer
   FP          *halo_sndbuf2; // Send Buffer
   FP          *halo_rcvbuf2; // Receive Buffer
+
+  MPI_Comm comm;
+
+  int ndim;
+  int* pdims; //number of mpi procs in each dimension
+  int* periodic;
+  int my_cart_rank; // new rank within a cartecian communicator;
+  int* coords; //rank in each dimension - i.e. coordinates of a mpi proc
+
+  MPI_Comm x_comm;
+  MPI_Comm y_comm;
+  MPI_Comm z_comm;
+
 };
 
 struct app_handle {
