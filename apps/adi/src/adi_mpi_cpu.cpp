@@ -81,33 +81,23 @@ void print_help() {
   exit(0);
 }
 
-//inline double elapsed_time(double *et) {
-//  struct timeval t;
-//  double old_time = *et;
-//
-//  gettimeofday( &t, (struct timezone *)0 );
-//  *et = t.tv_sec + t.tv_usec*1.0e-6;
-//
-//  return *et - old_time;
-//}
-
-//inline void timing_start(int prof, double *timer, mpi_handle &mpi) {
-////  if(mpi.rank==0) {
-//    if(prof==1) elapsed_time(timer);
-////  }
-//}
-//
-//inline void timing_end(int prof, double *timer, double *elapsed_accumulate, char *str, mpi_handle &mpi) {
-////  if(mpi.rank==0) {
-//    double elapsed;
-//    if(prof==1) {
-//      elapsed = elapsed_time(timer);
-//      *elapsed_accumulate += elapsed;
-//      printf("\n elapsed %s (sec): %1.10f (s) \n", str,elapsed);
-//    }
-////  }
-//}
-
+void print_array_onrank(int rank, FP* array, app_handle &app, mpi_handle &mpi) {
+  if(mpi.rank == rank) {
+    printf("On mpi rank %d\n",rank);
+    for(int k=0; k<2; k++) {
+        printf("k = %d\n",k);
+        for(int j=0; j<MIN(app.ny,17); j++) {
+          printf(" %d   ", j);
+          for(int i=0; i<MIN(app.nx,17); i++) {
+            int ind = k*app.nx_pad*app.ny + j*app.nx_pad + i;
+            printf(" %5.5g ", array[ind]);
+          }
+          printf("\n");
+        }
+        printf("\n");
+      }
+  }
+}
 
 int init(app_handle &app, mpi_handle &mpi, int argc, char* argv[]) {
   if( MPI_Init(&argc,&argv) != MPI_SUCCESS) { printf("MPI Couldn't initialize. Exiting"); exit(-1);}
@@ -191,8 +181,8 @@ int init(app_handle &app, mpi_handle &mpi, int argc, char* argv[]) {
 
   //Calculate sizes in decomposed  z dim
   int nz_tmp = 1+(app.nz_g - 1)/pdims[1];
-  app.z_start_g = coords[1] /*mpi.rank*/ * nz_tmp;
-  app.z_end_g   = MIN( ((coords[1] /*mpi.rank*/+1) * nz_tmp)-1, app.nz_g-1);
+  app.z_start_g = coords[2] /*mpi.rank*/ * nz_tmp;
+  app.z_end_g   = MIN( ((coords[2] /*mpi.rank*/+1) * nz_tmp)-1, app.nz_g-1);
   app.nz = app.z_end_g - app.z_start_g + 1;
 
   if( app.nx>N_MAX || app.ny>N_MAX || app.nz>N_MAX ) {
@@ -238,8 +228,6 @@ int init(app_handle &app, mpi_handle &mpi, int argc, char* argv[]) {
     }
   }
 
-  /***********NEED TO CHECK WHETHER THE ABOVE INITILAIZATION IS CORRECT ***/
-
   app.sys_len_l   = pdims[0]*2; // Reduced system size in x dim
   app.n_sys_g     = app.ny*app.nz;// ny*nz
   int n_sys_l_tmp = app.n_sys_g/pdims[0]/*mpi.procs*/;
@@ -281,6 +269,7 @@ int init(app_handle &app, mpi_handle &mpi, int argc, char* argv[]) {
   mpi.z_comm = z_comm;
 
   return 0;
+
 }
 
 
@@ -371,7 +360,11 @@ int main(int argc, char* argv[]) {
   MPI_Barrier(MPI_COMM_WORLD);
   timing_end(app.prof, &timer, &elapsed_preproc, "preproc");
 
-  /***********NEED TO CHECK WHETHER THE ABOVE calculation IS CORRECT ***/
+  /*for(int i = 0; i< mpi.procs; i++) {
+    print_array_onrank(i, app.h_u, app, mpi);
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
+  exit(-1);*/
 
   //
   // perform tri-diagonal solves in x-direction
