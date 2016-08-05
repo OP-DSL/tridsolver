@@ -88,6 +88,22 @@ inline void timing_end(int prof, double *timer, double *elapsed_accumulate, char
   }
 }
 
+void rms(char* name, FP* array, int nx_pad, int nx, int ny, int nz) {
+  //Sum the square of values in app.h_u
+  double sum = 0.0;
+  for(int k=0; k<nz; k++) {
+    for(int j=0; j<ny; j++) {
+      for(int i=0; i<nx; i++) {
+        int ind = k*nx_pad*ny + j*nx_pad + i;
+        //sum += array[ind]*array[ind];
+        sum += array[ind];
+      }
+    }
+  }
+
+  printf("%s sum = %lg\n", name, sum);
+}
+
 extern char *optarg;
 extern int  optind, opterr, optopt;
 static struct option options[] = {
@@ -198,6 +214,9 @@ int main(int argc, char* argv[]) {
     timing_start(prof, &timer);
       preproc<FP>(lambda, h_u, h_du, h_ax, h_bx, h_cx, h_ay, h_by, h_cy, h_az, h_bz, h_cz, nx, nx_pad, ny, nz);
     timing_end(prof, &timer, &elapsed_preproc, "preproc");
+
+    rms("d_u", h_du, nx_pad, nx, ny, nz);
+    exit(-2);
 
     //
     // perform tri-diagonal solves in x-direction

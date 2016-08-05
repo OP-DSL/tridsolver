@@ -81,6 +81,28 @@ void print_help() {
   exit(0);
 }
 
+void rms(char* name, FP* array, app_handle &app, mpi_handle &mpi) {
+  //Sum the square of values in app.h_u
+  double sum = 0.0;
+  for(int k=0; k<app.nz; k++) {
+    for(int j=0; j<app.ny; j++) {
+      for(int i=0; i<app.nx; i++) {
+        int ind = k*app.nx_pad*app.ny + j*app.nx_pad + i;
+        sum += array[ind]*array[ind];
+      }
+    }
+  }
+
+  double global_sum = 0.0;
+  MPI_Allreduce(&sum, &global_sum,1, MPI_DOUBLE,MPI_SUM, mpi.comm);
+
+  if(mpi.rank ==0) {
+    printf("%s sum = %lg\n", name, global_sum);
+    //printf("%s rms = %2.15lg\n",name, sqrt(global_sum)/((double)(app.nx_g*app.ny_g*app.nz_g)));
+  }
+
+}
+
 void print_array_onrank(int rank, FP* array, app_handle &app, mpi_handle &mpi) {
   if(mpi.rank == rank) {
     printf("On mpi rank %d\n",rank);
@@ -268,6 +290,8 @@ int init(app_handle &app, mpi_handle &mpi, int argc, char* argv[]) {
   mpi.y_comm = y_comm;
   mpi.z_comm = z_comm;
 
+  mpi.comm = comm;
+
   return 0;
 
 }
@@ -365,6 +389,9 @@ int main(int argc, char* argv[]) {
     MPI_Barrier(MPI_COMM_WORLD);
   }
   exit(-1);*/
+
+  rms("d_u", app.du, app, mpi);
+  exit(-2);
 
   //
   // perform tri-diagonal solves in x-direction
