@@ -214,10 +214,7 @@ int main(int argc, char* argv[]) {
     timing_start(prof, &timer);
       preproc<FP>(lambda, h_u, h_du, h_ax, h_bx, h_cx, h_ay, h_by, h_cy, h_az, h_bz, h_cz, nx, nx_pad, ny, nz);
     timing_end(prof, &timer, &elapsed_preproc, "preproc");
-
-    rms("d_u", h_du, nx_pad, nx, ny, nz);
-    exit(-2);
-
+    rms("h_u",h_u, nx_pad, nx, ny, nz);
     //
     // perform tri-diagonal solves in x-direction
     //
@@ -242,6 +239,15 @@ int main(int argc, char* argv[]) {
     #endif
 
     timing_end(prof, &timer, &elapsed_trid_x, "trid_x");
+
+    if(it == 0) {
+      rms("ax", h_ax, nx_pad, nx, ny, nz);
+      rms("bx", h_bx, nx_pad, nx, ny, nz);
+      rms("cx", h_cx, nx_pad, nx, ny, nz);
+      rms("du", h_du, nx_pad, nx, ny, nz);
+      rms("h_u",h_u, nx_pad, nx, ny, nz);
+      exit(-2);
+    }
 
     //
     // perform tri-diagonal solves in y-direction
