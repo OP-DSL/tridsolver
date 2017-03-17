@@ -37,7 +37,7 @@
 #include <assert.h>
 #include "transpose.hpp"
 #include "trid_cpu.h"
-
+#include <stdio.h>
 #define ROUND_DOWN(N,step) (((N)/(step))*step)
 
 #ifdef __MIC__ // Or #ifdef __KNC__ - more general option, future proof, __INTEL_OFFLOAD is another option
@@ -441,7 +441,8 @@ void tridMultiDimBatchSolve(const FP* a, const FP* b, const FP* c, FP* d, FP* u,
     int sys_pads   = pads[0]; // Padded sizes along each ndim number of dimensions
     int sys_n_lin  = dims[1]*dims[2]; // = cumdims[solve] // Number of systems to be solved
 
-    if((sys_pads % SIMD_VEC) == 0) {
+    if((sys_pads % SIMD_VEC) == 0 && false) {
+printf("padded\n");
       #pragma omp parallel for collapse(2)
       for(int k=0; k<dims[2]; k++) {
         for(int j=0; j<ROUND_DOWN(dims[1],SIMD_VEC); j+=SIMD_VEC) {
@@ -455,7 +456,7 @@ void tridMultiDimBatchSolve(const FP* a, const FP* b, const FP* c, FP* d, FP* u,
       if(ROUND_DOWN(dims[1],SIMD_VEC) < dims[1]) { // If there is leftover, fork threads an compute it
         #pragma omp parallel for collapse(2)
         for(int k=0; k<dims[2]; k++) {
-          for(int j=ROUND_DOWN(dims[0],SIMD_VEC); j<dims[0]; j++) {
+          for(int j=ROUND_DOWN(dims[1],SIMD_VEC); j<dims[1]; j++) {
             int ind = k*pads[0]*dims[1] + j*pads[0];
             if (inc)
               trid_scalar<1>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind], sys_size, sys_stride);
@@ -466,9 +467,10 @@ void tridMultiDimBatchSolve(const FP* a, const FP* b, const FP* c, FP* d, FP* u,
       }
     }
     else {
+printf("unpadded\n");
       #pragma omp parallel for collapse(2)
       for(int k=0; k<dims[2]; k++) {
-        for(int j=dims[0]; j<dims[0]; j++) {
+        for(int j=0; j<dims[1]; j++) {
           int ind = k*pads[0]*dims[1] + j*pads[0];
           if (inc)
             trid_scalar<1>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind], sys_size, sys_stride);
