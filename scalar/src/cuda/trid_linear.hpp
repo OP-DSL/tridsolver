@@ -30,66 +30,83 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014 
+// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk,
+// 2013-2014
 
 //#include "trid_params.h"
 /*
  * tridiagonal solve in x-direction
  */
-template<typename REAL>
-__global__ void trid_linear(const REAL* __restrict__ a, const REAL* __restrict__ b, const REAL* __restrict__ c, REAL* __restrict__ d, REAL* __restrict__ u, int sys_size, int sys_pads, int sys_n) {
-  int   i;//, ind;//, off;
-  //REAL aa, bb, cc, dd, c2[N_MAX], d2[N_MAX];
+template <typename REAL, int INC>
+__global__ void trid_linear(const REAL* __restrict__ a,
+                            const REAL* __restrict__ b,
+                            const REAL* __restrict__ c, REAL* __restrict__ d,
+                            REAL* __restrict__ u, int sys_size, int sys_pads,
+                            int sys_n) {
+  int i;  //, ind;//, off;
+  // REAL aa, bb, cc, dd, c2[N_MAX], d2[N_MAX];
   REAL aa, bb, cc, dd, c2[N_MAX], d2[N_MAX];
-  
+
   //
   // set up indices for main block
   //
   int off = 1;
 
-  int tid = threadIdx.x + threadIdx.y*blockDim.x + blockIdx.x*blockDim.y*blockDim.x + blockIdx.y*gridDim.x*blockDim.y*blockDim.x; // Thread ID in global scope - every thread solves one system
-  int ind = sys_pads*tid;
+// Thread ID in global scope - every thread solves one system
+  int tid =
+      threadIdx.x + threadIdx.y * blockDim.x +
+      blockIdx.x * blockDim.y * blockDim.x +
+      blockIdx.y * gridDim.x * blockDim.y * blockDim.x;  
+  int ind = sys_pads * tid;
 
-  if( tid<sys_n ) {
+  if (tid < sys_n) {
     //
     // forward pass
     //
-    bb    = 1.0f/b[ind];
-    cc    = bb*c[ind];
-    dd    = bb*d[ind];
+    bb = 1.0f / b[ind];
+    cc = bb * c[ind];
+    dd = bb * d[ind];
     c2[0] = cc;
     d2[0] = dd;
 
-    //u[ind] = 0;//dd;
+    // u[ind] = 0;//dd;
 
-    for(i=1; i<sys_size; i++) {
-      ind   = ind + off;
-      aa    = a[ind];
-      bb    = b[ind] - aa*cc;
-      dd    = d[ind] - aa*dd;
-      bb    = 1.0f/bb;
-      cc    = bb*c[ind];
-      dd    = bb*dd;
+    for (i = 1; i < sys_size; i++) {
+      ind = ind + off;
+      aa = a[ind];
+      bb = b[ind] - aa * cc;
+      dd = d[ind] - aa * dd;
+      bb = 1.0f / bb;
+      cc = bb * c[ind];
+      dd = bb * dd;
       c2[i] = cc;
       d2[i] = dd;
-    
-      //u[ind] = ind;//dd;
 
+      // u[ind] = ind;//dd;
     }
     //
     // reverse pass
     //
-    d[ind] = dd;
-
-    //u[ind] = dd;
-
-    for(i=sys_size-2; i>=0; i--) {
-      ind    = ind - off;
-      dd     = d2[i] - c2[i]*dd;
+    if (INC)
+      u[ind] += dd;
+    else
       d[ind] = dd;
 
-      //u[ind] = dd;
+    // u[ind] = dd;
 
+    for (i = sys_size - 2; i >= 0; i--) {
+      ind = ind - off;
+      dd = d2[i] - c2[i] * dd;
+      
+      if (INC)
+        u[ind] += dd;
+      else
+        d[ind] = dd;
+
+      // u[ind] = dd;
     }
   }
 }
+
+
+
