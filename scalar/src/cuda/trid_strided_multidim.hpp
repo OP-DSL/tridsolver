@@ -40,8 +40,13 @@
 //
 // Tridiagonal solver for multidimensional batch problems
 //
-template<typename REAL, typename VECTOR, int INC>
-__global__ void trid_strided_multidim(const VECTOR* __restrict__ a, const VECTOR* __restrict__ b, const VECTOR* __restrict__ c, VECTOR* __restrict__ d, VECTOR* __restrict__ u, int ndim, int solvedim, int sys_n) {
+template <typename REAL, typename VECTOR, int INC>
+__global__ void trid_strided_multidim(const VECTOR* __restrict__ a,
+                                      const VECTOR* __restrict__ b,
+                                      const VECTOR* __restrict__ c,
+                                      VECTOR* __restrict__ d,
+                                      VECTOR* __restrict__ u, int ndim,
+                                      int solvedim, int sys_n) {
   int    j;
   VECTOR aa, bb, cc, dd, c2[N_MAX], d2[N_MAX];
   //

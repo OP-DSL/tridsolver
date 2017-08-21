@@ -703,7 +703,6 @@ int solveBatchedTrid_strided(int numTrids, int length, int stride1, int subBatch
   // By scaling the length and reducing the number of tridiagonals we can combine multiple
   // tridiagonals into one connected system. This allows us to more efficiently solve small
   // systems which aren't near multiples of 32 by combining them into fewer larger systems.
-
   if (length > 1024) { printf("Strided, length > 1024, not supported\n"); return 1; }
   
   // For the case where subBatchSize >= numTrids
@@ -913,6 +912,7 @@ int solveBatchedTrid_strided(int numTrids, int length, int stride1, int subBatch
 template <typename REAL, int INC>
 int solveBatchedTrid(int numTrids, int length, int stride1, int stride2, int subBatchSize, int subBatchStride, 
                             const REAL *a, const REAL *b, const REAL *c, REAL *d, REAL *x) {
+
   static int firstCall = 1;
   static int major = 0;
   // Make sure our warp size is 32. Only do it once.
