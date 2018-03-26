@@ -50,6 +50,18 @@ typedef enum {
   TRID_STATUS_ZERO_PIVOT = 9
 } tridStatus_t;
 
+//
+// Solve a batch of linear equation systems along a specified axis.
+//
+// `a`, `b`, `c`, `d` are the parameters of the systems. These must be arrays
+// with shape `dims`, the number of dimensions is `ndims`. These are padded
+// along each axis with pads of size `pads`.
+//
+// Solution will be along the axis `solvedim`, i.e. values along that axis will
+// form a system of equations to be solved. Separate systems will be solved
+// independently. The result is written to `d`.
+//
+// `u` is unused.
 tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b,
                                    const float *c, float *d, float *u, int ndim,
                                    int solvedim, int *dims, int *pads);
@@ -58,6 +70,17 @@ tridStatus_t tridDmtsvStridedBatch(const double *a, const double *b,
                                    int ndim, int solvedim, int *dims,
                                    int *pads);
 
+//
+// Solve a batch of linear equation systems along a specified axis.
+//
+// `a`, `b`, `c`, `d` are the parameters of the systems, `u` is the array to be
+// incremented with the results. These must be arrays with shape `dims`, the
+// number of dimensions is `ndims`. These are padded along each axis with pads
+// of size `pads`.
+//
+// Solution will be along the axis `solvedim`, i.e. values along that axis will
+// form a system of equations to be solved. Separate systems will be solved
+// independently. `u` is incremented with the results.
 tridStatus_t tridSmtsvStridedBatchInc(const float *a, const float *b,
                                       const float *c, float *d, float *u,
                                       int ndim, int solvedim, int *dims,
@@ -67,9 +90,6 @@ tridStatus_t tridDmtsvStridedBatchInc(const double *a, const double *b,
                                       int ndim, int solvedim, int *dims,
                                       int *pads);
 
-tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b,
-                                   const float *c, float *d, float *u, int ndim,
-                                   int solvedim, int *dims, int *pads);
 void trid_scalarS(float *a, float *b, float *c, float *d, float *u, int N,
                   int stride);
 void trid_x_transposeS(float *a, float *b, float *c, float *d, float *u,

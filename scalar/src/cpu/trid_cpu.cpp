@@ -120,7 +120,8 @@ inline void store(FP *__restrict__ dst, SIMD_REG *__restrict__ src, int n,
 #endif
 
 //
-// tridiagonal-x solver
+// tridiagonal-x solver; vectorised solution where the system dimension is the
+// same as the vectorisation dimension
 //
 template <int inc>
 void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
@@ -297,7 +298,8 @@ void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
 }
 
 //
-// tridiagonal solver
+// tridiagonal solver; vectorised solution where the system dimension is not
+// the same as the vectorisation dimension
 //
 template <typename REAL, typename VECTOR, int INC>
 void trid_scalar_vec(const REAL *__restrict h_a, const REAL *__restrict h_b,
@@ -353,7 +355,7 @@ void trid_scalar_vec(const REAL *__restrict h_a, const REAL *__restrict h_b,
 }
 
 //
-// tridiagonal solver
+// tridiagonal solver; simple non-vectorised solution
 //
 template <int INC>
 void trid_scalar(const FP *__restrict a, const FP *__restrict b,
