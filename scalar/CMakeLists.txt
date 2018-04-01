@@ -25,6 +25,7 @@ if (INTEL_CC)
 endif (INTEL_CC) 
 
 project("libtrid")
+include(CTest)
 
 if (INTEL_CC) 
   # Set compiler flags/options for Intel compiler
@@ -62,3 +63,4 @@ add_definitions(-DN_MAX=${N_MAX})
 # Invoke subprojects
 add_subdirectory(src/cpu)
 add_subdirectory(src/cuda)
+add_subdirectory(test)
