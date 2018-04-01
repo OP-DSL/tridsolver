@@ -11,12 +11,12 @@ void require_allclose(const std::vector<Float> &a,
     CAPTURE(i);
     CAPTURE(a[i]);
     CAPTURE(b[i]);
-    Float min_val = std::min(a[i], b[i]);
+    Float min_val = std::min(std::abs(a[i]), std::abs(b[i]));
     const double tolerance = ABS_TOLERANCE + REL_TOLERANCE * min_val;
     CAPTURE(tolerance);
     const double diff = std::abs(static_cast<double>(a[i]) - b[i]);
     CAPTURE(diff);
-    REQUIRE(diff > tolerance);
+    REQUIRE(diff <= tolerance);
   }
 }
 
@@ -25,6 +25,10 @@ TEST_CASE("cpu: one dimension small") {
   std::vector<double> d(mesh.d().begin(), mesh.d().end());
   int pads[3] = {0, 0, 0};
   std::vector<int> dims = mesh.dims(); // Because it isn't const in the lib
+  // Fix num_dims workaround
+  while (dims.size() < 3) {
+    dims.push_back(1);
+  }
 
   tridStatus_t status = tridDmtsvStridedBatch(mesh.a().data(),    // a
                                               mesh.b().data(),    // b
@@ -37,6 +41,28 @@ TEST_CASE("cpu: one dimension small") {
                                               pads);
 
   CHECK(status == TRID_STATUS_SUCCESS);
-  REQUIRE(false);
+  require_allclose(d, mesh.u());
+}
+
+TEST_CASE("cpu: one dimension large") {
+  MeshLoader<double> mesh("files/one_dim_large");
+  std::vector<double> d(mesh.d().begin(), mesh.d().end());
+  int pads[3] = {0, 0, 0};
+  std::vector<int> dims = mesh.dims(); // Because it isn't const in the lib
+  while (dims.size() < 3) {
+    dims.push_back(1);
+  }
+
+  tridStatus_t status = tridDmtsvStridedBatch(mesh.a().data(),    // a
+                                              mesh.b().data(),    // b
+                                              mesh.c().data(),    // c
+                                              d.data(),           // d
+                                              nullptr,            // u
+                                              mesh.dims().size(), // ndim
+                                              mesh.solve_dim(),   // solvedim
+                                              dims.data(),        // dims
+                                              pads);
+
+  CHECK(status == TRID_STATUS_SUCCESS);
   require_allclose(d, mesh.u());
 }

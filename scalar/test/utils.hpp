@@ -61,9 +61,10 @@ template <typename Float>
 void MeshLoader<Float>::load_array(std::ifstream &f, size_t num_elements,
                                    std::vector<Float> &array) {
   for (size_t i = 0; i < num_elements; ++i) {
-    Float value;
+    // Load with the larger precision, then convert to the specified type
+    double value;
     f >> value;
-    array.push_back(value);
+    array.push_back(static_cast<Float>(value));
   }
 }
 

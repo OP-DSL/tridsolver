@@ -3,6 +3,8 @@ np.random.seed(1)
 import scipy.sparse as sp
 import scipy.sparse.linalg as slg
 
+PRECISION = 15
+
 def calc_result(a, b, c, d, axis):
     non_system_axes = np.arange(len(a.shape))
     non_system_axes = np.delete(non_system_axes, axis)
@@ -34,19 +36,19 @@ def write_testcase(fname, a, b, c, d, u, solvedim):
         f.write(' '.join([str(size) for size in a.shape]))
         f.write('\n')
         # a matrix, in row major format
-        f.write(' '.join([str(round(val, 5)) for val in a.flatten()]))
+        f.write(' '.join([str(round(val, PRECISION)) for val in a.flatten()]))
         f.write('\n')
         # b matrix, in row major format
-        f.write(' '.join([str(round(val, 5)) for val in b.flatten()]))
+        f.write(' '.join([str(round(val, PRECISION)) for val in b.flatten()]))
         f.write('\n')
         # c matrix, in row major format
-        f.write(' '.join([str(round(val, 5)) for val in c.flatten()]))
+        f.write(' '.join([str(round(val, PRECISION)) for val in c.flatten()]))
         f.write('\n')
         # d matrix, in row major format
-        f.write(' '.join([str(round(val, 5)) for val in d.flatten()]))
+        f.write(' '.join([str(round(val, PRECISION)) for val in d.flatten()]))
         f.write('\n')
         # u matrix, in row major format
-        f.write(' '.join([str(round(val, 5)) for val in u.flatten()]))
+        f.write(' '.join([str(round(val, PRECISION)) for val in u.flatten()]))
         f.write('\n')
 
 def gen_testcase(fname, shape, solvedim):
