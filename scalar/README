@@ -90,6 +90,23 @@ Notes
 3. Please note, that the build works only with Intel compilers as the dvec.h header file and its dependencies are not part of the GCC project.
 4. For debugging the build procedure use the `VERBOSE=1 make` instead of `make`. This will report all the steps (compile and link lines) made by the make build system.
 
+Testing
+-------
+
+There are some testcases using the Catch library. These will be built if cmake
+is called with BUILD_TESTING parameter set to ON. The tests can be run by calling:
+$ make
+$ make test
+
+Currently, it is added as one test to the CMake build, but Catch will run all
+the tests. They can also be invoked manually by executing the `tests` binary
+in the `test` directory of the source tree. (It will read files contained
+there.)
+
+If you want to see the output (e.g. because one of the tests failed), you can
+either execute the binary directly or you can run `make test` with the
+CTEST_OUTPUT_ON_FAILURE environment variable set to 1.
+
 
 API reference guide
 ===================
