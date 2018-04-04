@@ -441,7 +441,7 @@ void tridMultiDimBatchSolve(const FP* a, const FP* b, const FP* c, FP* d, FP* u,
     int sys_pads   = pads[0]; // Padded sizes along each ndim number of dimensions
     int sys_n_lin  = dims[1]*dims[2]; // = cumdims[solve] // Number of systems to be solved
 
-    if((sys_pads % SIMD_VEC) == 0 && false) {
+    if((sys_pads % SIMD_VEC) == 0) {
       #pragma omp parallel for collapse(2)
       for(int k=0; k<dims[2]; k++) {
         for(int j=0; j<ROUND_DOWN(dims[1],SIMD_VEC); j+=SIMD_VEC) {
