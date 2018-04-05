@@ -7,8 +7,10 @@
 #include <cmath>
 #include <cassert>
 
-constexpr double ABS_TOLERANCE = 1e-5;
-constexpr double REL_TOLERANCE = 1e-5;
+constexpr double ABS_TOLERANCE = 1e-11;
+constexpr double REL_TOLERANCE = 1e-11;
+constexpr double ABS_TOLERANCE_FLOAT = 1e-6;
+constexpr double REL_TOLERANCE_FLOAT = 1e-6;
 
 template <typename Float> class MeshLoader {
   size_t _solve_dim;
@@ -30,6 +32,7 @@ private:
   void load_array(std::ifstream &f, size_t num_elements,
                   std::vector<Float> &array);
 };
+
 
 /**********************************************************************
 *                          Implementations                           *
@@ -54,7 +57,11 @@ MeshLoader<Float>::MeshLoader(const std::string &file_name) {
   load_array(f, num_elements, _b);
   load_array(f, num_elements, _c);
   load_array(f, num_elements, _d);
-  load_array(f, num_elements, _u);
+  if (std::is_same<Float, double>::value) {
+    load_array(f, num_elements, _u);
+  } else {
+    load_array(f, num_elements, _u);
+  }
 }
 
 template <typename Float>
