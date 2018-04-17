@@ -86,8 +86,8 @@ def main():
     gen_testcase('one_dim_large', [200], 0)
     gen_testcase('two_dim_small_solve0', [8, 8], 0)
     gen_testcase('two_dim_small_solve1', [8, 8], 1)
-    gen_testcase('two_dim_large_solve0', [20, 20], 0)
-    gen_testcase('two_dim_large_solve1', [20, 20], 1)
+    gen_testcase('two_dim_large_solve0', [32, 32], 0)
+    gen_testcase('two_dim_large_solve1', [32, 32], 1)
 
 if __name__ == "__main__":
     main()
