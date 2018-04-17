@@ -332,6 +332,7 @@ void trid_scalar_vec(const REAL *__restrict h_a, const REAL *__restrict h_b,
     bb = b[ind] - aa * cc;
     dd = d[ind] - aa * dd;
     bb = ones / bb;
+    // FIXME upper loop boundary
     cc = bb * c[ind];
     dd = bb * dd;
     c2[i] = cc;
@@ -378,6 +379,7 @@ void trid_scalar(const FP *__restrict a, const FP *__restrict b,
     bb = b[ind] - aa * cc;
     dd = d[ind] - aa * dd;
     bb = 1.0F / bb;
+    // FIXME upper loop boundary (indexing of c)
     cc = bb * c[ind];
     dd = bb * dd;
     c2[i] = cc;
@@ -547,8 +549,9 @@ tridStatus_t tridSmtsvStridedBatchInc(const float *a, const float *b,
   return TRID_STATUS_SUCCESS;
 }
 
-void trid_scalarS(float *__restrict a, float *__restrict b, float *__restrict c,
-                  float *__restrict d, float *__restrict u, int N, int stride) {
+void trid_scalarS(const float *__restrict a, const float *__restrict b,
+                  const float *__restrict c, float *__restrict d,
+                  float *__restrict u, int N, int stride) {
 
   trid_scalar<0>(a, b, c, d, u, N, stride);
 }
@@ -593,8 +596,8 @@ tridStatus_t tridDmtsvStridedBatchInc(const double *a, const double *b,
   return TRID_STATUS_SUCCESS;
 }
 
-void trid_scalarD(double *__restrict a, double *__restrict b,
-                  double *__restrict c, double *__restrict d,
+void trid_scalarD(const double *__restrict a, const double *__restrict b,
+                  const double *__restrict c, double *__restrict d,
                   double *__restrict u, int N, int stride) {
 
   trid_scalar<0>(a, b, c, d, u, N, stride);
@@ -608,8 +611,8 @@ void trid_x_transposeD(double *__restrict a, double *__restrict b,
   trid_x_transpose<0>(a, b, c, d, u, sys_size, sys_pad, stride);
 }
 
-void trid_scalar_vecD(double *__restrict a, double *__restrict b,
-                      double *__restrict c, double *__restrict d,
+void trid_scalar_vecD(const double *__restrict a, const double *__restrict b,
+                      const double *__restrict c, double *__restrict d,
                       double *__restrict u, int N, int stride) {
 
   trid_scalar_vec<FP, VECTOR, 0>(a, b, c, d, u, N, stride);

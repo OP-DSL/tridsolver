@@ -2,12 +2,17 @@
 #include "utils.hpp"
 
 #include <trid_cpu.h>
+#include <trid_simd.h>
 
-template <typename Float>
-void require_allclose(const std::vector<Float> &expected,
-                      const std::vector<Float> &actual) {
-  assert(expected.size() == actual.size());
-  for (size_t i = 0; i < expected.size(); ++i) {
+template <typename Float, unsigned Align>
+void require_allclose(const AlignedArray<Float, Align> &expected,
+                      const AlignedArray<Float, Align> &actual, size_t N = 0,
+                      int stride = 1) {
+  if (N == 0) {
+    assert(expected.size() == actual.size());
+    N = expected.size();
+  }
+  for (size_t j = 0, i = 0; j < N; ++j, i += stride) {
     CAPTURE(i);
     CAPTURE(expected[i]);
     CAPTURE(actual[i]);
@@ -24,7 +29,6 @@ void require_allclose(const std::vector<Float> &expected,
   }
 }
 
-// TODO something like this really should be in the API
 template <typename Float>
 tridStatus_t tridStridedBatchWrapper(const Float *a, const Float *b,
                                      const Float *c, Float *d, Float *u,
@@ -47,9 +51,44 @@ tridStatus_t tridStridedBatchWrapper<double>(const double *a, const double *b,
   return tridDmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads);
 }
 
+template <typename Float>
+void trid_scalar_wrapper(const Float *a, const Float *b, const Float *c,
+                         Float *d, Float *u, int N, int stride);
+
+template <>
+void trid_scalar_wrapper<float>(const float *a, const float *b, const float *c,
+                                float *d, float *u, int N, int stride) {
+  trid_scalarS(a, b, c, d, u, N, stride);
+}
+
+template <>
+void trid_scalar_wrapper<double>(const double *a, const double *b,
+                                 const double *c, double *d, double *u, int N,
+                                 int stride) {
+  trid_scalarD(a, b, c, d, u, N, stride);
+}
+
+template <typename Float>
+void trid_scalar_vec_wrapper(const Float *a, const Float *b, const Float *c,
+                             Float *d, Float *u, int N, int stride);
+
+template <>
+void trid_scalar_vec_wrapper<float>(const float *a, const float *b,
+                                    const float *c, float *d, float *u, int N,
+                                    int stride) {
+  trid_scalar_vecS(a, b, c, d, u, N, stride);
+}
+
+template <>
+void trid_scalar_vec_wrapper<double>(const double *a, const double *b,
+                                     const double *c, double *d, double *u,
+                                     int N, int stride) {
+  trid_scalar_vecD(a, b, c, d, u, N, stride);
+}
+
 template <typename Float> void test_from_file(const std::string &file_name) {
   MeshLoader<Float> mesh(file_name);
-  std::vector<Float> d(mesh.d().begin(), mesh.d().end());
+  AlignedArray<Float, 1> d(mesh.d());
   std::vector<int> dims = mesh.dims(); // Because it isn't const in the lib
   // Fix num_dims workaround
   while (dims.size() < 3) {
@@ -71,50 +110,189 @@ template <typename Float> void test_from_file(const std::string &file_name) {
   require_allclose(mesh.u(), d);
 }
 
-TEST_CASE("cpu: one dimension small") {
-  SECTION("double") { test_from_file<double>("files/one_dim_small"); }
-  SECTION("float") { test_from_file<float>("files/one_dim_small"); }
+template <typename Float>
+void test_from_file_scalar(const std::string &file_name) {
+  MeshLoader<Float> mesh(file_name);
+  AlignedArray<Float, 1> d(mesh.d());
+
+  int stride = 1;
+  for (size_t i = 0; i < mesh.solve_dim(); ++i) {
+    stride *= mesh.dims()[i];
+  }
+  const size_t N = mesh.dims()[mesh.solve_dim()];
+
+  trid_scalar_wrapper<Float>(mesh.a().data(), // a
+                             mesh.b().data(), // b
+                             mesh.c().data(), // c
+                             d.data(),        // d
+                             nullptr,         // u
+                             N,               // N
+                             stride);         // stride
+
+  require_allclose(mesh.u(), d, N, stride);
 }
 
-TEST_CASE("cpu: one dimension large") {
-  SECTION("double") { test_from_file<double>("files/one_dim_large"); }
-  SECTION("float") { test_from_file<float>("files/one_dim_large"); }
+template <typename Float>
+void test_from_file_scalar_vec(const std::string &file_name) {
+  MeshLoader<Float, SIMD_WIDTH> mesh(file_name);
+  AlignedArray<Float, SIMD_WIDTH> d(mesh.d());
+
+  int stride = 1;
+  for (size_t i = 0; i < mesh.solve_dim(); ++i) {
+    stride *= mesh.dims()[i];
+  }
+  const size_t N = mesh.dims()[mesh.solve_dim()];
+
+  trid_scalar_vec_wrapper<Float>(mesh.a().data(), // a
+                                 mesh.b().data(), // b
+                                 mesh.c().data(), // c
+                                 d.data(),        // d
+                                 nullptr,         // u
+                                 N,               // N
+                                 stride /
+                                     (SIMD_WIDTH / sizeof(Float))); // stride
+
+  require_allclose(mesh.u(), d, N, stride);
 }
 
-TEST_CASE("cpu: two dimensions small") {
+TEST_CASE("cpu: strided batch small") {
   SECTION("double") {
-    SECTION("solvedim=0") {
-      test_from_file<double>("files/two_dim_small_solve0");
-    }
-    SECTION("solvedim=1") {
-      test_from_file<double>("files/two_dim_small_solve1");
+    SECTION("ndims: 1") { test_from_file<double>("files/one_dim_small"); }
+    SECTION("ndims: 2") {
+      SECTION("solvedim: 0") {
+        test_from_file<double>("files/two_dim_small_solve0");
+      }
+      SECTION("solvedim: 1") {
+        test_from_file<double>("files/two_dim_small_solve1");
+      }
     }
   }
   SECTION("float") {
-    SECTION("solvedim=0") {
-      test_from_file<float>("files/two_dim_small_solve0");
-    }
-    SECTION("solvedim=1") {
-      test_from_file<float>("files/two_dim_small_solve1");
+    SECTION("ndims: 1") { test_from_file<float>("files/one_dim_small"); }
+    SECTION("ndims: 2") {
+      SECTION("solvedim: 0") {
+        test_from_file<float>("files/two_dim_small_solve0");
+      }
+      // This won't work because the array size is 8 and we don't test with
+      // padding at the end yet
+      /* SECTION("solvedim: 1") { */
+      /*   test_from_file<float>("files/two_dim_small_solve1"); */
+      /* } */
     }
   }
 }
 
-TEST_CASE("cpu: two dimensions large") {
+TEST_CASE("cpu: strided batch large") {
   SECTION("double") {
-    SECTION("solvedim=0") {
-      test_from_file<double>("files/two_dim_large_solve0");
-    }
-    SECTION("solvedim=1") {
-      test_from_file<double>("files/two_dim_large_solve1");
+    SECTION("ndims: 1") { test_from_file<double>("files/one_dim_large"); }
+    SECTION("ndims: 2") {
+      SECTION("solvedim: 0") {
+        test_from_file<double>("files/two_dim_large_solve0");
+      }
+      SECTION("solvedim: 1") {
+        test_from_file<double>("files/two_dim_large_solve1");
+      }
     }
   }
   SECTION("float") {
-    SECTION("solvedim=0") {
-      test_from_file<float>("files/two_dim_large_solve0");
+    SECTION("ndims: 1") { test_from_file<float>("files/one_dim_large"); }
+    SECTION("ndims: 2") {
+      SECTION("solvedim: 0") {
+        test_from_file<float>("files/two_dim_large_solve0");
+      }
+      SECTION("solvedim: 1") {
+        test_from_file<float>("files/two_dim_large_solve1");
+      }
     }
-    SECTION("solvedim=1") {
-      test_from_file<float>("files/two_dim_large_solve1");
+  }
+}
+
+TEST_CASE("cpu: trid_scalar small") {
+  SECTION("double") {
+    SECTION("ndims: 1") {
+      test_from_file_scalar<double>("files/one_dim_small");
+    }
+    SECTION("ndims: 2") {
+      SECTION("solvedim: 0") {
+        test_from_file_scalar<double>("files/two_dim_small_solve0");
+      }
+      SECTION("solvedim: 1") {
+        test_from_file_scalar<double>("files/two_dim_small_solve1");
+      }
+    }
+  }
+  SECTION("float") {
+    SECTION("ndims: 1") { test_from_file_scalar<float>("files/one_dim_small"); }
+    SECTION("ndims: 2") {
+      SECTION("solvedim: 0") {
+        test_from_file_scalar<float>("files/two_dim_small_solve0");
+      }
+      SECTION("solvedim: 1") {
+        test_from_file_scalar<float>("files/two_dim_small_solve1");
+      }
+    }
+  }
+}
+
+TEST_CASE("cpu: trid_scalar large") {
+  SECTION("double") {
+    SECTION("ndims: 1") {
+      test_from_file_scalar<double>("files/one_dim_large");
+    }
+    SECTION("ndims: 2") {
+      SECTION("solvedim: 0") {
+        test_from_file_scalar<double>("files/two_dim_large_solve0");
+      }
+      SECTION("solvedim: 1") {
+        test_from_file_scalar<double>("files/two_dim_large_solve1");
+      }
+    }
+  }
+  SECTION("float") {
+    SECTION("ndims: 1") { test_from_file_scalar<float>("files/one_dim_large"); }
+    SECTION("ndims: 2") {
+      SECTION("solvedim: 0") {
+        test_from_file_scalar<float>("files/two_dim_large_solve0");
+      }
+      SECTION("solvedim: 1") {
+        test_from_file_scalar<float>("files/two_dim_large_solve1");
+      }
+    }
+  }
+}
+
+TEST_CASE("cpu: trid_scalar_vec small") {
+  SECTION("double") {
+    SECTION("ndims: 2") {
+      SECTION("solvedim: 1") {
+        test_from_file_scalar_vec<double>("files/two_dim_small_solve1");
+      }
+    }
+  }
+  // This won't work because the array size is 8 and we don't test with
+  // padding at the end yet
+  /* SECTION("float") { */
+  /*   SECTION("ndims: 2") { */
+  /*     SECTION("solvedim: 1") { */
+  /*       test_from_file_scalar_vec<float>("files/two_dim_small_solve1"); */
+  /*     } */
+  /*   } */
+  /* } */
+}
+
+TEST_CASE("cpu: trid_scalar_vec large") {
+  SECTION("double") {
+    SECTION("ndims: 2") {
+      SECTION("solvedim: 1") {
+        test_from_file_scalar_vec<double>("files/two_dim_large_solve1");
+      }
+    }
+  }
+  SECTION("float") {
+    SECTION("ndims: 2") {
+      SECTION("solvedim: 1") {
+        test_from_file_scalar_vec<float>("files/two_dim_large_solve1");
+      }
     }
   }
 }
