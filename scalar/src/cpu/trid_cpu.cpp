@@ -415,7 +415,7 @@ void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
         dims[1] * dims[2]; // = cumdims[solve] // Number of systems to be solved
 
     // FIXME fix and re-enable vectorisation in x-dim
-    if ((sys_pads % SIMD_VEC) == 0 && false) {
+    if ((sys_pads % SIMD_VEC) == 0  && ((long)a & 0x3F)==0 && ((long)b & 0x3F)==0 && ((long)c & 0x3F)==0 && ((long)d & 0x3F)==0 && ((long)u & 0x3F)==0) {
 #pragma omp parallel for collapse(2)
       for (int k = 0; k < dims[2]; k++) {
         for (int j = 0; j < ROUND_DOWN(dims[1], SIMD_VEC); j += SIMD_VEC) {
