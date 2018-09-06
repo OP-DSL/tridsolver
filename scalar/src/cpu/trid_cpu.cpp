@@ -419,7 +419,7 @@ void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
 #pragma omp parallel for collapse(2)
       for (int k = 0; k < dims[2]; k++) {
         for (int j = 0; j < ROUND_DOWN(dims[1], SIMD_VEC); j += SIMD_VEC) {
-          int ind = k * pads[0] * dims[1] + j * pads[0];
+          int ind = k * pads[0] * pads[1] + j * pads[0];
           if (inc)
             trid_x_transpose<1>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
                                 sys_size, sys_pads, sys_stride);
@@ -433,7 +433,7 @@ void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
 #pragma omp parallel for collapse(2)
         for (int k = 0; k < dims[2]; k++) {
           for (int j = ROUND_DOWN(dims[1], SIMD_VEC); j < dims[1]; j++) {
-            int ind = k * pads[0] * dims[1] + j * pads[0];
+            int ind = k * pads[0] * pads[1] + j * pads[0];
             if (inc)
               trid_scalar<1>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
                              sys_size, sys_stride);
@@ -447,7 +447,7 @@ void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
 #pragma omp parallel for collapse(2)
       for (int k = 0; k < dims[2]; k++) {
         for (int j = 0; j < dims[1]; j++) {
-          int ind = k * pads[0] * dims[1] + j * pads[0];
+          int ind = k * pads[0] * pads[1] + j * pads[0];
           if (inc)
             trid_scalar<1>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
                            sys_size, sys_stride);
@@ -465,7 +465,7 @@ void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
 #pragma omp parallel for collapse(2)
     for (int k = 0; k < dims[2]; k++) {
       for (int i = 0; i < ROUND_DOWN(dims[0], SIMD_VEC); i += SIMD_VEC) {
-        int ind = k * pads[0] * dims[1] + i;
+        int ind = k * pads[0] * pads[1] + i;
         if (inc)
           trid_scalar_vec<FP, VECTOR, 1>(&a[ind], &b[ind], &c[ind], &d[ind],
                                          &u[ind], sys_size,
@@ -481,7 +481,7 @@ void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
 #pragma omp parallel for collapse(2)
       for (int k = 0; k < dims[2]; k++) {
         for (int i = ROUND_DOWN(dims[0], SIMD_VEC); i < dims[0]; i++) {
-          int ind = k * pads[0] * dims[1] + i;
+          int ind = k * pads[0] * pads[1] + i;
           if (inc)
             trid_scalar<1>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
                            sys_size, sys_stride);
@@ -494,7 +494,7 @@ void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
   } else if (solvedim == 2) {
     int sys_stride =
         pads[0] *
-        dims[1]; // Stride between the consecutive elements of a system
+        pads[1]; // Stride between the consecutive elements of a system
     int sys_size = dims[2]; // Size (length) of a system
 
 #pragma omp parallel for collapse(2) // Interleaved scheduling for better data
