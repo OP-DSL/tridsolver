@@ -147,36 +147,40 @@ inline void thomas_forward(
     int stride) {
 
   REAL bbi;
+  int ind = 0;
 
   if(N >=2) {
     // Start lower off-diagonal elimination
     for(int i=0; i<2; i++) {
-      bbi   = static_cast<REAL>(1.0) / b[i];
+      ind = i * stride;
+      bbi   = static_cast<REAL>(1.0) / b[ind];
       //dd[i] = 66;//d[i] * bbi;
-      dd[i] = d[i] * bbi;
-      aa[i] = a[i] * bbi;
-      cc[i] = c[i] * bbi;
+      dd[ind] = d[ind] * bbi;
+      aa[ind] = a[ind] * bbi;
+      cc[ind] = c[ind] * bbi;
     }
     if(N >=3 ) {
       // Eliminate lower off-diagonal
       for(int i=2; i<N; i++) {
-        bbi   = static_cast<REAL>(1.0) / (b[i] - a[i] * cc[i-1]); 
+        ind = i * stride;
+        bbi   = static_cast<REAL>(1.0) / (b[ind] - a[ind] * cc[ind - stride]); 
         //dd[i] = 77;//(d[i] - a[i]*dd[i-1]) * bbi;
-        dd[i] = (d[i] - a[i]*dd[i-1]) * bbi;
-        aa[i] = (     - a[i]*aa[i-1]) * bbi;
-        cc[i] =                 c[i]  * bbi;
+        dd[ind] = (d[ind] - a[ind]*dd[ind - stride]) * bbi;
+        aa[ind] = (     - a[ind]*aa[ind - stride]) * bbi;
+        cc[ind] =                 c[ind]  * bbi;
       }
       // Eliminate upper off-diagonal
       for(int i=N-3; i>0; i--) {
+        ind = i * stride;
         //dd[i] = 88;//dd[i] - cc[i]*dd[i+1];
-        dd[i] = dd[i] - cc[i]*dd[i+1];
-        aa[i] = aa[i] - cc[i]*aa[i+1];
-        cc[i] =       - cc[i]*cc[i+1];
+        dd[ind] = dd[ind] - cc[ind]*dd[ind + stride];
+        aa[ind] = aa[ind] - cc[ind]*aa[ind + stride];
+        cc[ind] =       - cc[ind]*cc[ind + stride];
       }
-      bbi = static_cast<REAL>(1.0) / (static_cast<REAL>(1.0) - cc[0]*aa[1]);
-      dd[0] =  bbi * ( dd[0] - cc[0]*dd[1] );
+      bbi = static_cast<REAL>(1.0) / (static_cast<REAL>(1.0) - cc[0]*aa[stride]);
+      dd[0] =  bbi * ( dd[0] - cc[0]*dd[stride] );
       aa[0] =  bbi *   aa[0];
-      cc[0] =  bbi * (       - cc[0]*cc[1] );
+      cc[0] =  bbi * (       - cc[0]*cc[stride] );
     }
   }
   else {
@@ -196,12 +200,36 @@ inline void thomas_backward(
     int N, 
     int stride) {
 
+  int ind = 0;
+  
   d[0] = dd[0];
   #pragma ivdep
   for (int i=1; i<N-1; i++) {
+    ind = i * stride;
     //d[i] = dd[i];//dd[i] - aa[i]*dd[0] - cc[i]*dd[N-1];
-    d[i] = dd[i] - aa[i]*dd[0] - cc[i]*dd[N-1];
+    d[ind] = dd[ind] - aa[ind]*dd[0] - cc[ind]*dd[(N-1) * stride];
   }
-  d[N-1] = dd[N-1];
+  d[(N-1) * stride] = dd[(N-1) * stride];
+}
+
+template<typename REAL>
+inline void thomas_backwardInc(
+    const REAL *__restrict__ aa, 
+    const REAL *__restrict__ cc, 
+    const REAL *__restrict__ dd, 
+          REAL *__restrict__ u, 
+    int N, 
+    int stride) {
+
+  int ind = 0;
+  
+  u[0] += dd[0];
+  #pragma ivdep
+  for (int i=1; i<N-1; i++) {
+    ind = i * stride;
+    //d[i] = dd[i];//dd[i] - aa[i]*dd[0] - cc[i]*dd[N-1];
+    u[ind] += dd[ind] - aa[ind]*dd[0] - cc[ind]*dd[(N-1) * stride];
+  }
+  u[(N-1) * stride] += dd[(N-1) * stride];
 }
 #endif
