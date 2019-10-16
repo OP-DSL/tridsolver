@@ -13,8 +13,8 @@ if (INTEL_CC)
   find_program(CMAKE_LINKER NAMES       xild) 
 
   set(INTEL_PATH $ENV{INTEL_PATH} CACHE FILEPATH "Intel compiler suite path")
-	#set(CMAKE_C_COMPILER   ${INTEL_PATH}/bin/intel64/icc  CACHE FILEPATH "Intel compiler is prefered")
-	#set(CMAKE_CXX_COMPILER ${INTEL_PATH}/bin/intel64/icpc CACHE FILEPATH "Intel compiler is prefered")
+  #set(CMAKE_C_COMPILER   ${INTEL_PATH}/bin/intel64/icc  CACHE FILEPATH "Intel compiler is prefered")
+  #set(CMAKE_CXX_COMPILER ${INTEL_PATH}/bin/intel64/icpc CACHE FILEPATH "Intel compiler is prefered")
 
   if (CMAKE_C_COMPILER MATCHES CMAKE_C_COMPILER-NOTFOUND OR 
       CMAKE_CXX_COMPILER MATCHES CMAKE_CXX_COMPILER-NOTFOUND OR 
@@ -28,18 +28,18 @@ project("libtrid")
 
 if (INTEL_CC) 
   # Set compiler flags/options for Intel compiler
-  #set(FLAGS_INTEL_DEFAULT "-xCORE_AVX2 -parallel -openmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par -opt-report-phase=offload")
-	set(FLAGS_INTEL_DEFAULT "-xHost -m64 -parallel -openmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par") #-xCORE_AVX2 
-	set(FLAGS_INTEL_DEBUG   "-g -O0")
-	set(FLAGS_INTEL_RELEASE "-O3 -ip -restrict") #-fp-model fast 
+  #set(FLAGS_INTEL_DEFAULT "-xCORE_AVX2 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par -opt-report-phase=offload")
+  set(FLAGS_INTEL_DEFAULT "-xHost -m64 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par") #-xCORE_AVX2 
+  set(FLAGS_INTEL_DEBUG   "-g -O0")
+  set(FLAGS_INTEL_RELEASE "-O3 -ip -restrict") #-fp-model fast 
 
-	set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS} 			${FLAGS_INTEL_DEFAULT}")
-	set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_INTEL_DEBUG}  ")
-	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_RELEASE}		 	${FLAGS_INTEL_RELEASE}") 
+  set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS} 			${FLAGS_INTEL_DEFAULT}")
+  set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_INTEL_DEBUG}  ")
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_RELEASE}		 	${FLAGS_INTEL_RELEASE}") 
 
-	set(CMAKE_C_FLAGS         "${CMAKE_CXX_FLAGS}       ${FLAGS_INTEL_DEFAULT}")
-	set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_INTEL_DEBUG}  ")
-	set(CMAKE_C_FLAGS_RELEASE "${CMAKE_CXX_RELEASE}		 	${FLAGS_INTEL_RELEASE}") 
+  set(CMAKE_C_FLAGS         "${CMAKE_CXX_FLAGS}       ${FLAGS_INTEL_DEFAULT}")
+  set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_INTEL_DEBUG}  ")
+  set(CMAKE_C_FLAGS_RELEASE "${CMAKE_CXX_RELEASE}		 	${FLAGS_INTEL_RELEASE}") 
 else (INTEL_CC) 
   # Set compiler flags/options for GCC compiler
   set(FLAGS_GCC_DEFAULT "-mavx -fopenmp") #-march=core-avx2

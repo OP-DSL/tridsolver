@@ -7,14 +7,15 @@ option(BUILD_FOR_GPU "Build library for GPU architecture." OFF)
 
 if (INTEL_CC) 
   # Detect/find Intel compilers
-  find_program(CMAKE_C_COMPILER NAMES   icc) 
-  find_program(CMAKE_CXX_COMPILER NAMES icpc) 
+  find_program(CMAKE_C_COMPILER NAMES   mpicc) 
+  find_program(CMAKE_CXX_COMPILER NAMES mpicxx) 
   find_program(CMAKE_AR NAMES           xiar) 
   find_program(CMAKE_LINKER NAMES       xild) 
 
   set(INTEL_PATH $ENV{INTEL_PATH} CACHE FILEPATH "Intel compiler suite path")
   #set(CMAKE_C_COMPILER   ${INTEL_PATH}/bin/intel64/icc  CACHE FILEPATH "Intel compiler is prefered")
   #set(CMAKE_CXX_COMPILER ${INTEL_PATH}/bin/intel64/icpc CACHE FILEPATH "Intel compiler is prefered")
+  set(MPI_PATH $ENV{MPI_INSTALL_PATH} CACHE FILEPATH "MPI library path")
 
   if (CMAKE_C_COMPILER MATCHES CMAKE_C_COMPILER-NOTFOUND OR 
       CMAKE_CXX_COMPILER MATCHES CMAKE_CXX_COMPILER-NOTFOUND OR 
@@ -28,10 +29,10 @@ project("adi")
 
 if (INTEL_CC) 
   # Set compiler flags/options for Intel compiler
-  #set(FLAGS_INTEL_DEFAULT "-xCORE_AVX2 -parallel -openmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par -opt-report-phase=offload")
-  set(FLAGS_INTEL_DEFAULT "-xAVX -m64 -parallel -openmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par") #-xCORE_AVX2 
+  set(FLAGS_INTEL_DEFAULT "-xCORE_AVX2 -parallel -openmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par -opt-report-phase=offload")
+  #set(FLAGS_INTEL_DEFAULT "-xAVX -m64 -parallel -openmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par") #-xCORE_AVX2 
   set(FLAGS_INTEL_DEBUG   "-g -O0")
-  set(FLAGS_INTEL_RELEASE "-O3 -ip -restrict") #-fp-model fast 
+  set(FLAGS_INTEL_RELEASE "-g -std=c99 -O0 -ip -restrict") #-fp-model fast 
 
   set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS}       ${FLAGS_INTEL_DEFAULT}")
   set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_INTEL_DEBUG}  ")
@@ -58,7 +59,7 @@ endif (INTEL_CC)
 
 #set(CMAKE_GENERATOR_TOOLSET "Intel C++ Compiler XE 15.0" CACHE STRING "Platform Toolset" FORCE)
 
-set(LIBTRID_PATH "/home/endre/repos/tridsolver/scalar/build")
+set(LIBTRID_PATH "/home/mgiles/mudalige/TriDiagonal/Tridiag-Git/tridsolver/scalar/build")
 
 set(N_MAX 1024 CACHE STRING "Maximum length of the internal buffer for storing intermediate c and d vectors of the Thomas algorithm") 
 add_definitions(-DN_MAX=${N_MAX}) 
@@ -80,6 +81,11 @@ if (BUILD_FOR_CPU)
   target_compile_options(adi_mkl PRIVATE -xAVX -parallel -openmp -no-offload)
   target_include_directories(adi_mkl PRIVATE ${INTEL_PATH}/mkl/include ${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include)
   target_link_libraries(adi_mkl -L${LIBTRID_PATH}/lib -ltridcpu -L${INTEL_PATH}/mkl/lib/intel64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -L${INTEL_PATH}/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
+
+  add_executable(adi_mpi_cpu src/adi_mpi_cpu.cpp)
+  target_compile_definitions(adi_mpi_cpu PRIVATE -D__MKL__)
+  target_include_directories(adi_mpi_cpu PRIVATE ${INTEL_PATH}/mkl/include ${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include ${MPI_PATH}/include)
+  target_link_libraries(adi_mpi_cpu PRIVATE -L${LIBTRID_PATH}/lib -ltridcpu -L${INTEL_PATH}/compiler/lib/intel64 -L${MPI_PATH}/lib -lmpi -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
 
 endif (BUILD_FOR_CPU)
 

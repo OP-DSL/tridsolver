@@ -53,8 +53,8 @@ if (BUILD_FOR_MIC AND INTEL_CC)
 	#set_target_properties(tridmic_offload_sp PROPERTIES COMPILE_FLAGS "-fPIC -DFPPREC=0")
 	#set_target_properties(tridmic_offload_dp PROPERTIES COMPILE_FLAGS "-fPIC -DFPPREC=1")
 
-	target_compile_options(tridmic_offload_sp PRIVATE -xAVX -m64 -parallel -openmp -fPIC -offload -qopt-report-phase=par -opt-report-phase=offload -offload-attribute-target=mic -mkl -offload-option,mic,ld,"-L${INTEL_PATH}/mkl/lib/mic -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -L${INTEL_PATH}/compiler/lib/mic -limf -lintlc -lsvml -lirng -liomp5 -loffload -lcilkrts" -I./include -I./libtrid  -D__OFFLOAD__ -L./libtrid/lib -limf -lintlc -lsvml -lirng)
-	target_compile_options(tridmic_offload_dp PRIVATE -xAVX -m64 -parallel -openmp -fPIC -offload -qopt-report-phase=par -opt-report-phase=offload -offload-attribute-target=mic -mkl -offload-option,mic,ld,"-L${INTEL_PATH}/mkl/lib/mic -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -L${INTEL_PATH}/compiler/lib/mic -limf -lintlc -lsvml -lirng -liomp5 -loffload -lcilkrts" -I./include -I./libtrid  -D__OFFLOAD__ -L./libtrid/lib -limf -lintlc -lsvml -lirng)
+	target_compile_options(tridmic_offload_sp PRIVATE -xAVX -m64 -parallel -qopenmp -fPIC -offload -qopt-report-phase=par -opt-report-phase=offload -offload-attribute-target=mic -mkl -offload-option,mic,ld,"-L${INTEL_PATH}/mkl/lib/mic -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -L${INTEL_PATH}/compiler/lib/mic -limf -lintlc -lsvml -lirng -liomp5 -loffload -lcilkrts" -I./include -I./libtrid  -D__OFFLOAD__ -L./libtrid/lib -limf -lintlc -lsvml -lirng)
+	target_compile_options(tridmic_offload_dp PRIVATE -xAVX -m64 -parallel -qopenmp -fPIC -offload -qopt-report-phase=par -opt-report-phase=offload -offload-attribute-target=mic -mkl -offload-option,mic,ld,"-L${INTEL_PATH}/mkl/lib/mic -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -L${INTEL_PATH}/compiler/lib/mic -limf -lintlc -lsvml -lirng -liomp5 -loffload -lcilkrts" -I./include -I./libtrid  -D__OFFLOAD__ -L./libtrid/lib -limf -lintlc -lsvml -lirng)
 
 
 	#set_target_properties(tridcpu_sp PROPERTIES COMPILE_FLAGS "-DFPPREC=0")
@@ -62,8 +62,8 @@ if (BUILD_FOR_MIC AND INTEL_CC)
 
 	target_compile_definitions(tridmic_native_sp PRIVATE -DFPPREC=0)
 	target_compile_definitions(tridmic_native_dp PRIVATE -DFPPREC=1)
-	target_compile_options(tridmic_native_sp PRIVATE -mmic -parallel -openmp -fPIC)
-	target_compile_options(tridmic_native_dp PRIVATE -mmic -parallel -openmp -fPIC)
+	target_compile_options(tridmic_native_sp PRIVATE -mmic -parallel -qopenmp -fPIC)
+	target_compile_options(tridmic_native_dp PRIVATE -mmic -parallel -qopenmp -fPIC)
 
 	add_library(tridmic_offload SHARED $<TARGET_OBJECTS:tridmic_offload_sp> $<TARGET_OBJECTS:tridmic_offload_dp>)
 	set_target_properties(tridmic_offload PROPERTIES LINK_FLAGS -L./libtrid/lib -limf -lintlc -lsvml -lirng)
@@ -78,6 +78,6 @@ if (BUILD_FOR_MIC AND INTEL_CC)
 		ARCHIVE DESTINATION ${CMAKE_BINARY_DIR}/lib)
 	install(FILES ${PROJECT_SOURCE_DIR}/include/trid_cpu.h ${PROJECT_SOURCE_DIR}/include/trid_common.h ${PROJECT_SOURCE_DIR}/include/trid_simd.h
 		DESTINATION ${CMAKE_BINARY_DIR}/include)
-endif (BUILD_FOR_MIC)
+endif (BUILD_FOR_MIC AND INTEL_CC)
 
 
