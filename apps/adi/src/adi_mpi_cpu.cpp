@@ -423,8 +423,8 @@ int main(int argc, char* argv[]) {
     printf("\nExit Pre\n");
     MPI_Barrier(MPI_COMM_WORLD);
     
-    rms("pre h_u", app.h_u, app, mpi);
-    rms("pre du", app.du, app, mpi);
+    //rms("pre h_u", app.h_u, app, mpi);
+    //rms("pre du", app.du, app, mpi);
     
     timing_end(app.prof, &timer, &elapsed_preproc, "preproc");
 
@@ -611,8 +611,8 @@ int main(int argc, char* argv[]) {
     MPI_Barrier(mpi.x_comm/*MPI_COMM_WORLD*/);
     timing_end(app.prof, &timer, &elapsed_trid_x, "trid-x");
     
-    rms("post x h_u", app.h_u, app, mpi);
-    rms("post x du", app.du, app, mpi);
+    //rms("post x h_u", app.h_u, app, mpi);
+    //rms("post x du", app.du, app, mpi);
 
     //
     // perform tri-diagonal solves in y-direction
@@ -791,8 +791,8 @@ int main(int argc, char* argv[]) {
     MPI_Barrier(mpi.y_comm/*MPI_COMM_WORLD*/);
     timing_end(app.prof, &timer, &elapsed_trid_y, "trid-y");
     
-    rms("post y h_u", app.h_u, app, mpi);
-    rms("post y du", app.du, app, mpi);
+    //rms("post y h_u", app.h_u, app, mpi);
+    //rms("post y du", app.du, app, mpi);
     
     //
     // perform tri-diagonal solves in z-direction
@@ -964,8 +964,8 @@ int main(int argc, char* argv[]) {
     MPI_Barrier(mpi.z_comm/*MPI_COMM_WORLD*/);
     timing_end(app.prof, &timer, &elapsed_trid_y, "trid-z");
     
-    rms("post z h_u", app.h_u, app, mpi);
-    rms("post z du", app.du, app, mpi);
+    //rms("post z h_u", app.h_u, app, mpi);
+    //rms("post z du", app.du, app, mpi);
     
     /*rms("ax", app.ax, app, mpi);
     rms("bx", app.bx, app, mpi);
