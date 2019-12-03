@@ -54,7 +54,7 @@ inline void preproc_mpi(REAL lambda, REAL* __restrict u, REAL* __restrict du, RE
   //  REAL *halo_sndbuf = (REAL*) _mm_malloc(2*app.ny*app.nz*sizeof(REAL),SIMD_WIDTH); // Send Buffer
   //  REAL *halo_rcvbuf = (REAL*) _mm_malloc(2*app.ny*app.nz*sizeof(REAL),SIMD_WIDTH); // Receive Buffer
 
-  timing_start(app.prof, &timer);
+  //timing_start(app.prof, &timer);
   // Gather halo
   // X boundary
   for(k=0; k<app.nz; k++) {
@@ -241,11 +241,11 @@ inline void preproc_mpi(REAL lambda, REAL* __restrict u, REAL* __restrict du, RE
   if(mpi.rank > 0)
     MPI_Recv(&mpi.halo_rcvbuf2[0*app.nz*app.ny], app.nz*app.ny, MPI_FLOAT, mpi.rank-1, 1, MPI_COMM_WORLD, mpi.stat);*/
   
-  timing_end(app.prof, &timer, &app.elapsed_time[9], app.elapsed_name[9]);
+  //timing_end(app.prof, &timer, &app.elapsed_time[9], app.elapsed_name[9]);
 
   REAL tmp, ux_1, ux_2, uy_1, uy_2, uz_1, uz_2;
 
-  timing_start(app.prof, &timer);
+  //timing_start(app.prof, &timer);
   for(k=0; k<app.nz; k++) {
     for(j=0; j<app.ny; j++) {
       for(i=0; i<app.nx; i++) {   // i loop innermost for sequential memory access
@@ -338,5 +338,5 @@ inline void preproc_mpi(REAL lambda, REAL* __restrict u, REAL* __restrict du, RE
       }
     }
   }
-  timing_end(app.prof, &timer, &app.elapsed_time[10], app.elapsed_name[10]);
+  //timing_end(app.prof, &timer, &app.elapsed_time[10], app.elapsed_name[10]);
 }

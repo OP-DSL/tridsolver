@@ -29,7 +29,8 @@ if (BUILD_FOR_CPU)
 	install(FILES ${PROJECT_SOURCE_DIR}/include/trid_cpu.h 
 		            ${PROJECT_SOURCE_DIR}/include/trid_common.h 
 		            ${PROJECT_SOURCE_DIR}/include/trid_util.h
-		            ${PROJECT_SOURCE_DIR}/include/trid_simd.h         
+		            ${PROJECT_SOURCE_DIR}/include/trid_simd.h
+		            ${PROJECT_SOURCE_DIR}/src/cpu/trid_mpi_cpu.hpp
 		      DESTINATION ${CMAKE_BINARY_DIR}/include)
 endif (BUILD_FOR_CPU)
 
@@ -76,7 +77,10 @@ if (BUILD_FOR_MIC AND INTEL_CC)
 	install(TARGETS tridmic_native  
 		LIBRARY DESTINATION ${CMAKE_BINARY_DIR}/lib
 		ARCHIVE DESTINATION ${CMAKE_BINARY_DIR}/lib)
-	install(FILES ${PROJECT_SOURCE_DIR}/include/trid_cpu.h ${PROJECT_SOURCE_DIR}/include/trid_common.h ${PROJECT_SOURCE_DIR}/include/trid_simd.h
+	install(FILES ${PROJECT_SOURCE_DIR}/include/trid_cpu.h 
+					${PROJECT_SOURCE_DIR}/include/trid_common.h 
+					${PROJECT_SOURCE_DIR}/include/trid_simd.h
+					${PROJECT_SOURCE_DIR}/src/cpu/trid_mpi_cpu.hpp
 		DESTINATION ${CMAKE_BINARY_DIR}/include)
 endif (BUILD_FOR_MIC AND INTEL_CC)
 

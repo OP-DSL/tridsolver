@@ -102,7 +102,9 @@ struct app_handle {
   int n_sys_lz;   // Number of reduced systems solved by the current process for Z dimension
 
 #define TIMERS 11
-  double elapsed_time[TIMERS];
+  double elapsed_time_x[TIMERS];
+  double elapsed_time_y[TIMERS];
+  double elapsed_time_z[TIMERS];
   double   timers_min[TIMERS];
   double   timers_max[TIMERS];
   double   timers_avg[TIMERS];
