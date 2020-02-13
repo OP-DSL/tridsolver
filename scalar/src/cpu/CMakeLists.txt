@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.8)
 
 if (BUILD_FOR_CPU)
 #	add_library(tridcpu_sp OBJECT ./trid_cpu.cpp)
-	add_library(tridcpu_dp OBJECT ./trid_cpu.cpp)
+	add_library(tridcpu_dp OBJECT ./trid_cpu.cpp ./trid_mpi_cpu.cpp)
 #	add_library(tridcpu    SHARED $<TARGET_OBJECTS:tridcpu_sp> $<TARGET_OBJECTS:tridcpu_dp>)
 	add_library(tridcpu    SHARED $<TARGET_OBJECTS:tridcpu_dp>)
 
@@ -29,7 +29,9 @@ if (BUILD_FOR_CPU)
 	install(FILES ${PROJECT_SOURCE_DIR}/include/trid_cpu.h 
 		            ${PROJECT_SOURCE_DIR}/include/trid_common.h 
 		            ${PROJECT_SOURCE_DIR}/include/trid_util.h
-		            ${PROJECT_SOURCE_DIR}/include/trid_simd.h         
+		            ${PROJECT_SOURCE_DIR}/include/trid_simd.h
+		            ${PROJECT_SOURCE_DIR}/include/trid_mpi_cpu.h
+                ${PROJECT_SOURCE_DIR}/src/cpu/trid_mpi_cpu.hpp
 		      DESTINATION ${CMAKE_BINARY_DIR}/include)
 endif (BUILD_FOR_CPU)
 

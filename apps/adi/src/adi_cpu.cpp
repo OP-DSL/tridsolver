@@ -84,7 +84,7 @@ inline void timing_end(int prof, double *timer, double *elapsed_accumulate, char
   if(prof==1) {
     elapsed = elapsed_time(timer);
     *elapsed_accumulate += elapsed;
-    printf("\n elapsed %s (sec): %1.10f (s) \n", str,elapsed);
+    //printf("\n elapsed %s (sec): %1.10f (s) \n", str,elapsed);
   }
 }
 
@@ -214,7 +214,7 @@ int main(int argc, char* argv[]) {
     timing_start(prof, &timer);
       preproc<FP>(lambda, h_u, h_du, h_ax, h_bx, h_cx, h_ay, h_by, h_cy, h_az, h_bz, h_cz, nx, nx_pad, ny, nz);
     timing_end(prof, &timer, &elapsed_preproc, "preproc");
-    rms("h_u",h_u, nx_pad, nx, ny, nz);
+    
     //
     // perform tri-diagonal solves in x-direction
     //
@@ -233,22 +233,13 @@ int main(int argc, char* argv[]) {
 
     int solvedim = 0;   // user chosen dimension for which the solution is performed
     #if FPPREC == 0
-      tridSmtsvStridedBatch(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
+      tridSmtsvStridedBatchInc(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
     #elif FPPREC == 1
-      tridDmtsvStridedBatch(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
+      tridDmtsvStridedBatchInc(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
     #endif
 
     timing_end(prof, &timer, &elapsed_trid_x, "trid_x");
-
-    if(it == 0) {
-      rms("ax", h_ax, nx_pad, nx, ny, nz);
-      rms("bx", h_bx, nx_pad, nx, ny, nz);
-      rms("cx", h_cx, nx_pad, nx, ny, nz);
-      rms("du", h_du, nx_pad, nx, ny, nz);
-      rms("h_u",h_u, nx_pad, nx, ny, nz);
-      exit(-2);
-    }
-
+    
     //
     // perform tri-diagonal solves in y-direction
     //
@@ -256,37 +247,11 @@ int main(int argc, char* argv[]) {
 
     solvedim = 1;   // user chosen dimension for which the solution is performed
     #if FPPREC == 0
-      tridSmtsvStridedBatch(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
+      tridSmtsvStridedBatchInc(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
     #elif FPPREC == 1
-      tridDmtsvStridedBatch(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
+      tridDmtsvStridedBatchInc(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
     #endif
-
-    /*#pragma omp parallel for collapse(2) private(k,i,ind) //schedule(guided)
-    for(k=0; k<nz; k++) {
-      for(i=0; i<ROUND_DOWN(nx,SIMD_VEC); i+=SIMD_VEC) {
-        ind = k*nx_pad*ny + i;
-        //trid_scalar_vec<FP,VECTOR,0>(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad/SIMD_VEC);
-        #if FPPREC == 0
-          trid_scalar_vecS(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad/SIMD_VEC);
-        #elif FPPREC == 1
-          trid_scalar_vecD(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad/SIMD_VEC);
-        #endif
-      }
-    }
-    if(ROUND_DOWN(nx,SIMD_VEC) < nx) { // If there is leftover, fork threads an compute it
-      #pragma omp parallel for collapse(2) private(k,i,ind)
-      for(k=0; k<nz; k++) {
-        for(i=ROUND_DOWN(nx,SIMD_VEC); i<nx; i++) {
-          ind = k*nx_pad*ny + i;
-          #if FPPREC == 0
-            trid_scalarS(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad);
-          #elif FPPREC == 1
-            trid_scalarD(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad);
-          #endif
-        }
-      }
-    }*/
-
+    
     timing_end(prof, &timer, &elapsed_trid_y, "trid_y");
 
     //
@@ -296,50 +261,24 @@ int main(int argc, char* argv[]) {
 
     solvedim = 2;   // user chosen dimension for which the solution is performed
     #if FPPREC == 0
-      tridSmtsvStridedBatch(h_az, h_bz, h_cz, h_du, h_u, ndim, solvedim, dims, pads);
+      tridSmtsvStridedBatchInc(h_az, h_bz, h_cz, h_du, h_u, ndim, solvedim, dims, pads);
     #elif FPPREC == 1
-      tridDmtsvStridedBatch(h_az, h_bz, h_cz, h_du, h_u, ndim, solvedim, dims, pads);
+      tridDmtsvStridedBatchInc(h_az, h_bz, h_cz, h_du, h_u, ndim, solvedim, dims, pads);
     #endif
-
-    /*#pragma omp parallel for collapse(2) private(j,i,k,ind) schedule(static,1) // Interleaved scheduling for better data locality and thus lower TLB miss rate
-    for(j=0; j<ny; j++) {
-      for(i=0; i<ROUND_DOWN(nx,SIMD_VEC); i+=SIMD_VEC) {
-        ind = j*nx_pad + i;
-        //trid_scalar_vec<FP,VECTOR,1>(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, (nx_pad/SIMD_VEC)*ny);
-        #if FPPREC == 0
-          trid_scalar_vecSInc(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, (nx_pad/SIMD_VEC)*ny);
-        #elif FPPREC == 1
-          trid_scalar_vecDInc(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, (nx_pad/SIMD_VEC)*ny);
-        #endif
-      }
-    }
-    if(ROUND_DOWN(nx,SIMD_VEC) < nx) { // If there is leftover, fork threads an compute it
-      #pragma omp parallel for collapse(2) private(j,i,k,ind) schedule(static,1)
-      for(j=0; j<ny; j++) {
-        for(i=ROUND_DOWN(nx,SIMD_VEC); i<nx; i++) {
-          ind = j*nx_pad + i;
-          #if FPPREC == 0
-            trid_scalarS(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, nx_pad*ny);
-          #elif FPPREC == 1
-            trid_scalarD(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, nx_pad*ny);
-          #endif
-          for(k=0; k<nz; k++) {
-            h_u[ind + k*nx_pad*ny] += h_du[ind + k*nx_pad*ny];
-          }
-        }
-      }
-    }*/
-
 
     timing_end(prof, &timer, &elapsed_trid_z, "trid_z");
   }
+  
+  rms("end h_u",h_u, nx_pad, nx, ny, nz);
+  rms("end du", h_du, nx_pad, nx, ny, nz);
+  
   elapsed = elapsed_time(&timer2);
   elapsed_total = elapsed;
   printf("\nADI total execution time for %d iterations (sec): %f (s) \n", iter, elapsed);
   fflush(0);
 
   int ldim=nx_pad;
-  #include "print_array.c"
+  //#include "print_array.c"
 
   _mm_free(h_u);
   _mm_free(h_du);

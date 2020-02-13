@@ -7,8 +7,8 @@ option(BUILD_FOR_GPU "Build library for GPU architecture." OFF)
 
 if (INTEL_CC) 
   # Detect/find Intel compilers
-  find_program(CMAKE_C_COMPILER NAMES   icc) 
-  find_program(CMAKE_CXX_COMPILER NAMES icpc) 
+  find_program(CMAKE_C_COMPILER NAMES   mpicc) 
+  find_program(CMAKE_CXX_COMPILER NAMES mpicxx) 
   find_program(CMAKE_AR NAMES           xiar) 
   find_program(CMAKE_LINKER NAMES       xild) 
 
@@ -29,9 +29,12 @@ project("libtrid")
 if (INTEL_CC) 
   # Set compiler flags/options for Intel compiler
   #set(FLAGS_INTEL_DEFAULT "-xCORE_AVX2 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par -opt-report-phase=offload")
-  set(FLAGS_INTEL_DEFAULT "-xHost -m64 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par") #-xCORE_AVX2 
-  set(FLAGS_INTEL_DEBUG   "-g -O0")
-  set(FLAGS_INTEL_RELEASE "-O3 -ip -restrict") #-fp-model fast 
+  #set(FLAGS_INTEL_DEFAULT "-xHost -m64 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report-phase=par") #-xCORE_AVX2 
+  set(FLAGS_INTEL_DEFAULT "-xHost -m64 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout") #-xCORE_AVX2 
+  #set(FLAGS_INTEL_DEBUG   "-g -O0")
+  set(FLAGS_INTEL_DEBUG   "-O3 -ip -restrict -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout -g")
+  #set(FLAGS_INTEL_RELEASE "-O3 -ip -restrict -qopt-report=2 -qopt-report-phase=vec") #-fp-model fast 
+  set(FLAGS_INTEL_RELEASE "-O3 -ip -restrict -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout")
 
   set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS} 			${FLAGS_INTEL_DEFAULT}")
   set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_INTEL_DEBUG}  ")

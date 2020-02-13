@@ -30,313 +30,286 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014
+// Written by Toby Flynn, University of Warwick, T.Flynn@warwick.ac.uk, 2020
 
-//#include"adi_simd.h"
-#include"trid_simd.h"
+#include "trid_simd.h"
 
-#include "adi_mpi.h"
 #include "mpi.h"
+#include "trid_mpi_cpu.h"
 
 template<typename REAL>
-//inline void preproc_mpi(REAL lambda, REAL* __restrict u, REAL* __restrict du, REAL* __restrict ax, REAL* __restrict bx, REAL* __restrict cx, REAL* __restrict ay, REAL* __restrict by, REAL* __restrict cy, REAL* __restrict az, REAL* __restrict bz, REAL* __restrict cz, int nx, int nx_pad, int ny, int nz, int ny_g, int nz_g, int nx_g, int x_start_g, int x_end_g) {
-inline void preproc_mpi(REAL lambda, REAL* __restrict u, REAL* __restrict du, REAL* __restrict ax, REAL* __restrict bx, REAL* __restrict cx, REAL* __restrict ay, REAL* __restrict by, REAL* __restrict cy, REAL* __restrict az, REAL* __restrict bz, REAL* __restrict cz, app_handle &app, mpi_handle &mpi) {
+struct preproc_handle {
+  REAL *halo_snd_x;
+  REAL *halo_rcv_x;
+  REAL *halo_snd_y;
+  REAL *halo_rcv_y;
+  REAL *halo_snd_z;
+  REAL *halo_rcv_z;
+  
+  REAL lambda;
+};
+
+template<typename REAL>
+inline void preproc_mpi(preproc_handle<REAL> &pre_handle, REAL* __restrict u, REAL* __restrict du, REAL* __restrict a, REAL* __restrict b, REAL* __restrict c, trid_handle<REAL> &trid_handle, trid_mpi_handle &mpi_handle) {
   int   i, j, k, ind;
-  REAL a, b, c, d;
   double elapsed, timer = 0.0;
-  //
-  // calculate r.h.s. and set tri-diagonal coefficients
-  //
-  //#ifndef VALID
-  //  #pragma omp parallel for collapse(2) private(i,ind,a,b,c,d)
-  //#endif
-
-  //  REAL *halo_sndbuf = (REAL*) _mm_malloc(2*app.ny*app.nz*sizeof(REAL),SIMD_WIDTH); // Send Buffer
-  //  REAL *halo_rcvbuf = (REAL*) _mm_malloc(2*app.ny*app.nz*sizeof(REAL),SIMD_WIDTH); // Receive Buffer
-
-  timing_start(app.prof, &timer);
+  
+  int nx = trid_handle.size[0];
+  int ny = trid_handle.size[1];
+  int nz = trid_handle.size[2];
+  
+  int padx = trid_handle.pads[0];
+  int pady = trid_handle.pads[1];
+  int padz = trid_handle.pads[2];
+  
   // Gather halo
   // X boundary
-  for(k=0; k<app.nz; k++) {
-    for(j=0; j<app.ny; j++) {
-      mpi.halo_snd_x[0*app.nz*app.ny + k*app.ny + j] = u[k*app.ny*app.nx_pad + j*app.nx_pad +        0];
-      mpi.halo_snd_x[1*app.nz*app.ny + k*app.ny + j] = u[k*app.ny*app.nx_pad + j*app.nx_pad + app.nx-1];
+  for(k = 0; k < nz; k++) {
+    for(j = 0; j < ny; j++) {
+      pre_handle.halo_snd_x[0*nz*ny + k*ny + j] = u[k*pady*padx + j*padx + 0];
+      pre_handle.halo_snd_x[1*nz*ny + k*ny + j] = u[k*pady*padx + j*padx + nx - 1];
     }
   }
   
   // Y boundary
-  for(k=0; k<app.nz; k++) {
-    for(i=0; i<app.nx; i++) {
-      mpi.halo_snd_y[0*app.nz*app.nx + k*app.nx + i] = u[k*app.ny*app.nx_pad + i +        0];
-      mpi.halo_snd_y[1*app.nz*app.nx + k*app.nx + i] = u[k*app.ny*app.nx_pad + i + (app.nx_pad)*(app.ny-1)];
+  for(k = 0; k < nz; k++) {
+    for(i = 0; i < nx; i++) {
+      pre_handle.halo_snd_y[0*nz*nx + k*nx + i] = u[k*pady*padx + i + 0];
+      pre_handle.halo_snd_y[1*nz*nx + k*nx + i] = u[k*pady*padx + i + (padx)*(ny-1)];
     }
   }
   
   // Z boundary
-  for(j=0; j<app.ny; j++) {
-    for(i=0; i<app.nx; i++) {
-      mpi.halo_snd_z[0*app.ny*app.nx + j*app.nx + i] = u[j*app.nx_pad + i +        0];
-      mpi.halo_snd_z[1*app.ny*app.nx + j*app.nx + i] = u[j*app.nx_pad + i + (app.nx_pad)*(app.ny)*(app.nz-1)];
+  for(j = 0; j < ny; j++) {
+    for(i = 0; i < nx; i++) {
+      pre_handle.halo_snd_z[0*ny*nx + j*nx + i] = u[j*padx + i + 0];
+      pre_handle.halo_snd_z[1*ny*nx + j*nx + i] = u[j*padx + i + padx*pady*(nz-1)];
     }
   }
   
   // Send and receive halo
   // Send X Left
-  if(mpi.coords[0] > 0) {
+  if(mpi_handle.coords[0] > 0) {
       // Convert destination coordinates of MPI node into the node's rank
       int dest_coords[3];
-      dest_coords[0] = mpi.coords[0] - 1;
-      dest_coords[1] = mpi.coords[1];
-      dest_coords[2] = mpi.coords[2];
+      dest_coords[0] = mpi_handle.coords[0] - 1;
+      dest_coords[1] = mpi_handle.coords[1];
+      dest_coords[2] = mpi_handle.coords[2];
       int destination_rank = 0;
-      MPI_Cart_rank(mpi.comm, dest_coords, &destination_rank);
+      MPI_Cart_rank(mpi_handle.comm, dest_coords, &destination_rank);
       // Send the boundary data
-      MPI_Send(&mpi.halo_snd_x[0*app.nz*app.ny], app.nz*app.ny, MPI_DOUBLE, destination_rank, 0, mpi.comm);
+      MPI_Send(&pre_handle.halo_snd_x[0*nz*ny], nz*ny, MPI_DOUBLE, destination_rank, 
+               0, mpi_handle.comm);
   }
   // Receive
-  if(mpi.coords[0] < mpi.pdims[0] - 1) {
+  if(mpi_handle.coords[0] < mpi_handle.pdims[0] - 1) {
       // Convert source coordinates of MPI node into the node's rank
       int source_coords[3];
-      source_coords[0] = mpi.coords[0] + 1;
-      source_coords[1] = mpi.coords[1];
-      source_coords[2] = mpi.coords[2];
+      source_coords[0] = mpi_handle.coords[0] + 1;
+      source_coords[1] = mpi_handle.coords[1];
+      source_coords[2] = mpi_handle.coords[2];
       int source_rank = 0;
-      MPI_Cart_rank(mpi.comm, source_coords, &source_rank);
-      MPI_Recv(&mpi.halo_rcv_x[0*app.nz*app.ny], app.nz*app.ny, MPI_DOUBLE, source_rank, 0, mpi.comm, mpi.stat);
+      MPI_Cart_rank(mpi_handle.comm, source_coords, &source_rank);
+      MPI_Recv(&pre_handle.halo_rcv_x[0*nz*ny], nz*ny, MPI_DOUBLE, source_rank, 0,
+               mpi_handle.comm, MPI_STATUS_IGNORE);
   }
 
   // Send X Right
-  if(mpi.coords[0] < mpi.pdims[0] - 1) {
+  if(mpi_handle.coords[0] < mpi_handle.pdims[0] - 1) {
       // Convert destination coordinates of MPI node into the node's rank
       int dest_coords[3];
-      dest_coords[0] = mpi.coords[0] + 1;
-      dest_coords[1] = mpi.coords[1];
-      dest_coords[2] = mpi.coords[2];
+      dest_coords[0] = mpi_handle.coords[0] + 1;
+      dest_coords[1] = mpi_handle.coords[1];
+      dest_coords[2] = mpi_handle.coords[2];
       int destination_rank = 0;
-      MPI_Cart_rank(mpi.comm, dest_coords, &destination_rank);
+      MPI_Cart_rank(mpi_handle.comm, dest_coords, &destination_rank);
       // Send the boundary data
-      MPI_Send(&mpi.halo_snd_x[1*app.nz*app.ny], app.nz*app.ny, MPI_DOUBLE, destination_rank, 0, mpi.comm);
+      MPI_Send(&pre_handle.halo_snd_x[1*nz*ny], nz*ny, MPI_DOUBLE, destination_rank, 
+               0, mpi_handle.comm);
   }
   // Receive
-  if(mpi.coords[0] > 0) {
+  if(mpi_handle.coords[0] > 0) {
       // Convert source coordinates of MPI node into the node's rank
       int source_coords[3];
-      source_coords[0] = mpi.coords[0] - 1;
-      source_coords[1] = mpi.coords[1];
-      source_coords[2] = mpi.coords[2];
+      source_coords[0] = mpi_handle.coords[0] - 1;
+      source_coords[1] = mpi_handle.coords[1];
+      source_coords[2] = mpi_handle.coords[2];
       int source_rank = 0;
-      MPI_Cart_rank(mpi.comm, source_coords, &source_rank);
-      MPI_Recv(&mpi.halo_rcv_x[1*app.nz*app.ny], app.nz*app.ny, MPI_DOUBLE, source_rank, 0, mpi.comm, mpi.stat);
+      MPI_Cart_rank(mpi_handle.comm, source_coords, &source_rank);
+      MPI_Recv(&pre_handle.halo_rcv_x[1*nz*ny], nz*ny, MPI_DOUBLE, source_rank, 0,
+               mpi_handle.comm, MPI_STATUS_IGNORE);
   }
   
   // Send Y Backwards
-  if(mpi.coords[1] > 0) {
+  if(mpi_handle.coords[1] > 0) {
       // Convert destination coordinates of MPI node into the node's rank
       int dest_coords[3];
-      dest_coords[0] = mpi.coords[0];
-      dest_coords[1] = mpi.coords[1] - 1;
-      dest_coords[2] = mpi.coords[2];
+      dest_coords[0] = mpi_handle.coords[0];
+      dest_coords[1] = mpi_handle.coords[1] - 1;
+      dest_coords[2] = mpi_handle.coords[2];
       int destination_rank = 0;
-      MPI_Cart_rank(mpi.comm, dest_coords, &destination_rank);
+      MPI_Cart_rank(mpi_handle.comm, dest_coords, &destination_rank);
       // Send the boundary data
-      MPI_Send(&mpi.halo_snd_y[0*app.nz*app.nx], app.nz*app.nx, MPI_DOUBLE, destination_rank, 0, mpi.comm);
+      MPI_Send(&pre_handle.halo_snd_y[0*nz*nx], nz*nx, MPI_DOUBLE, destination_rank, 
+               0, mpi_handle.comm);
   }
   // Receive
-  if(mpi.coords[1] < mpi.pdims[1] - 1) {
+  if(mpi_handle.coords[1] < mpi_handle.pdims[1] - 1) {
       // Convert source coordinates of MPI node into the node's rank
       int source_coords[3];
-      source_coords[0] = mpi.coords[0];
-      source_coords[1] = mpi.coords[1] + 1;
-      source_coords[2] = mpi.coords[2];
+      source_coords[0] = mpi_handle.coords[0];
+      source_coords[1] = mpi_handle.coords[1] + 1;
+      source_coords[2] = mpi_handle.coords[2];
       int source_rank = 0;
-      MPI_Cart_rank(mpi.comm, source_coords, &source_rank);
-      MPI_Recv(&mpi.halo_rcv_y[0*app.nz*app.nx], app.nz*app.nx, MPI_DOUBLE, source_rank, 0, mpi.comm, mpi.stat);
+      MPI_Cart_rank(mpi_handle.comm, source_coords, &source_rank);
+      MPI_Recv(&pre_handle.halo_rcv_y[0*nz*nx], nz*nx, MPI_DOUBLE, source_rank, 0,
+               mpi_handle.comm, MPI_STATUS_IGNORE);
   }
   
   // Send Y Forwards
-  if(mpi.coords[1] < mpi.pdims[1] - 1) {
+  if(mpi_handle.coords[1] < mpi_handle.pdims[1] - 1) {
       // Convert destination coordinates of MPI node into the node's rank
       int dest_coords[3];
-      dest_coords[0] = mpi.coords[0];
-      dest_coords[1] = mpi.coords[1] + 1;
-      dest_coords[2] = mpi.coords[2];
+      dest_coords[0] = mpi_handle.coords[0];
+      dest_coords[1] = mpi_handle.coords[1] + 1;
+      dest_coords[2] = mpi_handle.coords[2];
       int destination_rank = 0;
-      MPI_Cart_rank(mpi.comm, dest_coords, &destination_rank);
+      MPI_Cart_rank(mpi_handle.comm, dest_coords, &destination_rank);
       // Send the boundary data
-      MPI_Send(&mpi.halo_snd_y[1*app.nz*app.nx], app.nz*app.nx, MPI_DOUBLE, destination_rank, 0, mpi.comm);
+      MPI_Send(&pre_handle.halo_snd_y[1*nz*nx], nz*nx, MPI_DOUBLE, destination_rank,
+               0, mpi_handle.comm);
   }
   // Receive
-  if(mpi.coords[1] > 0) {
+  if(mpi_handle.coords[1] > 0) {
       // Convert source coordinates of MPI node into the node's rank
       int source_coords[3];
-      source_coords[0] = mpi.coords[0];
-      source_coords[1] = mpi.coords[1] - 1;
-      source_coords[2] = mpi.coords[2];
+      source_coords[0] = mpi_handle.coords[0];
+      source_coords[1] = mpi_handle.coords[1] - 1;
+      source_coords[2] = mpi_handle.coords[2];
       int source_rank = 0;
-      MPI_Cart_rank(mpi.comm, source_coords, &source_rank);
-      MPI_Recv(&mpi.halo_rcv_y[1*app.nz*app.nx], app.nz*app.nx, MPI_DOUBLE, source_rank, 0, mpi.comm, mpi.stat);
+      MPI_Cart_rank(mpi_handle.comm, source_coords, &source_rank);
+      MPI_Recv(&pre_handle.halo_rcv_y[1*nz*nx], nz*nx, MPI_DOUBLE, source_rank, 0,
+               mpi_handle.comm, MPI_STATUS_IGNORE);
   }
   
   // Send Z Below
-  if(mpi.coords[2] > 0) {
+  if(mpi_handle.coords[2] > 0) {
       // Convert destination coordinates of MPI node into the node's rank
       int dest_coords[3];
-      dest_coords[0] = mpi.coords[0];
-      dest_coords[1] = mpi.coords[1];
-      dest_coords[2] = mpi.coords[2] - 1;
+      dest_coords[0] = mpi_handle.coords[0];
+      dest_coords[1] = mpi_handle.coords[1];
+      dest_coords[2] = mpi_handle.coords[2] - 1;
       int destination_rank = 0;
-      MPI_Cart_rank(mpi.comm, dest_coords, &destination_rank);
+      MPI_Cart_rank(mpi_handle.comm, dest_coords, &destination_rank);
       // Send the boundary data
-      MPI_Send(&mpi.halo_snd_z[0*app.ny*app.nx], app.nx*app.ny, MPI_DOUBLE, destination_rank, 0, mpi.comm);
+      MPI_Send(&pre_handle.halo_snd_z[0*ny*nx], nx*ny, MPI_DOUBLE, destination_rank,
+               0, mpi_handle.comm);
   }
   // Receive
-  if(mpi.coords[2] < mpi.pdims[2] - 1) {
+  if(mpi_handle.coords[2] < mpi_handle.pdims[2] - 1) {
       // Convert source coordinates of MPI node into the node's rank
       int source_coords[3];
-      source_coords[0] = mpi.coords[0];
-      source_coords[1] = mpi.coords[1];
-      source_coords[2] = mpi.coords[2] + 1;
+      source_coords[0] = mpi_handle.coords[0];
+      source_coords[1] = mpi_handle.coords[1];
+      source_coords[2] = mpi_handle.coords[2] + 1;
       int source_rank = 0;
-      MPI_Cart_rank(mpi.comm, source_coords, &source_rank);
-      MPI_Recv(&mpi.halo_rcv_z[0*app.ny*app.nz], app.nx*app.ny, MPI_DOUBLE, source_rank, 0, mpi.comm, mpi.stat);
+      MPI_Cart_rank(mpi_handle.comm, source_coords, &source_rank);
+      MPI_Recv(&pre_handle.halo_rcv_z[0*ny*nz], nx*ny, MPI_DOUBLE, source_rank, 0,
+               mpi_handle.comm, MPI_STATUS_IGNORE);
   }
   
   // Send Z Above
-  if(mpi.coords[2] < mpi.pdims[2] - 1) {
+  if(mpi_handle.coords[2] < mpi_handle.pdims[2] - 1) {
       // Convert destination coordinates of MPI node into the node's rank
       int dest_coords[3];
-      dest_coords[0] = mpi.coords[0];
-      dest_coords[1] = mpi.coords[1];
-      dest_coords[2] = mpi.coords[2] + 1;
+      dest_coords[0] = mpi_handle.coords[0];
+      dest_coords[1] = mpi_handle.coords[1];
+      dest_coords[2] = mpi_handle.coords[2] + 1;
       int destination_rank = 0;
-      MPI_Cart_rank(mpi.comm, dest_coords, &destination_rank);
+      MPI_Cart_rank(mpi_handle.comm, dest_coords, &destination_rank);
       // Send the boundary data
-      MPI_Send(&mpi.halo_snd_z[1*app.ny*app.nx], app.nx*app.ny, MPI_DOUBLE, destination_rank, 0, mpi.comm);
+      MPI_Send(&pre_handle.halo_snd_z[1*ny*nx], nx*ny, MPI_DOUBLE, destination_rank, 
+               0, mpi_handle.comm);
   }
   // Receive
-  if(mpi.coords[2] > 0) {
+  if(mpi_handle.coords[2] > 0) {
       // Convert source coordinates of MPI node into the node's rank
       int source_coords[3];
-      source_coords[0] = mpi.coords[0];
-      source_coords[1] = mpi.coords[1];
-      source_coords[2] = mpi.coords[2] - 1;
+      source_coords[0] = mpi_handle.coords[0];
+      source_coords[1] = mpi_handle.coords[1];
+      source_coords[2] = mpi_handle.coords[2] - 1;
       int source_rank = 0;
-      MPI_Cart_rank(mpi.comm, source_coords, &source_rank);
-      MPI_Recv(&mpi.halo_rcv_z[1*app.ny*app.nx], app.nx*app.ny, MPI_DOUBLE, source_rank, 0, mpi.comm, mpi.stat);
+      MPI_Cart_rank(mpi_handle.comm, source_coords, &source_rank);
+      MPI_Recv(&pre_handle.halo_rcv_z[1*ny*nx], nx*ny, MPI_DOUBLE, source_rank, 0, 
+               mpi_handle.comm, MPI_STATUS_IGNORE);
   }
-  
-  /*if(mpi.rank > 0) {
-    //printf("SENDING mpirank = %d  left buffer\n",mpi.rank);
-    MPI_Isend(&mpi.halo_sndbuf2[0*app.nz*app.ny], app.nz*app.ny, MPI_FLOAT, mpi.rank-1, 0, MPI_COMM_WORLD, mpi.req);
-    //printf("Done\n");
-  }
-  if(mpi.rank < mpi.procs-1) {
-    //printf("SENDING mpirank = %d  right buffer\n",mpi.rank);
-    MPI_Isend(&mpi.halo_sndbuf2[1*app.nz*app.ny], app.nz*app.ny, MPI_FLOAT, mpi.rank+1, 1, MPI_COMM_WORLD, mpi.req);
-    //printf("Done\n");
-  }
-  // Receive halo
-  if(mpi.rank < mpi.procs-1)
-    MPI_Recv(&mpi.halo_rcvbuf2[1*app.nz*app.ny], app.nz*app.ny, MPI_FLOAT, mpi.rank+1, 0, MPI_COMM_WORLD, mpi.stat);
-  if(mpi.rank > 0)
-    MPI_Recv(&mpi.halo_rcvbuf2[0*app.nz*app.ny], app.nz*app.ny, MPI_FLOAT, mpi.rank-1, 1, MPI_COMM_WORLD, mpi.stat);*/
-  
-  timing_end(app.prof, &timer, &app.elapsed_time[9], app.elapsed_name[9]);
 
   REAL tmp, ux_1, ux_2, uy_1, uy_2, uz_1, uz_2;
+  
+  for(k = 0; k < nz; k++) {
+    for(j = 0; j < ny; j++) {
+      for(i = 0; i < nx; i++) {   // i loop innermost for sequential memory access
+        ind = k*padx*pady + j*padx + i;
+        if( (trid_handle.start_g[0]==0 && i==0) || 
+            (trid_handle.end_g[0]==trid_handle.size_g[0]-1 && i==trid_handle.size[0]-1) ||
+            (trid_handle.start_g[1]==0 && j==0) || 
+            (trid_handle.end_g[1]==trid_handle.size_g[1]-1 && j==trid_handle.size[1]-1) ||
+            (trid_handle.start_g[2]==0 && k==0) || 
+            (trid_handle.end_g[2]==trid_handle.size_g[2]-1 && k==trid_handle.size[2]-1)) {
 
-  timing_start(app.prof, &timer);
-  for(k=0; k<app.nz; k++) {
-    for(j=0; j<app.ny; j++) {
-      for(i=0; i<app.nx; i++) {   // i loop innermost for sequential memory access
-        ind = k*app.nx_pad*app.ny + j*app.nx_pad + i;
-        if( (app.x_start_g==0 && i==0) || (app.x_end_g==app.nx_g-1 && i==app.nx-1) ||
-            (app.y_start_g==0 && j==0) || (app.y_end_g==app.ny_g-1 && j==app.ny-1) ||
-            (app.z_start_g==0 && k==0) || (app.z_end_g==app.nz_g-1 && k==app.nz-1) ) {
-
-          d = 0.0f; // Dirichlet b.c.'s
-          a = 0.0f;
-          b = 1.0f;
-          c = 0.0f;
+          du[ind] = 0.0f; // Dirichlet b.c.'s
+          a[ind] = 0.0f;
+          b[ind] = 1.0f;
+          c[ind] = 0.0f;
         }
         else {
           
           if(i == 0) {
-            ux_1 = mpi.halo_rcv_x[1*app.nz*app.ny + k*app.ny + j];
+            ux_1 = pre_handle.halo_rcv_x[1*nz*ny + k*ny + j];
           } else {
             ux_1 = u[ind - 1];
           }
           
-          if(i == app.nx - 1) {
-            ux_2 = mpi.halo_rcv_x[0*app.nz*app.ny + k*app.ny + j];
+          if(i == nx - 1) {
+            ux_2 = pre_handle.halo_rcv_x[0*nz*ny + k*ny + j];
           } else {
             ux_2 = u[ind + 1];
           }
           
           if(j == 0) {
-            uy_1 = mpi.halo_rcv_y[1*app.nz*app.nx + k*app.nx + i];
+            uy_1 = pre_handle.halo_rcv_y[1*nz*nx + k*nx + i];
           } else {
-            uy_1 = u[ind - app.nx_pad];
+            uy_1 = u[ind - padx];
           }
           
-          if(j == app.ny - 1) {
-            uy_2 = mpi.halo_rcv_y[0*app.nz*app.nx + k*app.nx + i];
+          if(j == ny - 1) {
+            uy_2 = pre_handle.halo_rcv_y[0*nz*nx + k*nx + i];
           } else {
-            uy_2 = u[ind + app.nx_pad];
+            uy_2 = u[ind + padx];
           }
           
           if(k == 0) {
-            uz_1 = mpi.halo_rcv_z[1*app.ny*app.nx + j*app.nx + i];
+            uz_1 = pre_handle.halo_rcv_z[1*ny*nx + j*nx + i];
           } else {
-            uz_1 = u[ind - app.nx_pad*app.ny];
+            uz_1 = u[ind - padx*pady];
           }
           
-          if(k == app.nz - 1) {
-            uz_2 = mpi.halo_rcv_z[0*app.ny*app.nx + j*app.nx + i];
+          if(k == nz - 1) {
+            uz_2 = pre_handle.halo_rcv_z[0*ny*nx + j*nx + i];
           } else {
-            uz_2 = u[ind + app.nx_pad*app.ny];
+            uz_2 = u[ind + padx*pady];
           }
           
-          /*if(i==0 && mpi.coords[0]>0) {
-            tmp = mpi.halo_rcvbuf2[0*app.nz*app.ny + k*app.ny + j];
-            d = lambda*(  tmp                        + u[ind+1                  ]
-                        + u[ind-app.nx_pad         ] + u[ind+app.nx_pad         ]
-                        + u[ind-app.nx_pad*app.ny] + u[ind+app.nx_pad*app.ny]
-                        - 6.0f*u[ind]);
-          } else if(i==app.nx-1 && mpi.coords[0]<mpi.pdims[0]-1) {
-            tmp = mpi.halo_rcvbuf2[1*app.nz*app.ny + k*app.ny + j];
-            d = lambda*(  u[ind-1]                   + tmp
-                        + u[ind-app.nx_pad         ] + u[ind+app.nx_pad         ]
-                        + u[ind-app.nx_pad*app.ny] + u[ind+app.nx_pad*app.ny]
-                        - 6.0f*u[ind]);
-          } else {
-            d = lambda*(  u[ind-1                  ] + u[ind+1                  ]
-                        + u[ind-app.nx_pad         ] + u[ind+app.nx_pad         ]
-                        + u[ind-app.nx_pad*app.ny] + u[ind+app.nx_pad*app.ny]
-                        - 6.0f*u[ind]);
-          }*/
-          d = lambda*(  ux_1 + ux_2
-                      + uy_1 + uy_2
-                      + uz_1 + uz_2
-                      - 6.0f*u[ind]);
-          
+          du[ind] = pre_handle.lambda*( ux_1 + ux_2
+                                + uy_1 + uy_2
+                                + uz_1 + uz_2
+                                - 6.0f * u[ind]);
 
-          a = -0.5f * lambda;
-          b =  1.0f + lambda;
-          c = -0.5f * lambda;
+          a[ind] = -0.5f * pre_handle.lambda;
+          b[ind] =  1.0f + pre_handle.lambda;
+          c[ind] = -0.5f * pre_handle.lambda;
         }
-        du[ind] = d;
-        ax[ind] = a;
-        bx[ind] = b;
-        cx[ind] = c;
-        ay[ind] = a;
-        by[ind] = b;
-        cy[ind] = c;
-        az[ind] = a;
-        bz[ind] = b;
-        cz[ind] = c;
       }
     }
   }
-  timing_end(app.prof, &timer, &app.elapsed_time[10], app.elapsed_name[10]);
 }
