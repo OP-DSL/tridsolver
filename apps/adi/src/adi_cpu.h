@@ -35,7 +35,7 @@ inline void timing_end(int prof, double *timer, double *elapsed_accumulate, char
   if(prof==1) {
     elapsed = elapsed_time(timer);
     *elapsed_accumulate += elapsed;
-    printf("\n elapsed %s (sec): %1.10f (s) \n", str,elapsed);
+    //printf("\n elapsed %s (sec): %1.10f (s) \n", str,elapsed);
   }
 }
 

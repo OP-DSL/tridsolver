@@ -256,7 +256,7 @@ inline void preproc_mpi(preproc_handle<REAL> &pre_handle, REAL* __restrict u, RE
             (trid_handle.end_g[1]==trid_handle.size_g[1]-1 && j==trid_handle.size[1]-1) ||
             (trid_handle.start_g[2]==0 && k==0) || 
             (trid_handle.end_g[2]==trid_handle.size_g[2]-1 && k==trid_handle.size[2]-1)) {
-
+          
           du[ind] = 0.0f; // Dirichlet b.c.'s
           a[ind] = 0.0f;
           b[ind] = 1.0f;
