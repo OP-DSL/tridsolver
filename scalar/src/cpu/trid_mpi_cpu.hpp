@@ -126,7 +126,6 @@ inline void thomas_on_reduced(
   // reverse pass
   //
   dd_r[ind] = dd;
-  #pragma omp simd
   for(i=N-2; i>=0; i--) {
     ind    = ind - stride;
     dd     = d2[i] - c2[i]*dd;
