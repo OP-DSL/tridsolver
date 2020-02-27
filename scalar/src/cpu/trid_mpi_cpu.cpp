@@ -144,11 +144,7 @@ void tridInit(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int ndim, 
   for(int i = 0; i < handle.ndim; i++) {
     setStartEnd(&handle.start_g[i], &handle.end_g[i], mpi_handle.coords[i], mpi_handle.pdims[i], 
                 handle.size_g[i]);
-    
-    /*int tmp = 1 + (handle.size_g[i] - 1) / mpi_handle.pdims[i];
-    
-    handle.start_g[i] = mpi_handle.coords[i] * tmp;
-    handle.end_g[i]   = MIN(((mpi_handle.coords[i] + 1) * tmp) - 1, handle.size_g[i] - 1);*/
+
     handle.size[i]    = handle.end_g[i] - handle.start_g[i] + 1;
     
     // Only pad the x dimension
@@ -175,18 +171,15 @@ void tridInit(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int ndim, 
   handle.dd  = (REAL *) _mm_malloc(mem_size, SIMD_WIDTH);
   
   // Calculate reduced system sizes for each dimension
-  handle.sys_len_l = (int *) calloc(handle.ndim, sizeof(int));
-  handle.n_sys_g = (int *) calloc(handle.ndim, sizeof(int));
-  handle.n_sys_l = (int *) calloc(handle.ndim, sizeof(int));
+  handle.sys_len_r = (int *) calloc(handle.ndim, sizeof(int));
+  handle.n_sys = (int *) calloc(handle.ndim, sizeof(int));
   
   for(int i = 0; i < handle.ndim; i++) {
-    handle.sys_len_l[i] = mpi_handle.pdims[i] * 2;
-    handle.n_sys_g[i] = 1;
-    handle.n_sys_l[i] = 1;
+    handle.sys_len_r[i] = mpi_handle.pdims[i] * 2;
+    handle.n_sys[i] = 1;
     for(int j = 0; j < handle.ndim; j++) {
       if(j != i) {
-        handle.n_sys_g[i] *= handle.size[j];
-        handle.n_sys_l[i] *= handle.size[j];
+        handle.n_sys[i] *= handle.size[j];
       }
     }
   }
@@ -194,8 +187,8 @@ void tridInit(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int ndim, 
   // Allocate memory for container used to communicate reduced system
   int max = 0;
   for(int i = 0; i < handle.ndim; i++) {
-    if(handle.n_sys_l[i] * handle.sys_len_l[i] > max) {
-      max = handle.n_sys_l[i] * handle.sys_len_l[i];
+    if(handle.n_sys[i] * handle.sys_len_r[i] > max) {
+      max = handle.n_sys[i] * handle.sys_len_r[i];
     }
   }
   
@@ -203,13 +196,6 @@ void tridInit(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int ndim, 
   handle.halo_rcvbuf = (REAL *) _mm_malloc(max * 3 * sizeof(REAL), SIMD_WIDTH);
   
   // Allocate memory for reduced system arrays
-  max = 0;
-  for(int i = 0; i < handle.ndim; i++) {
-    if(handle.sys_len_l[i] * handle.n_sys_l[i] > max) {
-      max = handle.sys_len_l[i] * handle.n_sys_l[i];
-    }
-  }
-  
   handle.aa_r = (REAL *) _mm_malloc(sizeof(REAL) * max, SIMD_WIDTH);
   handle.cc_r = (REAL *) _mm_malloc(sizeof(REAL) * max, SIMD_WIDTH);
   handle.dd_r = (REAL *) _mm_malloc(sizeof(REAL) * max, SIMD_WIDTH);
@@ -232,9 +218,8 @@ void tridClean(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle) {
   _mm_free(handle.aa);
   _mm_free(handle.cc);
   _mm_free(handle.dd);
-  free(handle.sys_len_l);
-  free(handle.n_sys_g);
-  free(handle.n_sys_l);
+  free(handle.sys_len_r);
+  free(handle.n_sys);
   _mm_free(handle.halo_sndbuf);
   _mm_free(handle.halo_rcvbuf);
   _mm_free(handle.aa_r);
@@ -253,7 +238,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Do modified thomas forward pass
     #pragma omp parallel for
-    for(int id = 0; id < handle.n_sys_g[0]; id++) {
+    for(int id = 0; id < handle.n_sys[0]; id++) {
       int base = id * handle.pads[0];
       thomas_forward<REAL>(&handle.a[base], &handle.b[base], &handle.c[base], &handle.du[base],
                      &handle.h_u[base], &handle.aa[base], &handle.cc[base],
@@ -262,7 +247,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Pack boundary values
     #pragma omp parallel for
-    for(int id = 0; id < handle.n_sys_g[0]; id++) {
+    for(int id = 0; id < handle.n_sys[0]; id++) {
       // Gather coefficients of a,c,d
       int halo_base = id * 6;
       int data_base = id * handle.pads[0];
@@ -276,20 +261,20 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Communicate boundary values
     if(std::is_same<REAL, float>::value) {
-      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[0]*3*2, MPI_FLOAT, handle.halo_rcvbuf,
-               handle.n_sys_l[0]*3*2, MPI_FLOAT, 0, mpi_handle.x_comm);
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys[0]*3*2, MPI_FLOAT, handle.halo_rcvbuf,
+               handle.n_sys[0]*3*2, MPI_FLOAT, 0, mpi_handle.x_comm);
     } else {
-      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[0]*3*2, MPI_DOUBLE, handle.halo_rcvbuf,
-               handle.n_sys_l[0]*3*2, MPI_DOUBLE, 0, mpi_handle.x_comm);
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys[0]*3*2, MPI_DOUBLE, handle.halo_rcvbuf,
+               handle.n_sys[0]*3*2, MPI_DOUBLE, 0, mpi_handle.x_comm);
     }
     
     // Unpack boundary values
     if(mpi_handle.coords[0] == 0) {
       #pragma omp parallel for collapse(2)
       for(int p = 0; p < mpi_handle.pdims[0]; p++) {
-        for(int id = 0; id < handle.n_sys_l[0]; id++) {
-          int halo_base = p * handle.n_sys_l[0] * 6 + id * 6;
-          int data_base = id * handle.sys_len_l[0] + p * 2;
+        for(int id = 0; id < handle.n_sys[0]; id++) {
+          int halo_base = p * handle.n_sys[0] * 6 + id * 6;
+          int data_base = id * handle.sys_len_r[0] + p * 2;
           handle.aa_r[data_base]     = handle.halo_rcvbuf[halo_base];
           handle.aa_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 1];
           handle.cc_r[data_base]     = handle.halo_rcvbuf[halo_base + 2];
@@ -303,10 +288,10 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     // Compute reduced system
     if(mpi_handle.coords[0] == 0) {
       #pragma omp parallel for
-      for(int id = 0; id < handle.n_sys_l[0]; id++) {
-        int base = id * handle.sys_len_l[0];
+      for(int id = 0; id < handle.n_sys[0]; id++) {
+        int base = id * handle.sys_len_r[0];
         thomas_on_reduced<REAL>(&handle.aa_r[base], &handle.cc_r[base], &handle.dd_r[base],
-                          handle.sys_len_l[0], 1);
+                          handle.sys_len_r[0], 1);
       }
     }
     
@@ -314,9 +299,9 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     if(mpi_handle.coords[0] == 0) {
       #pragma omp parallel for
       for(int p = 0; p < mpi_handle.pdims[0]; p++) {
-        for(int id = 0; id < handle.n_sys_l[0]; id++) {
-          int halo_base = p * handle.n_sys_l[0] * 2 + id * 2;
-          int data_base = id * handle.sys_len_l[0] + p * 2;
+        for(int id = 0; id < handle.n_sys[0]; id++) {
+          int halo_base = p * handle.n_sys[0] * 2 + id * 2;
+          int data_base = id * handle.sys_len_r[0] + p * 2;
           handle.halo_rcvbuf[halo_base]     = handle.dd_r[data_base];
           handle.halo_rcvbuf[halo_base + 1] = handle.dd_r[data_base + 1];
         }
@@ -325,16 +310,16 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Send back new values
     if(std::is_same<REAL, float>::value) {
-      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[0] * 2, MPI_FLOAT, handle.halo_sndbuf,
-                handle.n_sys_l[0] * 2, MPI_FLOAT, 0, mpi_handle.x_comm);
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys[0] * 2, MPI_FLOAT, handle.halo_sndbuf,
+                handle.n_sys[0] * 2, MPI_FLOAT, 0, mpi_handle.x_comm);
     } else {
-      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[0] * 2, MPI_DOUBLE, handle.halo_sndbuf,
-                handle.n_sys_l[0] * 2, MPI_DOUBLE, 0, mpi_handle.x_comm);
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys[0] * 2, MPI_DOUBLE, handle.halo_sndbuf,
+                handle.n_sys[0] * 2, MPI_DOUBLE, 0, mpi_handle.x_comm);
     }
     
     // Unpack boundary solution
     #pragma omp parallel for
-    for(int id = 0; id < handle.n_sys_g[0]; id++) {
+    for(int id = 0; id < handle.n_sys[0]; id++) {
       // Gather coefficients of a,c,d
       int data_base = id * handle.pads[0];
       int halo_base = id * 2;
@@ -345,17 +330,17 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     // Do the backward pass of modified Thomas
     if(INC) {
       #pragma omp parallel for
-      for(int id = 0; id < handle.n_sys_g[0]; id++) {
+      for(int id = 0; id < handle.n_sys[0]; id++) {
         int ind = id * handle.pads[0];
         thomas_backwardInc<REAL>(&handle.aa[ind], &handle.cc[ind], &handle.dd[ind], 
                         &handle.h_u[ind], handle.size[0], 1);
       }
     } else {
       #pragma omp parallel for
-      for(int id = 0; id < handle.n_sys_g[0]; id++) {
+      for(int id = 0; id < handle.n_sys[0]; id++) {
         int ind = id * handle.pads[0];
         thomas_backward<REAL>(&handle.aa[ind], &handle.cc[ind], &handle.dd[ind], 
-                        &handle.h_u[ind], handle.size[0], 1);
+                        &handle.du[ind], handle.size[0], 1);
       }
     }
   } else if(solveDim == 1) {
@@ -377,7 +362,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Pack boundary values
     #pragma omp parallel for
-    for(int id = 0; id < handle.n_sys_g[1]; id++) {
+    for(int id = 0; id < handle.n_sys[1]; id++) {
       int start = (id/handle.size[0]) * handle.pads[0] * handle.pads[1] + (id % handle.size[0]);
       int end = start + (handle.pads[0] * (handle.size[1] - 1));
       int halo_base = id * 6;
@@ -392,20 +377,20 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Communicate boundary values
     if(std::is_same<REAL, float>::value) {
-      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[1]*3*2, MPI_FLOAT, handle.halo_rcvbuf,
-               handle.n_sys_l[1]*3*2, MPI_FLOAT, 0, mpi_handle.y_comm);
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys[1]*3*2, MPI_FLOAT, handle.halo_rcvbuf,
+               handle.n_sys[1]*3*2, MPI_FLOAT, 0, mpi_handle.y_comm);
     } else {
-      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[1]*3*2, MPI_DOUBLE, handle.halo_rcvbuf,
-               handle.n_sys_l[1]*3*2, MPI_DOUBLE, 0, mpi_handle.y_comm);
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys[1]*3*2, MPI_DOUBLE, handle.halo_rcvbuf,
+               handle.n_sys[1]*3*2, MPI_DOUBLE, 0, mpi_handle.y_comm);
     }
     
     // Unpack boundary values
     if(mpi_handle.coords[1] == 0) {
       #pragma omp parallel for collapse(2)
       for(int p = 0; p < mpi_handle.pdims[1]; p++) {
-        for(int id = 0; id < handle.n_sys_l[1]; id++) {
-          int halo_base = p * handle.n_sys_l[1] * 6 + id * 6;
-          int data_base = id * handle.sys_len_l[1] + p * 2;
+        for(int id = 0; id < handle.n_sys[1]; id++) {
+          int halo_base = p * handle.n_sys[1] * 6 + id * 6;
+          int data_base = id * handle.sys_len_r[1] + p * 2;
           handle.aa_r[data_base]     = handle.halo_rcvbuf[halo_base];
           handle.aa_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 1];
           handle.cc_r[data_base]     = handle.halo_rcvbuf[halo_base + 2];
@@ -419,10 +404,10 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     // Compute reduced system
     if(mpi_handle.coords[1] == 0) {
       #pragma omp parallel for
-      for(int id = 0; id < handle.n_sys_l[1]; id++) {
-        int base = id * handle.sys_len_l[1];
+      for(int id = 0; id < handle.n_sys[1]; id++) {
+        int base = id * handle.sys_len_r[1];
         thomas_on_reduced<REAL>(&handle.aa_r[base], &handle.cc_r[base], &handle.dd_r[base],
-                                 handle.sys_len_l[1], 1);
+                                 handle.sys_len_r[1], 1);
       }
     }
     
@@ -430,9 +415,9 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     if(mpi_handle.coords[1] == 0) {
       #pragma omp parallel for
       for(int p = 0; p < mpi_handle.pdims[1]; p++) {
-        for(int id = 0; id < handle.n_sys_l[1]; id++) {
-          int halo_base = p * handle.n_sys_l[1] * 2 + id * 2;
-          int data_base = id * handle.sys_len_l[1] + p * 2;
+        for(int id = 0; id < handle.n_sys[1]; id++) {
+          int halo_base = p * handle.n_sys[1] * 2 + id * 2;
+          int data_base = id * handle.sys_len_r[1] + p * 2;
           handle.halo_rcvbuf[halo_base]     = handle.dd_r[data_base];
           handle.halo_rcvbuf[halo_base + 1] = handle.dd_r[data_base + 1];
         }
@@ -441,16 +426,16 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Send back new values
     if(std::is_same<REAL, float>::value) {
-      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[1]*2, MPI_FLOAT, handle.halo_sndbuf,
-                handle.n_sys_l[1]*2, MPI_FLOAT, 0, mpi_handle.y_comm);
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys[1]*2, MPI_FLOAT, handle.halo_sndbuf,
+                handle.n_sys[1]*2, MPI_FLOAT, 0, mpi_handle.y_comm);
     } else {
-      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[1]*2, MPI_DOUBLE, handle.halo_sndbuf,
-                handle.n_sys_l[1]*2, MPI_DOUBLE, 0, mpi_handle.y_comm);
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys[1]*2, MPI_DOUBLE, handle.halo_sndbuf,
+                handle.n_sys[1]*2, MPI_DOUBLE, 0, mpi_handle.y_comm);
     }
     
     // Unpack boundary solution
     #pragma omp parallel for
-    for(int id = 0; id < handle.n_sys_g[1]; id++) {
+    for(int id = 0; id < handle.n_sys[1]; id++) {
       int start = (id/handle.size[0]) * handle.pads[0] * handle.pads[1] + (id % handle.size[0]);
       int end = start + (handle.pads[0] * (handle.size[1] - 1));
       int halo_base = id * 2;
@@ -472,7 +457,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
       for(int z = 0; z < handle.size[2]; z++) {
         int base = z * handle.pads[0] * handle.pads[1];
         thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
-                                        &handle.h_u[base], handle.size[1], handle.pads[0],
+                                        &handle.du[base], handle.size[1], handle.pads[0],
                                         /*handle.size[0]*/ handle.pads[0]);
       }
     }
@@ -503,7 +488,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Pack boundary values
     #pragma omp parallel for
-    for(int id = 0; id < handle.n_sys_g[2]; id++) {
+    for(int id = 0; id < handle.n_sys[2]; id++) {
       int start = (id/handle.size[0]) * handle.pads[0] + (id % handle.size[0]);
       int end = start + (handle.pads[0] * handle.pads[1] * (handle.size[2] - 1));
       int halo_base = id * 6;
@@ -518,20 +503,20 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Communicate boundary values
     if(std::is_same<REAL, float>::value) {
-      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[2]*3*2, MPI_FLOAT, handle.halo_rcvbuf,
-               handle.n_sys_l[2]*3*2, MPI_FLOAT, 0, mpi_handle.z_comm);
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys[2]*3*2, MPI_FLOAT, handle.halo_rcvbuf,
+               handle.n_sys[2]*3*2, MPI_FLOAT, 0, mpi_handle.z_comm);
     } else {
-      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[2]*3*2, MPI_DOUBLE, handle.halo_rcvbuf,
-               handle.n_sys_l[2]*3*2, MPI_DOUBLE, 0, mpi_handle.z_comm);
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys[2]*3*2, MPI_DOUBLE, handle.halo_rcvbuf,
+               handle.n_sys[2]*3*2, MPI_DOUBLE, 0, mpi_handle.z_comm);
     }
     
     // Unpack boundary data
     if(mpi_handle.coords[2] == 0) {
       #pragma omp parallel for collapse(2)
       for(int p = 0; p < mpi_handle.pdims[2]; p++) {
-        for(int id = 0; id < handle.n_sys_l[2]; id++) {
-          int data_base = id * handle.sys_len_l[2] + p * 2;
-          int halo_base = p * handle.n_sys_l[2] * 6 + id * 6;
+        for(int id = 0; id < handle.n_sys[2]; id++) {
+          int data_base = id * handle.sys_len_r[2] + p * 2;
+          int halo_base = p * handle.n_sys[2] * 6 + id * 6;
           handle.aa_r[data_base]     = handle.halo_rcvbuf[halo_base];
           handle.aa_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 1];
           handle.cc_r[data_base]     = handle.halo_rcvbuf[halo_base + 2];
@@ -545,10 +530,10 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     // Compute reduced system
     if(mpi_handle.coords[2] == 0) {
       #pragma omp parallel for
-      for(int id = 0; id < handle.n_sys_l[2]; id++) {
-        int base = id * handle.sys_len_l[2];
+      for(int id = 0; id < handle.n_sys[2]; id++) {
+        int base = id * handle.sys_len_r[2];
         thomas_on_reduced<REAL>(&handle.aa_r[base], &handle.cc_r[base], &handle.dd_r[base],
-                                 handle.sys_len_l[2], 1);
+                                 handle.sys_len_r[2], 1);
       }
     }
     
@@ -556,9 +541,9 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     if(mpi_handle.coords[2] == 0) {
       #pragma omp parallel for
       for(int p = 0; p < mpi_handle.pdims[2]; p++) {
-        for(int id = 0; id < handle.n_sys_l[2]; id++) {
-          int halo_base = p * handle.n_sys_l[2] * 2 + id * 2;
-          int data_base = id * handle.sys_len_l[2] + p * 2;
+        for(int id = 0; id < handle.n_sys[2]; id++) {
+          int halo_base = p * handle.n_sys[2] * 2 + id * 2;
+          int data_base = id * handle.sys_len_r[2] + p * 2;
           handle.halo_rcvbuf[halo_base]     = handle.dd_r[data_base];
           handle.halo_rcvbuf[halo_base + 1] = handle.dd_r[data_base + 1];
         }
@@ -567,16 +552,16 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Send back new values
     if(std::is_same<REAL, float>::value) {
-      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[2]*2, MPI_FLOAT, handle.halo_sndbuf,
-                handle.n_sys_l[2]*2, MPI_FLOAT, 0, mpi_handle.z_comm);
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys[2]*2, MPI_FLOAT, handle.halo_sndbuf,
+                handle.n_sys[2]*2, MPI_FLOAT, 0, mpi_handle.z_comm);
     } else {
-      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[2]*2, MPI_DOUBLE, handle.halo_sndbuf,
-                handle.n_sys_l[2]*2, MPI_DOUBLE, 0, mpi_handle.z_comm);
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys[2]*2, MPI_DOUBLE, handle.halo_sndbuf,
+                handle.n_sys[2]*2, MPI_DOUBLE, 0, mpi_handle.z_comm);
     }
     
     // Unpack boundary solution
     #pragma omp parallel for
-    for(int id = 0; id < handle.n_sys_g[2]; id++) {
+    for(int id = 0; id < handle.n_sys[2]; id++) {
       int start = (id/handle.size[0]) * handle.pads[0] + (id % handle.size[0]);
       int end = start + (handle.pads[0] * handle.pads[1] * (handle.size[2] - 1));
       int halo_base = id * 2;
@@ -604,7 +589,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
       #pragma omp parallel for
       for(int base = 0; base < ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH); base += Z_BATCH) {
         thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
-                                        &handle.h_u[base], handle.size[2], 
+                                        &handle.du[base], handle.size[2], 
                                         handle.pads[0] * handle.pads[1], Z_BATCH);
       }
       
@@ -612,7 +597,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
         int base = ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH);
         int length = (handle.size[1] * handle.pads[0]) - base;
         thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
-                                        &handle.h_u[base], handle.size[2], 
+                                        &handle.du[base], handle.size[2], 
                                         handle.pads[0] * handle.pads[1], length);
       }
     }
@@ -633,7 +618,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     
     // Do modified thomas forward pass
     #pragma omp parallel for
-    for(int id = 0; id < handle.n_sys_g[0]; id++) {
+    for(int id = 0; id < handle.n_sys[0]; id++) {
       int base = id * handle.pads[0];
       thomas_forward<REAL>(&handle.a[base], &handle.b[base], &handle.c[base], &handle.du[base],
                      &handle.h_u[base], &handle.aa[base], &handle.cc[base],
@@ -644,7 +629,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     
     // Pack boundary values
     #pragma omp parallel for
-    for(int id = 0; id < handle.n_sys_g[0]; id++) {
+    for(int id = 0; id < handle.n_sys[0]; id++) {
       // Gather coefficients of a,c,d
       int halo_base = id * 6;
       int data_base = id * handle.pads[0];
@@ -660,11 +645,11 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     
     // Communicate boundary values
     if(std::is_same<REAL, float>::value) {
-      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[0]*3*2, MPI_FLOAT, handle.halo_rcvbuf,
-               handle.n_sys_l[0]*3*2, MPI_FLOAT, 0, mpi_handle.x_comm);
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys[0]*3*2, MPI_FLOAT, handle.halo_rcvbuf,
+               handle.n_sys[0]*3*2, MPI_FLOAT, 0, mpi_handle.x_comm);
     } else {
-      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[0]*3*2, MPI_DOUBLE, handle.halo_rcvbuf,
-               handle.n_sys_l[0]*3*2, MPI_DOUBLE, 0, mpi_handle.x_comm);
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys[0]*3*2, MPI_DOUBLE, handle.halo_rcvbuf,
+               handle.n_sys[0]*3*2, MPI_DOUBLE, 0, mpi_handle.x_comm);
     }
     
     timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[2]);
@@ -673,9 +658,9 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     if(mpi_handle.coords[0] == 0) {
       #pragma omp parallel for collapse(2)
       for(int p = 0; p < mpi_handle.pdims[0]; p++) {
-        for(int id = 0; id < handle.n_sys_l[0]; id++) {
-          int halo_base = p * handle.n_sys_l[0] * 6 + id * 6;
-          int data_base = id * handle.sys_len_l[0] + p * 2;
+        for(int id = 0; id < handle.n_sys[0]; id++) {
+          int halo_base = p * handle.n_sys[0] * 6 + id * 6;
+          int data_base = id * handle.sys_len_r[0] + p * 2;
           handle.aa_r[data_base]     = handle.halo_rcvbuf[halo_base];
           handle.aa_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 1];
           handle.cc_r[data_base]     = handle.halo_rcvbuf[halo_base + 2];
@@ -691,10 +676,10 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     // Compute reduced system
     if(mpi_handle.coords[0] == 0) {
       #pragma omp parallel for
-      for(int id = 0; id < handle.n_sys_l[0]; id++) {
-        int base = id * handle.sys_len_l[0];
+      for(int id = 0; id < handle.n_sys[0]; id++) {
+        int base = id * handle.sys_len_r[0];
         thomas_on_reduced<REAL>(&handle.aa_r[base], &handle.cc_r[base], &handle.dd_r[base],
-                          handle.sys_len_l[0], 1);
+                          handle.sys_len_r[0], 1);
       }
     }
     
@@ -704,9 +689,9 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     if(mpi_handle.coords[0] == 0) {
       #pragma omp parallel for
       for(int p = 0; p < mpi_handle.pdims[0]; p++) {
-        for(int id = 0; id < handle.n_sys_l[0]; id++) {
-          int halo_base = p * handle.n_sys_l[0] * 2 + id * 2;
-          int data_base = id * handle.sys_len_l[0] + p * 2;
+        for(int id = 0; id < handle.n_sys[0]; id++) {
+          int halo_base = p * handle.n_sys[0] * 2 + id * 2;
+          int data_base = id * handle.sys_len_r[0] + p * 2;
           handle.halo_rcvbuf[halo_base]     = handle.dd_r[data_base];
           handle.halo_rcvbuf[halo_base + 1] = handle.dd_r[data_base + 1];
         }
@@ -717,18 +702,18 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     
     // Send back new values
     if(std::is_same<REAL, float>::value) {
-      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[0] * 2, MPI_FLOAT, handle.halo_sndbuf,
-                handle.n_sys_l[0] * 2, MPI_FLOAT, 0, mpi_handle.x_comm);
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys[0] * 2, MPI_FLOAT, handle.halo_sndbuf,
+                handle.n_sys[0] * 2, MPI_FLOAT, 0, mpi_handle.x_comm);
     } else {
-      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[0] * 2, MPI_DOUBLE, handle.halo_sndbuf,
-                handle.n_sys_l[0] * 2, MPI_DOUBLE, 0, mpi_handle.x_comm);
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys[0] * 2, MPI_DOUBLE, handle.halo_sndbuf,
+                handle.n_sys[0] * 2, MPI_DOUBLE, 0, mpi_handle.x_comm);
     }
     
     timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[6]);
     
     // Unpack boundary solution
     #pragma omp parallel for
-    for(int id = 0; id < handle.n_sys_g[0]; id++) {
+    for(int id = 0; id < handle.n_sys[0]; id++) {
       // Gather coefficients of a,c,d
       int data_base = id * handle.pads[0];
       int halo_base = id * 2;
@@ -741,17 +726,17 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     // Do the backward pass of modified Thomas
     if(INC) {
       #pragma omp parallel for
-      for(int id = 0; id < handle.n_sys_g[0]; id++) {
+      for(int id = 0; id < handle.n_sys[0]; id++) {
         int ind = id * handle.pads[0];
         thomas_backwardInc<REAL>(&handle.aa[ind], &handle.cc[ind], &handle.dd[ind], 
                         &handle.h_u[ind], handle.size[0], 1);
       }
     } else {
       #pragma omp parallel for
-      for(int id = 0; id < handle.n_sys_g[0]; id++) {
+      for(int id = 0; id < handle.n_sys[0]; id++) {
         int ind = id * handle.pads[0];
         thomas_backward<REAL>(&handle.aa[ind], &handle.cc[ind], &handle.dd[ind], 
-                        &handle.h_u[ind], handle.size[0], 1);
+                        &handle.du[ind], handle.size[0], 1);
       }
     }
     
@@ -780,7 +765,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     
     // Pack boundary values
     #pragma omp parallel for
-    for(int id = 0; id < handle.n_sys_g[1]; id++) {
+    for(int id = 0; id < handle.n_sys[1]; id++) {
       int start = (id/handle.size[0]) * handle.pads[0] * handle.pads[1] + (id % handle.size[0]);
       int end = start + (handle.pads[0] * (handle.size[1] - 1));
       int halo_base = id * 6;
@@ -797,11 +782,11 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     
     // Communicate boundary values
     if(std::is_same<REAL, float>::value) {
-      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[1]*3*2, MPI_FLOAT, handle.halo_rcvbuf,
-               handle.n_sys_l[1]*3*2, MPI_FLOAT, 0, mpi_handle.y_comm);
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys[1]*3*2, MPI_FLOAT, handle.halo_rcvbuf,
+               handle.n_sys[1]*3*2, MPI_FLOAT, 0, mpi_handle.y_comm);
     } else {
-      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[1]*3*2, MPI_DOUBLE, handle.halo_rcvbuf,
-               handle.n_sys_l[1]*3*2, MPI_DOUBLE, 0, mpi_handle.y_comm);
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys[1]*3*2, MPI_DOUBLE, handle.halo_rcvbuf,
+               handle.n_sys[1]*3*2, MPI_DOUBLE, 0, mpi_handle.y_comm);
     }
     
     timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[2]);
@@ -810,9 +795,9 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     if(mpi_handle.coords[1] == 0) {
       #pragma omp parallel for collapse(2)
       for(int p = 0; p < mpi_handle.pdims[1]; p++) {
-        for(int id = 0; id < handle.n_sys_l[1]; id++) {
-          int halo_base = p * handle.n_sys_l[1] * 6 + id * 6;
-          int data_base = id * handle.sys_len_l[1] + p * 2;
+        for(int id = 0; id < handle.n_sys[1]; id++) {
+          int halo_base = p * handle.n_sys[1] * 6 + id * 6;
+          int data_base = id * handle.sys_len_r[1] + p * 2;
           handle.aa_r[data_base]     = handle.halo_rcvbuf[halo_base];
           handle.aa_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 1];
           handle.cc_r[data_base]     = handle.halo_rcvbuf[halo_base + 2];
@@ -828,10 +813,10 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     // Compute reduced system
     if(mpi_handle.coords[1] == 0) {
       #pragma omp parallel for
-      for(int id = 0; id < handle.n_sys_l[1]; id++) {
-        int base = id * handle.sys_len_l[1];
+      for(int id = 0; id < handle.n_sys[1]; id++) {
+        int base = id * handle.sys_len_r[1];
         thomas_on_reduced<REAL>(&handle.aa_r[base], &handle.cc_r[base], &handle.dd_r[base],
-                                 handle.sys_len_l[1], 1);
+                                 handle.sys_len_r[1], 1);
       }
     }
     
@@ -841,9 +826,9 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     if(mpi_handle.coords[1] == 0) {
       #pragma omp parallel for
       for(int p = 0; p < mpi_handle.pdims[1]; p++) {
-        for(int id = 0; id < handle.n_sys_l[1]; id++) {
-          int halo_base = p * handle.n_sys_l[1] * 2 + id * 2;
-          int data_base = id * handle.sys_len_l[1] + p * 2;
+        for(int id = 0; id < handle.n_sys[1]; id++) {
+          int halo_base = p * handle.n_sys[1] * 2 + id * 2;
+          int data_base = id * handle.sys_len_r[1] + p * 2;
           handle.halo_rcvbuf[halo_base]     = handle.dd_r[data_base];
           handle.halo_rcvbuf[halo_base + 1] = handle.dd_r[data_base + 1];
         }
@@ -854,18 +839,18 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     
     // Send back new values
     if(std::is_same<REAL, float>::value) {
-      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[1]*2, MPI_FLOAT, handle.halo_sndbuf,
-                handle.n_sys_l[1]*2, MPI_FLOAT, 0, mpi_handle.y_comm);
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys[1]*2, MPI_FLOAT, handle.halo_sndbuf,
+                handle.n_sys[1]*2, MPI_FLOAT, 0, mpi_handle.y_comm);
     } else {
-      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[1]*2, MPI_DOUBLE, handle.halo_sndbuf,
-                handle.n_sys_l[1]*2, MPI_DOUBLE, 0, mpi_handle.y_comm);
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys[1]*2, MPI_DOUBLE, handle.halo_sndbuf,
+                handle.n_sys[1]*2, MPI_DOUBLE, 0, mpi_handle.y_comm);
     }
     
     timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[6]);
     
     // Unpack boundary solution
     #pragma omp parallel for
-    for(int id = 0; id < handle.n_sys_g[1]; id++) {
+    for(int id = 0; id < handle.n_sys[1]; id++) {
       int start = (id/handle.size[0]) * handle.pads[0] * handle.pads[1] + (id % handle.size[0]);
       int end = start + (handle.pads[0] * (handle.size[1] - 1));
       int halo_base = id * 2;
@@ -889,7 +874,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       for(int z = 0; z < handle.size[2]; z++) {
         int base = z * handle.pads[0] * handle.pads[1];
         thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
-                                        &handle.h_u[base], handle.size[1], handle.pads[0],
+                                        &handle.du[base], handle.size[1], handle.pads[0],
                                         /*handle.size[0]*/ handle.pads[0]);
       }
     }
@@ -927,7 +912,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     
     // Pack boundary values
     #pragma omp parallel for
-    for(int id = 0; id < handle.n_sys_g[2]; id++) {
+    for(int id = 0; id < handle.n_sys[2]; id++) {
       int start = (id/handle.size[0]) * handle.pads[0] + (id % handle.size[0]);
       int end = start + (handle.pads[0] * handle.pads[1] * (handle.size[2] - 1));
       int halo_base = id * 6;
@@ -944,11 +929,11 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     
     // Communicate boundary values
     if(std::is_same<REAL, float>::value) {
-      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[2]*3*2, MPI_FLOAT, handle.halo_rcvbuf,
-               handle.n_sys_l[2]*3*2, MPI_FLOAT, 0, mpi_handle.z_comm);
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys[2]*3*2, MPI_FLOAT, handle.halo_rcvbuf,
+               handle.n_sys[2]*3*2, MPI_FLOAT, 0, mpi_handle.z_comm);
     } else {
-      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[2]*3*2, MPI_DOUBLE, handle.halo_rcvbuf,
-               handle.n_sys_l[2]*3*2, MPI_DOUBLE, 0, mpi_handle.z_comm);
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys[2]*3*2, MPI_DOUBLE, handle.halo_rcvbuf,
+               handle.n_sys[2]*3*2, MPI_DOUBLE, 0, mpi_handle.z_comm);
     }
     
     timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[2]);
@@ -957,9 +942,9 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     if(mpi_handle.coords[2] == 0) {
       #pragma omp parallel for collapse(2)
       for(int p = 0; p < mpi_handle.pdims[2]; p++) {
-        for(int id = 0; id < handle.n_sys_l[2]; id++) {
-          int data_base = id * handle.sys_len_l[2] + p * 2;
-          int halo_base = p * handle.n_sys_l[2] * 6 + id * 6;
+        for(int id = 0; id < handle.n_sys[2]; id++) {
+          int data_base = id * handle.sys_len_r[2] + p * 2;
+          int halo_base = p * handle.n_sys[2] * 6 + id * 6;
           handle.aa_r[data_base]     = handle.halo_rcvbuf[halo_base];
           handle.aa_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 1];
           handle.cc_r[data_base]     = handle.halo_rcvbuf[halo_base + 2];
@@ -975,10 +960,10 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     // Compute reduced system
     if(mpi_handle.coords[2] == 0) {
       #pragma omp parallel for
-      for(int id = 0; id < handle.n_sys_l[2]; id++) {
-        int base = id * handle.sys_len_l[2];
+      for(int id = 0; id < handle.n_sys[2]; id++) {
+        int base = id * handle.sys_len_r[2];
         thomas_on_reduced<REAL>(&handle.aa_r[base], &handle.cc_r[base], &handle.dd_r[base],
-                                 handle.sys_len_l[2], 1);
+                                 handle.sys_len_r[2], 1);
       }
     }
     
@@ -988,9 +973,9 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     if(mpi_handle.coords[2] == 0) {
       #pragma omp parallel for
       for(int p = 0; p < mpi_handle.pdims[2]; p++) {
-        for(int id = 0; id < handle.n_sys_l[2]; id++) {
-          int halo_base = p * handle.n_sys_l[2] * 2 + id * 2;
-          int data_base = id * handle.sys_len_l[2] + p * 2;
+        for(int id = 0; id < handle.n_sys[2]; id++) {
+          int halo_base = p * handle.n_sys[2] * 2 + id * 2;
+          int data_base = id * handle.sys_len_r[2] + p * 2;
           handle.halo_rcvbuf[halo_base]     = handle.dd_r[data_base];
           handle.halo_rcvbuf[halo_base + 1] = handle.dd_r[data_base + 1];
         }
@@ -1001,18 +986,18 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     
     // Send back new values
     if(std::is_same<REAL, float>::value) {
-      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[2]*2, MPI_FLOAT, handle.halo_sndbuf,
-                handle.n_sys_l[2]*2, MPI_FLOAT, 0, mpi_handle.z_comm);
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys[2]*2, MPI_FLOAT, handle.halo_sndbuf,
+                handle.n_sys[2]*2, MPI_FLOAT, 0, mpi_handle.z_comm);
     } else {
-      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[2]*2, MPI_DOUBLE, handle.halo_sndbuf,
-                handle.n_sys_l[2]*2, MPI_DOUBLE, 0, mpi_handle.z_comm);
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys[2]*2, MPI_DOUBLE, handle.halo_sndbuf,
+                handle.n_sys[2]*2, MPI_DOUBLE, 0, mpi_handle.z_comm);
     }
     
     timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[6]);
     
     // Unpack boundary solution
     #pragma omp parallel for
-    for(int id = 0; id < handle.n_sys_g[2]; id++) {
+    for(int id = 0; id < handle.n_sys[2]; id++) {
       int start = (id/handle.size[0]) * handle.pads[0] + (id % handle.size[0]);
       int end = start + (handle.pads[0] * handle.pads[1] * (handle.size[2] - 1));
       int halo_base = id * 2;
@@ -1042,7 +1027,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       #pragma omp parallel for
       for(int base = 0; base < ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH); base += Z_BATCH) {
         thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
-                                        &handle.h_u[base], handle.size[2], 
+                                        &handle.du[base], handle.size[2], 
                                         handle.pads[0] * handle.pads[1], Z_BATCH);
       }
       
@@ -1050,7 +1035,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
         int base = ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH);
         int length = (handle.size[1] * handle.pads[0]) - base;
         thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
-                                        &handle.h_u[base], handle.size[2], 
+                                        &handle.du[base], handle.size[2], 
                                         handle.pads[0] * handle.pads[1], length);
       }
     }

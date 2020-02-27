@@ -62,9 +62,8 @@ struct trid_handle {
   int *start_g;
   int *end_g;
   int *pads;
-  int *sys_len_l;
-  int *n_sys_g;
-  int *n_sys_l;
+  int *sys_len_r;
+  int *n_sys;
 };
 
 struct trid_mpi_handle {

@@ -233,9 +233,9 @@ int main(int argc, char* argv[]) {
 
     int solvedim = 0;   // user chosen dimension for which the solution is performed
     #if FPPREC == 0
-      tridSmtsvStridedBatchInc(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
+      tridSmtsvStridedBatch(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
     #elif FPPREC == 1
-      tridDmtsvStridedBatchInc(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
+      tridDmtsvStridedBatch(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
     #endif
 
     timing_end(prof, &timer, &elapsed_trid_x, "trid_x");
@@ -247,9 +247,9 @@ int main(int argc, char* argv[]) {
 
     solvedim = 1;   // user chosen dimension for which the solution is performed
     #if FPPREC == 0
-      tridSmtsvStridedBatchInc(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
+      tridSmtsvStridedBatch(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
     #elif FPPREC == 1
-      tridDmtsvStridedBatchInc(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
+      tridDmtsvStridedBatch(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
     #endif
     
     timing_end(prof, &timer, &elapsed_trid_y, "trid_y");

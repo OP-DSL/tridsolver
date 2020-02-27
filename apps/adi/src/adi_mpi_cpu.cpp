@@ -23,7 +23,7 @@
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
  * DISCLAIMED. IN NO EVENT SHALL Endre László BE LIABLE FOR ANY
  * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; 
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
@@ -38,8 +38,10 @@
 #include <getopt.h>
 #include <float.h>
 #include <sys/time.h>
+#include <string>
 
-#define FP double
+//#define TIMED
+//#define FP double
 
 #include "preproc_mpi.hpp"
 #include "trid_mpi_cpu.h"
@@ -122,24 +124,30 @@ void rms(char* name, FP* array, trid_handle<FP> &handle, trid_mpi_handle &mpi_ha
   }
 
 }
-/*
-void print_array_onrank(int rank, FP* array, app_handle &app, mpi_handle &mpi) {
-  if(mpi.rank == rank) {
-    printf("On mpi rank %d\n",rank);
-    for(int k=0; k<2; k++) {
-        printf("k = %d\n",k);
-        for(int j=0; j<MIN(app.ny,17); j++) {
-          printf(" %d   ", j);
-          for(int i=0; i<MIN(app.nx,17); i++) {
-            int ind = k*app.nx_pad*app.ny + j*app.nx_pad + i;
-            printf(" %5.5g ", array[ind]);
-          }
-          printf("\n");
-        }
-        printf("\n");
-      }
-  }
-}*/
+
+
+void print_array_global(FP* array, trid_handle<FP> &handle, trid_mpi_handle &mpi_handle, int iter) {
+  std::string filename = "mpi-i-" + std::to_string(iter) + ".out";
+  
+  // At the moment will only work if array is not padded
+  MPI_Datatype viewType;
+  int numElements = handle.size[0] * handle.size[1] * handle.size[2];
+  MPI_Type_create_subarray(3, handle.size_g, handle.size, handle.start_g, MPI_ORDER_FORTRAN, MPI_DOUBLE, &viewType);
+  MPI_Type_commit(&viewType);
+  
+  MPI_Datatype arrayType;
+  int coords[3] = {0, 0, 0};
+  MPI_Type_create_subarray(3, handle.size, handle.size, coords, MPI_ORDER_FORTRAN, MPI_DOUBLE, &arrayType);
+  MPI_Type_commit(&arrayType);
+  
+  MPI_File fh;
+  MPI_File_open(mpi_handle.comm, filename.c_str(), MPI_MODE_CREATE|MPI_MODE_WRONLY, MPI_INFO_NULL, &fh);
+  MPI_Offset disp = 0;
+  MPI_File_set_view(fh, disp, MPI_DOUBLE, viewType, "native", MPI_INFO_NULL);
+  MPI_Status status;
+  MPI_File_write_all(fh, array, 1, arrayType, &status);
+  MPI_File_close(&fh);
+}
 
 int init(trid_handle<FP> &trid_handle, trid_mpi_handle &mpi_handle, preproc_handle<FP> &pre_handle, int &iter, int argc, char* argv[]) {
   if( MPI_Init(&argc,&argv) != MPI_SUCCESS) { printf("MPI Couldn't initialize. Exiting"); exit(-1);}
@@ -178,14 +186,14 @@ int init(trid_handle<FP> &trid_handle, trid_mpi_handle &mpi_handle, preproc_hand
            mpi_handle.pdims[0], mpi_handle.pdims[1], mpi_handle.pdims[2]);
   }
 
-  printf("Check parameters: SIMD_WIDTH = %d, sizeof(FP) = %d\n", SIMD_WIDTH, sizeof(FP));
+  /*printf("Check parameters: SIMD_WIDTH = %d, sizeof(FP) = %d\n", SIMD_WIDTH, sizeof(FP));
   printf("Check parameters: nx_pad (padded) = %d\n", trid_handle.pads[0]);
   printf("Check parameters: nx = %d, x_start_g = %d, x_end_g = %d \n", 
          trid_handle.size[0], trid_handle.start_g[0], trid_handle.end_g[0]);
   printf("Check parameters: ny = %d, y_start_g = %d, y_end_g = %d \n", 
          trid_handle.size[1], trid_handle.start_g[1], trid_handle.end_g[1]);
   printf("Check parameters: nz = %d, z_start_g = %d, z_end_g = %d \n",
-         trid_handle.size[2], trid_handle.start_g[2], trid_handle.end_g[2]);
+         trid_handle.size[2], trid_handle.start_g[2], trid_handle.end_g[2]);*/
   
   // Initialize
   for(int k = 0; k < trid_handle.size[2]; k++) {
@@ -257,8 +265,6 @@ int main(int argc, char* argv[]) {
     trid_timing.elapsed_time_z[i] = 0.0;
     timers_avg[i] = 0;
   }
-  
-#define TIMED
 
   timing_start(&timer1);
   
@@ -277,9 +283,9 @@ int main(int argc, char* argv[]) {
     timing_start(&timer);
     
 #ifdef TIMED
-    tridBatchTimed<FP, INC>(trid_handle, mpi_handle, trid_timing, 0);
+    tridBatchTimed<FP, 0>(trid_handle, mpi_handle, trid_timing, 0);
 #else
-    tridBatch<FP, INC>(trid_handle, mpi_handle, 0);
+    tridBatch<FP, 0>(trid_handle, mpi_handle, 0);
 #endif
     
     timing_end(&timer, &elapsed_trid_x);
@@ -290,9 +296,9 @@ int main(int argc, char* argv[]) {
     timing_start(&timer);
 
 #ifdef TIMED
-    tridBatchTimed<FP, INC>(trid_handle, mpi_handle, trid_timing, 1);
+    tridBatchTimed<FP, 0>(trid_handle, mpi_handle, trid_timing, 1);
 #else
-    tridBatch<FP, INC>(trid_handle, mpi_handle, 1);
+    tridBatch<FP, 0>(trid_handle, mpi_handle, 1);
 #endif
     
     timing_end(&timer, &elapsed_trid_y);
@@ -303,9 +309,9 @@ int main(int argc, char* argv[]) {
     timing_start(&timer);
     
 #ifdef TIMED
-    tridBatchTimed<FP, INC>(trid_handle, mpi_handle, trid_timing, 2);
+    tridBatchTimed<FP, 1>(trid_handle, mpi_handle, trid_timing, 2);
 #else
-    tridBatch<FP, INC>(trid_handle, mpi_handle, 2);
+    tridBatch<FP, 1>(trid_handle, mpi_handle, 2);
 #endif
     
     timing_end(&timer, &elapsed_trid_z);
@@ -318,6 +324,9 @@ int main(int argc, char* argv[]) {
 
   MPI_Barrier(MPI_COMM_WORLD);
   
+  //print_array_global(trid_handle.h_u, trid_handle, mpi_handle, 0);
+  
+#ifdef TIMED
   double avg_total = 0.0;
 
   MPI_Reduce(trid_timing.elapsed_time_x, timers_avg, 11, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
@@ -329,31 +338,6 @@ int main(int argc, char* argv[]) {
     
     avg_total /= mpi_handle.procs;
   }
-  
-  /*for(int i=0; i<mpi_handle.procs; i++) {
-    MPI_Barrier(MPI_COMM_WORLD);
-    //sleep(0.2);
-    if(i==mpi_handle.rank) {
-      if(mpi_handle.rank==0) {
-        printf("Time in trid-x segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[checksum]\n",
-            elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4], elapsed_name[5], elapsed_name[6], elapsed_name[7], elapsed_name[8]);
-      }
-      printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
-      1000.0*elapsed_trid_x ,
-      1000.0*trid_timing.elapsed_time_x[0],
-      1000.0*trid_timing.elapsed_time_x[1],
-      1000.0*trid_timing.elapsed_time_x[2],
-      1000.0*trid_timing.elapsed_time_x[3],
-      1000.0*trid_timing.elapsed_time_x[4],
-      1000.0*trid_timing.elapsed_time_x[5],
-      1000.0*trid_timing.elapsed_time_x[6],
-      1000.0*trid_timing.elapsed_time_x[7],
-      1000.0*trid_timing.elapsed_time_x[8],
-      1000.0*(trid_timing.elapsed_time_x[0] + trid_timing.elapsed_time_x[1] + trid_timing.elapsed_time_x[2] + trid_timing.elapsed_time_x[3] 
-              + trid_timing.elapsed_time_x[4] + trid_timing.elapsed_time_x[5] + trid_timing.elapsed_time_x[6] + trid_timing.elapsed_time_x[7]
-              + trid_timing.elapsed_time_x[8]));
-    }
-  }*/
   
   MPI_Barrier(MPI_COMM_WORLD);
   if(mpi_handle.rank == 0) {
@@ -388,31 +372,6 @@ int main(int argc, char* argv[]) {
     avg_total /= mpi_handle.procs;
   }
   
-  /*for(int i=0; i<mpi_handle.procs; i++) {
-    MPI_Barrier(MPI_COMM_WORLD);
-    //sleep(0.2);
-    if(i==mpi_handle.rank) {
-      if(mpi_handle.rank==0) {
-        printf("Time in trid-y segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[checksum]\n",
-            elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4], elapsed_name[5], elapsed_name[6], elapsed_name[7], elapsed_name[8]);
-      }
-      printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
-      1000.0*elapsed_trid_y ,
-      1000.0*trid_timing.elapsed_time_y[0],
-      1000.0*trid_timing.elapsed_time_y[1],
-      1000.0*trid_timing.elapsed_time_y[2],
-      1000.0*trid_timing.elapsed_time_y[3],
-      1000.0*trid_timing.elapsed_time_y[4],
-      1000.0*trid_timing.elapsed_time_y[5],
-      1000.0*trid_timing.elapsed_time_y[6],
-      1000.0*trid_timing.elapsed_time_y[7],
-      1000.0*trid_timing.elapsed_time_y[8],
-      1000.0*(trid_timing.elapsed_time_y[0] + trid_timing.elapsed_time_y[1] + trid_timing.elapsed_time_y[2] + trid_timing.elapsed_time_y[3] 
-              + trid_timing.elapsed_time_y[4] + trid_timing.elapsed_time_y[5] + trid_timing.elapsed_time_y[6] + trid_timing.elapsed_time_y[7] 
-              + trid_timing.elapsed_time_y[8]));
-    }
-  }*/
-  
   MPI_Barrier(MPI_COMM_WORLD);
   if(mpi_handle.rank == 0) {
     printf("Average time in trid-y segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s]\n",
@@ -446,31 +405,6 @@ int main(int argc, char* argv[]) {
     avg_total /= mpi_handle.procs;
   }
   
-  /*for(int i=0; i<mpi_handle.procs; i++) {
-    MPI_Barrier(MPI_COMM_WORLD);
-    //sleep(0.2);
-    if(i==mpi_handle.rank) {
-      if(mpi_handle.rank==0) {
-        printf("Time in trid-z segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[checksum]\n",
-            elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4], elapsed_name[5], elapsed_name[6], elapsed_name[7], elapsed_name[8]);
-      }
-      printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
-      1000.0*elapsed_trid_z ,
-      1000.0*trid_timing.elapsed_time_z[0],
-      1000.0*trid_timing.elapsed_time_z[1],
-      1000.0*trid_timing.elapsed_time_z[2],
-      1000.0*trid_timing.elapsed_time_z[3],
-      1000.0*trid_timing.elapsed_time_z[4],
-      1000.0*trid_timing.elapsed_time_z[5],
-      1000.0*trid_timing.elapsed_time_z[6],
-      1000.0*trid_timing.elapsed_time_z[7],
-      1000.0*trid_timing.elapsed_time_z[8],
-      1000.0*(trid_timing.elapsed_time_z[0] + trid_timing.elapsed_time_z[1] + trid_timing.elapsed_time_z[2] + trid_timing.elapsed_time_z[3] 
-              + trid_timing.elapsed_time_z[4] + trid_timing.elapsed_time_z[5] + trid_timing.elapsed_time_z[6] + trid_timing.elapsed_time_z[7] 
-              + trid_timing.elapsed_time_z[8]));
-    }
-  }*/
-  
   MPI_Barrier(MPI_COMM_WORLD);
   if(mpi_handle.rank == 0) {
     printf("Average time in trid-z segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s]\n",
@@ -487,7 +421,9 @@ int main(int argc, char* argv[]) {
         1000.0*timers_avg[7],
         1000.0*timers_avg[8]);
   }
-  
+
+#endif
+
   MPI_Barrier(MPI_COMM_WORLD);
   if(mpi_handle.rank == 0) {
     // Print execution times
@@ -506,6 +442,7 @@ int main(int argc, char* argv[]) {
         (elapsed_trid_y/iter ) / (trid_handle.size_g[0] * trid_handle.size_g[1] * trid_handle.size_g[2]),
         (elapsed_trid_z/iter ) / (trid_handle.size_g[0] * trid_handle.size_g[1] * trid_handle.size_g[2]));
   }
+  
   MPI_Barrier(MPI_COMM_WORLD);
   
   finalize(trid_handle, mpi_handle, pre_handle);
