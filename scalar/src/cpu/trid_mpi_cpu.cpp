@@ -58,11 +58,25 @@ inline double elapsed_time(double *et) {
   return *et - old_time;
 }
 
-inline void timing_start(double *timer) {
+inline void timing_start(double *timer, trid_mpi_handle &mpi_handle, int dim) {
+  if(dim == 0) {
+    MPI_Barrier(mpi_handle.x_comm);
+  } else if(dim == 1) {
+    MPI_Barrier(mpi_handle.y_comm);
+  } else {
+    MPI_Barrier(mpi_handle.z_comm);
+  }
   elapsed_time(timer);
 }
 
-inline void timing_end(double *timer, double *elapsed_accumulate) {
+inline void timing_end(double *timer, double *elapsed_accumulate, trid_mpi_handle &mpi_handle, int dim) {
+  if(dim == 0) {
+    MPI_Barrier(mpi_handle.x_comm);
+  } else if(dim == 1) {
+    MPI_Barrier(mpi_handle.y_comm);
+  } else {
+    MPI_Barrier(mpi_handle.z_comm);
+  }
   double elapsed = elapsed_time(timer);
   *elapsed_accumulate += elapsed;
 }
@@ -614,7 +628,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
      * 
      *********************/
     
-    timing_start(&timer_handle.timer);
+    timing_start(&timer_handle.timer, mpi_handle, 0);
     
     // Do modified thomas forward pass
     #pragma omp parallel for
@@ -625,7 +639,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                      &handle.dd[base], handle.size[0], 1);
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[0]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[0], mpi_handle, 0);
     
     // Pack boundary values
     #pragma omp parallel for
@@ -641,7 +655,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       handle.halo_sndbuf[halo_base + 5] = handle.dd[data_base + handle.size[0]-1];
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[1]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[1], mpi_handle, 0);
     
     // Communicate boundary values
     if(std::is_same<REAL, float>::value) {
@@ -652,7 +666,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                handle.n_sys[0]*3*2, MPI_DOUBLE, 0, mpi_handle.x_comm);
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[2]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[2], mpi_handle, 0);
     
     // Unpack boundary values
     if(mpi_handle.coords[0] == 0) {
@@ -671,7 +685,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       }
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[3]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[3], mpi_handle, 0);
     
     // Compute reduced system
     if(mpi_handle.coords[0] == 0) {
@@ -683,7 +697,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       }
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[4]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[4], mpi_handle, 0);
     
     // Pack boundary solution data
     if(mpi_handle.coords[0] == 0) {
@@ -698,7 +712,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       }
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[5]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[5], mpi_handle, 0);
     
     // Send back new values
     if(std::is_same<REAL, float>::value) {
@@ -709,7 +723,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                 handle.n_sys[0] * 2, MPI_DOUBLE, 0, mpi_handle.x_comm);
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[6]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[6], mpi_handle, 0);
     
     // Unpack boundary solution
     #pragma omp parallel for
@@ -721,7 +735,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       handle.dd[data_base + handle.size[0]-1] = handle.halo_sndbuf[halo_base + 1];
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[7]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[7], mpi_handle, 0);
     
     // Do the backward pass of modified Thomas
     if(INC) {
@@ -740,7 +754,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       }
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[8]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[8], mpi_handle, 0);
     
   } else if(solveDim == 1) {
     /*********************
@@ -749,7 +763,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
      * 
      *********************/
     
-    timing_start(&timer_handle.timer);
+    timing_start(&timer_handle.timer, mpi_handle, 1);
     
     // Do modified thomas forward pass
     #pragma omp parallel for
@@ -761,7 +775,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                                handle.pads[0], /*handle.size[0]*/ handle.pads[0]);
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[0]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[0], mpi_handle, 1);
     
     // Pack boundary values
     #pragma omp parallel for
@@ -778,7 +792,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       handle.halo_sndbuf[halo_base + 5] = handle.dd[end];
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[1]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[1], mpi_handle, 1);
     
     // Communicate boundary values
     if(std::is_same<REAL, float>::value) {
@@ -789,7 +803,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                handle.n_sys[1]*3*2, MPI_DOUBLE, 0, mpi_handle.y_comm);
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[2]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[2], mpi_handle, 1);
     
     // Unpack boundary values
     if(mpi_handle.coords[1] == 0) {
@@ -808,7 +822,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       }
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[3]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[3], mpi_handle, 1);
     
     // Compute reduced system
     if(mpi_handle.coords[1] == 0) {
@@ -820,7 +834,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       }
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[4]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[4], mpi_handle, 1);
     
     // Pack boundary solution data
     if(mpi_handle.coords[1] == 0) {
@@ -835,7 +849,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       }
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[5]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[5], mpi_handle, 1);
     
     // Send back new values
     if(std::is_same<REAL, float>::value) {
@@ -846,7 +860,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                 handle.n_sys[1]*2, MPI_DOUBLE, 0, mpi_handle.y_comm);
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[6]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[6], mpi_handle, 1);
     
     // Unpack boundary solution
     #pragma omp parallel for
@@ -858,7 +872,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       handle.dd[end]   = handle.halo_sndbuf[halo_base + 1];
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[7]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[7], mpi_handle, 1);
     
     // Do the backward pass of modified Thomas
     if(INC) {
@@ -879,7 +893,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       }
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[8]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[8], mpi_handle, 1);
     
   } else {
     /*********************
@@ -888,7 +902,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
      * 
      *********************/
     
-    timing_start(&timer_handle.timer);
+    timing_start(&timer_handle.timer, mpi_handle, 2);
     
     // Do modified thomas forward pass
     #pragma omp parallel for
@@ -908,7 +922,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                                handle.pads[0] * handle.pads[1], length);
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[0]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[0], mpi_handle, 2);
     
     // Pack boundary values
     #pragma omp parallel for
@@ -925,7 +939,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       handle.halo_sndbuf[halo_base + 5] = handle.dd[end];
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[1]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[1], mpi_handle, 2);
     
     // Communicate boundary values
     if(std::is_same<REAL, float>::value) {
@@ -936,7 +950,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                handle.n_sys[2]*3*2, MPI_DOUBLE, 0, mpi_handle.z_comm);
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[2]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[2], mpi_handle, 2);
     
     // Unpack boundary data
     if(mpi_handle.coords[2] == 0) {
@@ -955,7 +969,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       }
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[3]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[3], mpi_handle, 2);
     
     // Compute reduced system
     if(mpi_handle.coords[2] == 0) {
@@ -967,7 +981,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       }
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[4]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[4], mpi_handle, 2);
     
     // Pack boundary solution data
     if(mpi_handle.coords[2] == 0) {
@@ -982,7 +996,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       }
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[5]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[5], mpi_handle, 2);
     
     // Send back new values
     if(std::is_same<REAL, float>::value) {
@@ -993,7 +1007,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                 handle.n_sys[2]*2, MPI_DOUBLE, 0, mpi_handle.z_comm);
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[6]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[6], mpi_handle, 2);
     
     // Unpack boundary solution
     #pragma omp parallel for
@@ -1005,7 +1019,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       handle.dd[end]   = handle.halo_sndbuf[halo_base + 1];
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[7]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[7], mpi_handle, 2);
     
     // Do the backward pass of modified Thomas
     if(INC) {
@@ -1040,7 +1054,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       }
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[8]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[8], mpi_handle, 2);
   }
 }
 
