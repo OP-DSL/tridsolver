@@ -52,7 +52,7 @@ __global__ void pcr_on_reduced_kernel(REAL *input, REAL *results,
                   blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
   
   int tridNum = tid / n;
-  int i = i % n;
+  int i = tid % n;
   
   
   // Indices of each coefficient in the 'input' array
