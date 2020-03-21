@@ -122,7 +122,7 @@ if (BUILD_FOR_GPU)
   #find_package(CUDA)
 
   set(CUDA_PROPAGATE_HOST_FLAGS OFF)
-  set(CUDA_NVCC_FLAGS         "-arch sm_35 --ptxas-options=-v -Xptxas -dlcm=cg")
+  set(CUDA_NVCC_FLAGS         "-arch sm_35 --ptxas-options=-v -Xptxas -dlcm=cg -std=c++11")
   set(CUDA_NVCC_FLAGS_DEBUG   "-g -G -O0 -ftz=false -fmad=false")
   set(CUDA_NVCC_FLAGS_RELEASE "-O3")
 
