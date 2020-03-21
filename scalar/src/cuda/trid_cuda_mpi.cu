@@ -36,7 +36,6 @@
 // Gabor Daniel Balogh, Pazmany Peter Catholic University, balogh.gabor.daniel@itk.ppke.hu, 2020
 // Toby Flynn, University of Warwick, T.Flynn@warwick.ac.uk, 2020
 
-#include "trid_mpi_cpu.hpp"
 #include "trid_mpi_cuda.hpp"
 
 #include "trid_linear_mpi_reg8_double2.hpp"
