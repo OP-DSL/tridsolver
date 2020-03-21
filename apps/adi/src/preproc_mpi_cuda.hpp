@@ -32,7 +32,7 @@
 
 #include "mpi.h"
 #include "cutil_inline.h"
-#include "adi_mpi_cuda.h"
+#include "adi_mpi.h"
 
 template<typename REAL>
 struct preproc_handle {
