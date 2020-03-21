@@ -4,6 +4,7 @@ option(INTEL_CC "Use the Intel compiler." ON)
 option(BUILD_FOR_CPU "Build library for CPU architecture." OFF) 
 option(BUILD_FOR_MIC "Build library for MIC architecture." OFF) 
 option(BUILD_FOR_GPU "Build library for GPU architecture." OFF)
+option(BUILD_FOR_MPI "Build library for MPI combnied with the above architectures." OFF)
 set(LIBTRID_PATH $ENV{TRIDSOLVER_INSTALL_PATH}
   CACHE STRING "Tridsolver (scalar) installation directory")
 
@@ -129,6 +130,13 @@ if (BUILD_FOR_GPU)
   cuda_include_directories(${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include)
   cuda_add_executable(adi_cuda src/adi_cuda.cu src/preproc.cu)
   target_link_libraries(adi_cuda -L${LIBTRID_PATH}/lib -ltridcuda)
+  
+  find_package(MPI REQUIRED)
+  find_package(OpenMP REQUIRED)
+  cuda_include_directories(SYSTEM ${MPI_INCLUDE_PATH})
+  cuda_add_executable(adi_mpi_cuda src/adi_mpi_cuda.cu)
+  #cuda_include_directories(${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include SYSTEM ${MPI_INCLUDE_PATH})
+  target_link_libraries(adi_mpi_cuda -L${LIBTRID_PATH}/lib -ltridcuda -ltridcuda_mpi ${MPI_C_LIBRARIES})
 endif (BUILD_FOR_GPU)
 
 

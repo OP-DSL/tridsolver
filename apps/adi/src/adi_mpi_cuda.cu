@@ -18,19 +18,18 @@
  *     * The name of Endre László may not be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY Endre László ''AS IS'' AND ANY
+ * THIS SOFTWARE IS PROVIDED BY Endre László ''AS IS'' AND ANY 
  * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
  * DISCLAIMED. IN NO EVENT SHALL Endre László BE LIABLE FOR ANY
  * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; 
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Written by Toby Flynn, University of Warwick, T.Flynn@warwick.ac.uk, 2020
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -39,10 +38,10 @@
 #include <float.h>
 #include <sys/time.h>
 
-#include "preproc_mpi.hpp"
-#include "trid_mpi_cpu.h"
-
+#include "trid_mpi_cuda.hpp"
+#include "trid_mpi_solver_params.hpp"
 #include "trid_common.h"
+#include "cutil_inline.h"
 
 #include "omp.h"
 //#include "offload.h"
@@ -55,6 +54,7 @@
 #endif
 
 #include "adi_mpi.h"
+#include "preproc_mpi_cuda.hpp"
 
 #define ROUND_DOWN(N,step) (((N)/(step))*step)
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
@@ -63,6 +63,7 @@
 extern char *optarg;
 extern int  optind, opterr, optopt;
 static struct option options[] = {
+  {"devid", required_argument, 0, 0   },
   {"nx",   required_argument, 0,  0   },
   {"ny",   required_argument, 0,  0   },
   {"nz",   required_argument, 0,  0   },
@@ -129,7 +130,7 @@ void rms(char* name, FP* array, app_handle &handle) {
   for(int k = 0; k < handle.size[2]; k++) {
     for(int j = 0; j < handle.size[1]; j++) {
       for(int i = 0; i < handle.size[0]; i++) {
-        int ind = k * handle.pads[0] * handle.size[1] + j * handle.pads[0] + i;
+        int ind = k * handle.size[0] * handle.size[1] + j * handle.size[0] + i;
         sum += array[ind];
       }
     }
@@ -148,6 +149,7 @@ void rms(char* name, FP* array, app_handle &handle) {
 int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, char* argv[]) {
   if( MPI_Init(&argc,&argv) != MPI_SUCCESS) { printf("MPI Couldn't initialize. Exiting"); exit(-1);}
 
+  int devid = 0;
   int nx_g = 256;
   int ny_g = 256;
   int nz_g = 256;
@@ -160,6 +162,7 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
   // Process arguments
   int opt_index = 0;
   while( getopt_long_only(argc, argv, "", options, &opt_index) != -1) {
+    if(strcmp((char*)options[opt_index].name,"devid") == 0) devid = atoi(optarg);
     if(strcmp((char*)options[opt_index].name,"nx"  ) == 0) nx_g = atoi(optarg);
     if(strcmp((char*)options[opt_index].name,"ny"  ) == 0) ny_g = atoi(optarg);
     if(strcmp((char*)options[opt_index].name,"nz"  ) == 0) nz_g = atoi(optarg);
@@ -170,11 +173,10 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
   }
   
   // Allocate memory to store problem characteristics 
-  app.size_g  = (int *) calloc(3, sizeof(int));
-  app.size    = (int *) calloc(3, sizeof(int));
+  app.size_g = (int *) calloc(3, sizeof(int));
+  app.size = (int *) calloc(3, sizeof(int));
   app.start_g = (int *) calloc(3, sizeof(int));
-  app.end_g   = (int *) calloc(3, sizeof(int));
-  app.pads    = (int *) calloc(3, sizeof(int));
+  app.end_g = (int *) calloc(3, sizeof(int));
   
   app.size_g[0] = nx_g;
   app.size_g[1] = ny_g;
@@ -186,10 +188,17 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   // Create 3D Cartesian MPI topology
-  app.pdims     = (int *) calloc(3, sizeof(int));
+  app.pdims    = (int *) calloc(3, sizeof(int));
   int *periodic = (int *) calloc(3, sizeof(int)); //false
-  app.coords    = (int *) calloc(3, sizeof(int));
+  app.coords   = (int *) calloc(3, sizeof(int));
   MPI_Dims_create(procs, 3, app.pdims);
+  
+  // Setup up which GPU this MPI process is using
+  // Currently set for 4 GPUs per node, with 1 MPI process per GPU
+  devid = rank % 4;
+  cudaSafeCall( cudaSetDevice(devid) );
+  cutilDeviceInit(argc, argv);
+  cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
   
   // Create 3D Cartesian MPI communicator
   MPI_Cart_create(MPI_COMM_WORLD, 3, app.pdims, periodic, 0,  &app.comm);
@@ -206,11 +215,6 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
   for(int i = 0; i < 3; i++) {
     setStartEnd(&app.start_g[i], &app.end_g[i], app.coords[i], app.pdims[i], app.size_g[i]);
     app.size[i] = app.end_g[i] - app.start_g[i] + 1;
-    if(i == 0) {
-      app.pads[i] = (1 + ((app.size[i] - 1) / SIMD_VEC)) * SIMD_VEC;
-    } else {
-      app.pads[i] = app.size[i];
-    }
   }
   
   free(periodic);
@@ -222,51 +226,57 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
     printf("\nNumber of MPI procs in each dimenstion %d, %d, %d\n",
            app.pdims[0], app.pdims[1], app.pdims[2]);
   }
-
-  /*printf("Check parameters: SIMD_WIDTH = %d, sizeof(FP) = %d\n", SIMD_WIDTH, sizeof(FP));
-  printf("Check parameters: nx_pad (padded) = %d\n", trid_handle.pads[0]);
-  printf("Check parameters: nx = %d, x_start_g = %d, x_end_g = %d \n", 
-         trid_handle.size[0], trid_handle.start_g[0], trid_handle.end_g[0]);
-  printf("Check parameters: ny = %d, y_start_g = %d, y_end_g = %d \n", 
-         trid_handle.size[1], trid_handle.start_g[1], trid_handle.end_g[1]);
-  printf("Check parameters: nz = %d, z_start_g = %d, z_end_g = %d \n",
-         trid_handle.size[2], trid_handle.start_g[2], trid_handle.end_g[2]);*/
   
   // Allocate memory for local section of problem
-  int mem_size = app.pads[0] * app.pads[1] * app.pads[2];
+  int size = app.size[0] * app.size[1] * app.size[2];
   
-  app.a = (FP *) _mm_malloc(mem_size * sizeof(FP), SIMD_WIDTH);
-  app.b = (FP *) _mm_malloc(mem_size * sizeof(FP), SIMD_WIDTH);
-  app.c = (FP *) _mm_malloc(mem_size * sizeof(FP), SIMD_WIDTH);
-  app.d = (FP *) _mm_malloc(mem_size * sizeof(FP), SIMD_WIDTH);
-  app.u = (FP *) _mm_malloc(mem_size * sizeof(FP), SIMD_WIDTH);
+  cudaSafeCall( cudaMalloc((void **)&app.a, size * sizeof(FP)) );
+  cudaSafeCall( cudaMalloc((void **)&app.b, size * sizeof(FP)) );
+  cudaSafeCall( cudaMalloc((void **)&app.c, size * sizeof(FP)) );
+  cudaSafeCall( cudaMalloc((void **)&app.d, size * sizeof(FP)) );
+  cudaSafeCall( cudaMalloc((void **)&app.u, size * sizeof(FP)) );
+  
+  FP *h_u = (FP *) malloc(sizeof(FP) * size);
   
   // Initialize
   for(int k = 0; k < app.size[2]; k++) {
     for(int j = 0; j < app.size[1]; j++) {
       for(int i = 0; i < app.size[0]; i++) {
-        int ind = k * app.pads[0] * app.size[1] + j*app.pads[0] + i;
+        int ind = k * app.size[0] * app.size[1] + j*app.size[0] + i;
         if( (app.start_g[0]==0 && i==0) || 
             (app.end_g[0]==app.size_g[0]-1 && i==app.size[0]-1) ||
             (app.start_g[1]==0 && j==0) || 
             (app.end_g[1]==app.size_g[1]-1 && j==app.size[1]-1) ||
             (app.start_g[2]==0 && k==0) || 
             (app.end_g[2]==app.size_g[2]-1 && k==app.size[2]-1)) {
-          app.u[ind] = 1.0f;
+          h_u[ind] = 1.0f;
         } else {
-          app.u[ind] = 0.0f;
+          h_u[ind] = 0.0f;
         }
       }
     }
   }
   
+  // Copy initial values to GPU memory
+  cudaSafeCall( cudaMemcpy(app.u, h_u, sizeof(FP) * size, cudaMemcpyHostToDevice) );
+  
+  free(h_u);
+  
   // Allocate memory used in each iteration's preprocessing
-  pre_handle.halo_snd_x = (FP*) _mm_malloc(2 * app.size[1] * app.size[2] * sizeof(FP), SIMD_WIDTH);
-  pre_handle.halo_rcv_x = (FP*) _mm_malloc(2 * app.size[1] * app.size[2] * sizeof(FP), SIMD_WIDTH);
-  pre_handle.halo_snd_y = (FP*) _mm_malloc(2 * app.size[0] * app.size[2] * sizeof(FP), SIMD_WIDTH);
-  pre_handle.halo_rcv_y = (FP*) _mm_malloc(2 * app.size[0] * app.size[2] * sizeof(FP), SIMD_WIDTH);
-  pre_handle.halo_snd_z = (FP*) _mm_malloc(2 * app.size[1] * app.size[0] * sizeof(FP), SIMD_WIDTH);
-  pre_handle.halo_rcv_z = (FP*) _mm_malloc(2 * app.size[1] * app.size[0] * sizeof(FP), SIMD_WIDTH);
+  pre_handle.rcv_size_x = 2 * app.size[1] * app.size[2];
+  pre_handle.rcv_size_y = 2 * app.size[0] * app.size[2];
+  pre_handle.rcv_size_z = 2 * app.size[1] * app.size[0];
+  
+  pre_handle.halo_snd_x = (FP*) malloc(pre_handle.rcv_size_x * sizeof(FP));
+  pre_handle.halo_rcv_x = (FP*) malloc(pre_handle.rcv_size_x * sizeof(FP));
+  pre_handle.halo_snd_y = (FP*) malloc(pre_handle.rcv_size_y * sizeof(FP));
+  pre_handle.halo_rcv_y = (FP*) malloc(pre_handle.rcv_size_y * sizeof(FP));
+  pre_handle.halo_snd_z = (FP*) malloc(pre_handle.rcv_size_z * sizeof(FP));
+  pre_handle.halo_rcv_z = (FP*) malloc(pre_handle.rcv_size_z * sizeof(FP));
+  
+  cudaSafeCall( cudaMalloc((void **)&pre_handle.rcv_x, pre_handle.rcv_size_x * sizeof(FP)) );
+  cudaSafeCall( cudaMalloc((void **)&pre_handle.rcv_y, pre_handle.rcv_size_y * sizeof(FP)) );
+  cudaSafeCall( cudaMalloc((void **)&pre_handle.rcv_z, pre_handle.rcv_size_z * sizeof(FP)) );
 
   return 0;
 
@@ -274,18 +284,21 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
 
 // Free memory used
 void finalize(app_handle &app, preproc_handle<FP> &pre_handle) {
-  _mm_free(pre_handle.halo_snd_x);
-  _mm_free(pre_handle.halo_rcv_x);
-  _mm_free(pre_handle.halo_snd_y);
-  _mm_free(pre_handle.halo_rcv_y);
-  _mm_free(pre_handle.halo_snd_z);
-  _mm_free(pre_handle.halo_rcv_z);
+  free(pre_handle.halo_snd_x);
+  free(pre_handle.halo_rcv_x);
+  free(pre_handle.halo_snd_y);
+  free(pre_handle.halo_rcv_y);
+  free(pre_handle.halo_snd_z);
+  free(pre_handle.halo_rcv_z);
+  cudaSafeCall( cudaFree(pre_handle.rcv_x) );
+  cudaSafeCall( cudaFree(pre_handle.rcv_y) );
+  cudaSafeCall( cudaFree(pre_handle.rcv_z) );
   
-  _mm_free(app.a);
-  _mm_free(app.b);
-  _mm_free(app.c);
-  _mm_free(app.d);
-  _mm_free(app.u);
+  cudaSafeCall( cudaFree(app.a) );
+  cudaSafeCall( cudaFree(app.b) );
+  cudaSafeCall( cudaFree(app.c) );
+  cudaSafeCall( cudaFree(app.d) );
+  cudaSafeCall( cudaFree(app.u) );
   
   free(app.size_g);
   free(app.size);
@@ -293,8 +306,7 @@ void finalize(app_handle &app, preproc_handle<FP> &pre_handle) {
   free(app.end_g);
   free(app.pdims);
   free(app.coords);
-  free(app.pads);
-  
+
   delete app.params;
 }
 
@@ -317,46 +329,53 @@ int main(int argc, char* argv[]) {
   double elapsed_trid_z  = 0.0;
 
   timing_start(&timer1);
+
+  // Allocate memory used in sums of distributed arrays
+  FP *h_u = (FP *) malloc(sizeof(FP) * app.size[0] * app.size[1] * app.size[2]);
+  FP *du = (FP *) malloc(sizeof(FP) * app.size[0] * app.size[1] * app.size[2]);
   
   // Iterate over specified number of time steps
   for(int it = 0; it < iter; it++) {
     // Preprocess
     timing_start(&timer);
     
-    preproc_mpi<FP>(pre_handle, app);
+    preproc_mpi_cuda<FP>(pre_handle, app);
     
     timing_end(&timer, &elapsed_preproc);
-    
+
+    cudaSafeCall( cudaDeviceSynchronize() );
+
     //
     // perform tri-diagonal solves in x-direction
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.pads, app.size_g);
+    tridSmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.size, app.size_g);
 #else
-    tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.pads, app.size_g);
+    tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.size, app.size_g);
 #endif
-    timing_end(&timer, &elapsed_trid_x);
     
+    timing_end(&timer, &elapsed_trid_x);
+
     //
     // perform tri-diagonal solves in y-direction
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.pads, app.size_g);
+    tridSmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.size, app.size_g);
 #else
-    tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.pads, app.size_g);
+    tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.size, app.size_g);
 #endif
     timing_end(&timer, &elapsed_trid_y);
-    
+
     //
     // perform tri-diagonal solves in z-direction
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatchIncMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.pads, app.size_g);
+    tridSmtsvStridedBatchIncMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.size, app.size_g);
 #else
-    tridDmtsvStridedBatchIncMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.pads, app.size_g);
+    tridDmtsvStridedBatchIncMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.size, app.size_g);
 #endif
     timing_end(&timer, &elapsed_trid_z);
   }
@@ -364,13 +383,21 @@ int main(int argc, char* argv[]) {
   timing_end(&timer1, &elapsed_total);
   
   // Print sum of these arrays (basic error checking)
-  rms("end h", app.u, app);
-  rms("end d", app.d, app);
+  cudaSafeCall( cudaMemcpy(h_u, app.u, sizeof(FP) * app.size[0] * app.size[1] * app.size[2], cudaMemcpyDeviceToHost) );
+  cudaSafeCall( cudaMemcpy(du, app.d, sizeof(FP) * app.size[0] * app.size[1] * app.size[2], cudaMemcpyDeviceToHost) );
+  
+  rms("end h", h_u, app);
+  rms("end d", du, app);
+
+  MPI_Barrier(MPI_COMM_WORLD);
+
+  free(h_u);
+  free(du);
   
   MPI_Barrier(MPI_COMM_WORLD);
   
   // Print out timings of each section
-  if(app.coords[0] == 0 || app.coords[1] == 0 || app.coords[2] == 0) {
+  if(app.coords[0] == 0 && app.coords[1] == 0 && app.coords[2] == 0) {
     // Print execution times
     printf("Time per section: \n[total] \t[prepro] \t[trid_x] \t[trid_y] \t[trid_z]\n");
     printf("%e \t%e \t%e \t%e \t%e\n",
@@ -386,6 +413,7 @@ int main(int argc, char* argv[]) {
   finalize(app, pre_handle);
   
   MPI_Finalize();
+  cudaDeviceReset();
   return 0;
 
 }

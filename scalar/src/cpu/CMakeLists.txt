@@ -32,6 +32,7 @@ if (BUILD_FOR_CPU)
 		            ${PROJECT_SOURCE_DIR}/include/trid_simd.h
 		            ${PROJECT_SOURCE_DIR}/include/trid_mpi_cpu.h
                 ${PROJECT_SOURCE_DIR}/src/cpu/trid_mpi_cpu.hpp
+                ${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
 		      DESTINATION ${CMAKE_BINARY_DIR}/include)
 endif (BUILD_FOR_CPU)
 
@@ -82,6 +83,7 @@ if (BUILD_FOR_MIC AND INTEL_CC)
 					${PROJECT_SOURCE_DIR}/include/trid_common.h 
 					${PROJECT_SOURCE_DIR}/include/trid_simd.h
 					${PROJECT_SOURCE_DIR}/src/cpu/trid_mpi_cpu.hpp
+					${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
 		DESTINATION ${CMAKE_BINARY_DIR}/include)
 endif (BUILD_FOR_MIC AND INTEL_CC)
 

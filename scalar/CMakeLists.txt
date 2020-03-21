@@ -4,6 +4,7 @@ option(INTEL_CC "Use the Intel compiler." ON)
 option(BUILD_FOR_CPU "Build library for CPU architecture." OFF) 
 option(BUILD_FOR_MIC "Build library for MIC architecture." OFF) 
 option(BUILD_FOR_GPU "Build library for GPU architecture." OFF) 
+option(BUILD_FOR_MPI "Build library for MPI combnied with the above architectures." OFF)
 
 if (INTEL_CC) 
   # Detect/find Intel compilers
