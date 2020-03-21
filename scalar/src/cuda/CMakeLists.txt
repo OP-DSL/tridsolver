@@ -37,7 +37,7 @@ if (BUILD_FOR_GPU)
           ARCHIVE DESTINATION ${CMAKE_BINARY_DIR}/lib)
 
   install(FILES ${PROJECT_SOURCE_DIR}/include/trid_mpi_cuda.hpp
-                        ${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
+                ${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
           DESTINATION ${CMAKE_BINARY_DIR}/include)
 
 endif (BUILD_FOR_GPU)

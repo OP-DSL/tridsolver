@@ -29,7 +29,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
+#include "cuda_shfl.h"
 //////////////////////////////////////////////////////////////////////
 //
 // This header file has various tridiagonal solution routines
@@ -45,43 +45,44 @@
 //                  presentations/S3174-Kepler-Shuffle-Tips-Tricks.pdf
 
 /*
-__forceinline__ __device__ double __shfl_up(double x, int offset) {
-  return __hiloint2double( __shfl_up(__double2hiint(x), offset),
-                           __shfl_up(__double2loint(x), offset) );
+__forceinline__ __device__ double trid_shfl_up(double x, int offset) {
+  return __hiloint2double( trid_shfl_up(__double2hiint(x), offset),
+                           trid_shfl_up(__double2loint(x), offset) );
 }
 
-__forceinline__ __device__ double __shfl_down(double x, int offset) {
-  return __hiloint2double( __shfl_down(__double2hiint(x), offset),
-                           __shfl_down(__double2loint(x), offset) );
+__forceinline__ __device__ double trid_shfl_down(double x, int offset) {
+  return __hiloint2double( trid_shfl_down(__double2hiint(x), offset),
+                           trid_shfl_down(__double2loint(x), offset) );
 }
 */
 
-// __forceinline__ __device__ double __shfl_up(double x, uint s) {
+// __forceinline__ __device__ double trid_shfl_up(double x, uint s) {
  // int lo, hi;
  // asm volatile( "mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(x) );
- // lo = __shfl_up(lo,s);
- // hi = __shfl_up(hi,s);
+ // lo = trid_shfl_up(lo,s);
+ // hi = trid_shfl_up(hi,s);
  // asm volatile( "mov.b64 %0, {%1,%2};" : "=d"(x) : "r"(lo), "r"(hi) );
  // return x;
 // }
 
-// __forceinline__ __device__ double __shfl_down(double x, uint s) {
+// __forceinline__ __device__ double trid_shfl_down(double x, uint s) {
  // int lo, hi;
  // asm volatile( "mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(x) );
- // lo = __shfl_down(lo,s);
- // hi = __shfl_down(hi,s);
+ // lo = trid_shfl_down(lo,s);
+ // hi = trid_shfl_down(hi,s);
  // asm volatile( "mov.b64 %0, {%1,%2};" : "=d"(x) : "r"(lo), "r"(hi) );
  // return x;
 // }
 
-// __forceinline__ __device__ double __shfl_xor(double x, int s) {
+// __forceinline__ __device__ double trid_shfl_xor(double x, int s) {
  // int lo, hi;
  // asm volatile( "mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(x) );
- // lo = __shfl_xor(lo,s);
- // hi = __shfl_xor(hi,s);
+ // lo = trid_shfl_xor(lo,s);
+ // hi = trid_shfl_xor(hi,s);
  // asm volatile( "mov.b64 %0, {%1,%2};" : "=d"(x) : "r"(lo), "r"(hi) );
  // return x;
 // }
+
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -139,12 +140,12 @@ REAL trid1_warp(REAL a, REAL c, REAL d){
 
 #pragma unroll
   for (int n=0; n<5; n++) {
-    b = __rcp( 1.0f - a*__shfl_up(c,s)
-                    - c*__shfl_down(a,s) );
-    d = ( d  - a*__shfl_up(d,s)
-             - c*__shfl_down(d,s) ) * b; 
-    a =      - a*__shfl_up(a,s)     * b;
-    c =      - c*__shfl_down(c,s)   * b; 
+    b = __rcp( 1.0f - a*trid_shfl_up(c,s)
+                    - c*trid_shfl_down(a,s) );
+    d = ( d  - a*trid_shfl_up(d,s)
+             - c*trid_shfl_down(d,s) ) * b; 
+    a =      - a*trid_shfl_up(a,s)     * b;
+    c =      - c*trid_shfl_down(c,s)   * b; 
 
     s = s<<1;
   }
@@ -226,27 +227,27 @@ void trid2_warp(REAL &am, REAL &cm, REAL &dm,
   REAL b;
   uint s=1;
 
-  b   = 1.0f - ap*cm - cp*__shfl_down(am,1);
+  b   = 1.0f - ap*cm - cp*trid_shfl_down(am,1);
   b   = __rcp(b);
   // for some odd reason, the next line is best there not higher
-  dp  =  dp  - ap*dm - cp*__shfl_down(dm,1); 
+  dp  =  dp  - ap*dm - cp*trid_shfl_down(dm,1); 
   dp  =   b*dp;
   ap  = - b*ap*am;
-  cp  = - b*cp*__shfl_down(cm,1); 
+  cp  = - b*cp*trid_shfl_down(cm,1); 
 
 #pragma unroll
   for (int n=0; n<5; n++) {
-    dp  =   dp - ap*__shfl_up(dp,s) - cp*__shfl_down(dp,s);
-    b   = 1.0f - ap*__shfl_up(cp,s) - cp*__shfl_down(ap,s);
+    dp  =   dp - ap*trid_shfl_up(dp,s) - cp*trid_shfl_down(dp,s);
+    b   = 1.0f - ap*trid_shfl_up(cp,s) - cp*trid_shfl_down(ap,s);
     b   = __rcp(b);
     dp  =   b*dp;
-    ap  = - b*ap*__shfl_up(ap,s);
-    cp  = - b*cp*__shfl_down(cp,s);
+    ap  = - b*ap*trid_shfl_up(ap,s);
+    cp  = - b*cp*trid_shfl_down(cp,s);
 
     s = s<<1;
   }
   
-  dm = dm - am*__shfl_up(dp,1) - cm*dp;
+  dm = dm - am*trid_shfl_up(dp,1) - cm*dp;
   
   return;
 }
@@ -340,25 +341,25 @@ void trid2_warp_large(REAL &am, REAL &cm, REAL &dm,
     __syncthreads();
   }
   else {
-    b   = 1.0f - ap*cm - cp*__shfl_down(am,1);
+    b   = 1.0f - ap*cm - cp*trid_shfl_down(am,1);
     b   = __rcp(b);
     // for some odd reason, the next line is best there not higher
-    dp  =  dp  - ap*dm - cp*__shfl_down(dm,1); 
+    dp  =  dp  - ap*dm - cp*trid_shfl_down(dm,1); 
     dp  =   b*dp;
     ap  = - b*ap*am;
-    cp  = - b*cp*__shfl_down(cm,1); 
+    cp  = - b*cp*trid_shfl_down(cm,1); 
   }
  
 
   s = 1;
 #pragma unroll
   for (int n=0; n < 5; n++) {
-    dp  =   dp - ap*__shfl_up(dp,s) - cp*__shfl_down(dp,s);
-    b   = 1.0f - ap*__shfl_up(cp,s) - cp*__shfl_down(ap,s);
+    dp  =   dp - ap*trid_shfl_up(dp,s) - cp*trid_shfl_down(dp,s);
+    b   = 1.0f - ap*trid_shfl_up(cp,s) - cp*trid_shfl_down(ap,s);
     b   = __rcp(b);
     dp  =   b*dp;
-    ap  = - b*ap*__shfl_up(ap,s);
-    cp  = - b*cp*__shfl_down(cp,s);    
+    ap  = - b*ap*trid_shfl_up(ap,s);
+    cp  = - b*cp*trid_shfl_down(cp,s);    
 
     s = s<<1;
   }
@@ -386,7 +387,7 @@ void trid2_warp_large(REAL &am, REAL &cm, REAL &dm,
 
   }
   else {
-    dm = dm - am*__shfl_up(dp,1) - cm*dp;
+    dm = dm - am*trid_shfl_up(dp,1) - cm*dp;
   }
   
   return;
@@ -537,20 +538,20 @@ void trid_warp_setup(REAL *a,  REAL *b,  REAL *c, REAL *atmp,
 
   c[0] *= bbi;
 
-  bb0 = __rcp(1.0f - atmp[7]*c0 - c[7]*__shfl_down(a0, 1));
+  bb0 = __rcp(1.0f - atmp[7]*c0 - c[7]*trid_shfl_down(a0, 1));
   ap[0] = - atmp[7]*a0 * bb0;
-  cp[0] = - c[7]*__shfl_down(c0, 1) * bb0;  
+  cp[0] = - c[7]*trid_shfl_down(c0, 1) * bb0;  
 
   #pragma unroll
   for(int i=0; i<4 ; i++) {
-    bb[i]   = __rcp((1.0f - ap[i]*__shfl_up(cp[i], s)
-                          - cp[i]*__shfl_down(ap[i], s)));
-    ap[i+1] = -ap[i]*__shfl_up  (ap[i], s) * bb[i];
-    cp[i+1] = -cp[i]*__shfl_down(cp[i], s) * bb[i]; 
+    bb[i]   = __rcp((1.0f - ap[i]*trid_shfl_up(cp[i], s)
+                          - cp[i]*trid_shfl_down(ap[i], s)));
+    ap[i+1] = -ap[i]*trid_shfl_up  (ap[i], s) * bb[i];
+    cp[i+1] = -cp[i]*trid_shfl_down(cp[i], s) * bb[i]; 
     s = s<<1;
   }
-  bb[4] = __rcp((1.0f - ap[4]*__shfl_up(cp[4], 16)
-                      - cp[4]*__shfl_down(ap[4], 16)));
+  bb[4] = __rcp((1.0f - ap[4]*trid_shfl_up(cp[4], 16)
+                      - cp[4]*trid_shfl_down(ap[4], 16)));
 }
 
 
@@ -579,15 +580,15 @@ void trid_warp_solve(REAL *a,  REAL *b,  REAL *c, REAL *atmp,
 
   // The core of the tridiagonal solver
 
-  f[7] = (f[7] - atmp[7]*f[0] - c[7]*__shfl_down(f[0], 1)) * bb0; 
+  f[7] = (f[7] - atmp[7]*f[0] - c[7]*trid_shfl_down(f[0], 1)) * bb0; 
 
   #pragma unroll
   for(int i=0; i<5; i++) {
-    f[7] = (f[7] - ap[i]*__shfl_up(f[7], s)
-                 - cp[i]*__shfl_down(f[7], s)) * bb[i]; 
+    f[7] = (f[7] - ap[i]*trid_shfl_up(f[7], s)
+                 - cp[i]*trid_shfl_down(f[7], s)) * bb[i]; 
     s = s<<1;
   }
-  f[0] =  f[0] - a0*__shfl_up(f[7], 1) - c0*f[7];
+  f[0] =  f[0] - a0*trid_shfl_up(f[7], 1) - c0*f[7];
     
   REAL ci = c[6];
   f[6] = f[6] - atmp[6]*f[0] - ci*f[7];

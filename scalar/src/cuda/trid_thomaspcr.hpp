@@ -35,6 +35,7 @@
 #include <stdio.h>
 #include "trid_thomaspcr_small.h"
 #include "trid_thomaspcr_large.hpp"
+#include "generics/generics/shfl.h"
 
 // This is an extension of Mike Giles' 1D Black Scholes work (http://people.maths.ox.ac.uk/gilesm/codes/BS_1D/).
 // The original code iterated over time within the kenrel without global memory interaction. This version
@@ -118,13 +119,13 @@ inline __device__ void transpose2x2xor(float8* la) {
 
   // Transpose with cyclic shuffle
   float4 tmp;
-  (*la).vec[0] = __shfl((*la).vec[0],(threadIdx.x+1) % WARP_SIZE); // __shfl_down() could not be used, since it doesn't work in a round buffer fashion -> data would be lost
+  (*la).vec[0] = gen_trid_shfl((*la).vec[0],(threadIdx.x+1) % WARP_SIZE); // __shfl_down() could not be used, since it doesn't work in a round buffer fashion -> data would be lost
   if(threadIdx.x%2 == 0) {
     tmp = (*la).vec[0];
     (*la).vec[0] = (*la).vec[1];
     (*la).vec[1] = tmp;
   }
-  (*la).vec[0] = __shfl((*la).vec[0],(threadIdx.x-1) % WARP_SIZE);
+  (*la).vec[0] = gen_trid_shfl((*la).vec[0],(threadIdx.x-1) % WARP_SIZE);
 }
 
 template <typename REAL, int regStoreSize, int t_warpSize>

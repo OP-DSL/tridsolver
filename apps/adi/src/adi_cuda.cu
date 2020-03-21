@@ -85,6 +85,22 @@ inline void timing_end(int prof, double *timer, double *elapsed_accumulate, std:
   }
 }
 
+void rms(char* name, FP* array, int nx, int ny, int nz, int padx) {
+  //Sum the square of values in app.h_u
+  double sum = 0.0;
+  for(int k = 0; k < nz; k++) {
+    for(int j = 0; j < ny; j++) {
+      for(int i = 0; i < nx; i++) {
+        int ind = k * padx * ny + j * padx + i;
+        //sum += array[ind]*array[ind];
+        sum += array[ind];
+      }
+    }
+  }
+
+  printf("%s sum = %lg\n", name, sum);
+}
+
 int main(int argc, char* argv[]) {
   double timer, timer2, elapsed, elapsed_total, elapsed_preproc, elapsed_trid_x, elapsed_trid_y, elapsed_trid_z;
   int    i, j, k, ind, it;
@@ -257,8 +273,8 @@ int main(int argc, char* argv[]) {
 
   int solvedim;   // user chosen dimension for which the solution is performed
 
-  //int opts[MAXDIM];// = {nx, ny, nz,...};
-  int *opts = get_opts();
+  int opts[MAXDIM];// = {nx, ny, nz,...};
+  //int *opts = get_opts();
   opts[0] = optx;
   opts[1] = opty;
   opts[2] = optz;
@@ -323,8 +339,10 @@ int main(int argc, char* argv[]) {
   elapsed = elapsed_time(&timer);
   printf("\nCopy u to host: %f (s) \n", elapsed);
 
+  rms("end h_u", h_u, nx, ny, nz, dims[0]);
+
   int ldim=nx;
-  #include "print_array.c"
+  //#include "print_array.c"
 
   // Release GPU and CPU memory
   cudaSafeCall(cudaFree(d_u) );
