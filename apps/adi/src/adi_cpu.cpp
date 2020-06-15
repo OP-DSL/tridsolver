@@ -41,7 +41,7 @@
 #include "trid_cpu.h"
 
 #include "omp.h"
-#include "offload.h"
+//#include "offload.h"
 
 #ifdef __MKL__
   #include "mkl.h"
