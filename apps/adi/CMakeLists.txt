@@ -77,6 +77,7 @@ if (BUILD_FOR_CPU)
   target_link_libraries(adi_cpu PRIVATE -L${LIBTRID_PATH}/lib -ltridcpu -L${INTEL_PATH}/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
 
   #/opt/intel/composer_xe_2015.3.187/bin/intel64/icc -O3 -xAVX -ip -restrict -parallel -fopenmp -openmp-report2 -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par  -DFPPREC=0  -DN_MAX=1024  -I./include -I./libtrid  -I./include -I./libtrid -I/opt/intel/composer_xe_2015.3.187/mkl/include   -D__LAPACKE__ src/adi_cpu.cpp -L/opt/intel/composer_xe_2015.3.187/mkl/lib/intel64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -L/opt/intel/composer_xe_2015.3.187/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts -o adi_mkl
+
   add_executable(adi_mkl src/adi_cpu.cpp)
   target_compile_definitions(adi_mkl PRIVATE -D__MKL__)
   target_compile_options(adi_mkl PRIVATE -xAVX -parallel -qopenmp -no-offload)
