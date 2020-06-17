@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 2.8.8)
 
 if (BUILD_FOR_CPU)
-#	add_library(tridcpu_sp OBJECT ./trid_cpu.cpp)
+	add_library(tridcpu_sp OBJECT ./trid_cpu.cpp ./trid_mpi_cpu.cpp)
 	add_library(tridcpu_dp OBJECT ./trid_cpu.cpp ./trid_mpi_cpu.cpp)
-#	add_library(tridcpu    SHARED $<TARGET_OBJECTS:tridcpu_sp> $<TARGET_OBJECTS:tridcpu_dp>)
-	add_library(tridcpu    SHARED $<TARGET_OBJECTS:tridcpu_dp>)
+	add_library(tridcpu    SHARED $<TARGET_OBJECTS:tridcpu_sp> $<TARGET_OBJECTS:tridcpu_dp>)
+#	add_library(tridcpu    SHARED $<TARGET_OBJECTS:tridcpu_dp>)
 
-#	target_include_directories(tridcpu_sp PRIVATE ${PROJECT_SOURCE_DIR}/include ./ PRIVATE ../ )
+	target_include_directories(tridcpu_sp PRIVATE ${PROJECT_SOURCE_DIR}/include ./ PRIVATE ../ )
 	target_include_directories(tridcpu_dp PRIVATE ${PROJECT_SOURCE_DIR}/include ./ PRIVATE ../ )
 
 	#/opt/intel/composer_xe_2015.3.187/bin/intel64/icpc -O3 -xAVX -ipo -restrict -parallel -fopenmp -qopt-report=2 -qopt-report-phase=vec -qopt-report-phase=par -offload-attribute-target=mic -mkl -offload-option,mic,ld,"-L/opt/intel/composer_xe_2015.3.187/mkl/lib/mic -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -L/opt/intel/composer_xe_2015.3.187/compiler/lib/mic -limf -lintlc -lsvml -lirng -liomp5 -loffload -lcilkrts" -DFPPREC=0  -DN_MAX=1024  -I./include -I./libtrid  -D__OFFLOAD__ src/adi_cpu.cpp -L./libtrid/lib -limf -lintlc -lsvml -lirng  -o adi_phi_offload
@@ -17,10 +17,10 @@ if (BUILD_FOR_CPU)
 	#set_target_properties(tridcpu_sp PROPERTIES COMPILE_FLAGS "-fPIC -DFPPREC=0")
 	#set_target_properties(tridcpu_dp PROPERTIES COMPILE_FLAGS "-fPIC -DFPPREC=1")
 	
-#	target_compile_options(tridcpu_sp PRIVATE -fPIC) 
+	target_compile_options(tridcpu_sp PRIVATE -fPIC) 
 	target_compile_options(tridcpu_dp PRIVATE -fPIC)
 	
-#	target_compile_definitions(tridcpu_sp PRIVATE -DFPPREC=0)
+	target_compile_definitions(tridcpu_sp PRIVATE -DFPPREC=0)
 	target_compile_definitions(tridcpu_dp PRIVATE -DFPPREC=1)
 
 	install(TARGETS tridcpu    
