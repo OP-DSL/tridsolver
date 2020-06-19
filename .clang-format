@@ -1,0 +1,10 @@
+BasedOnStyle: LLVM
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortIfStatementsOnASingleLine: true
+DeriveLineEnding: false
+IndentPPDirectives: AfterHash
+MaxEmptyLinesToKeep: 2
+SortIncludes: false
+AlignConsecutiveMacros: true
+AlignTrailingComments: true
+
