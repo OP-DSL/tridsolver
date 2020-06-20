@@ -547,14 +547,15 @@ tridStatus_t tridSmtsvStridedBatchInc(const float *a, const float *b,
   return TRID_STATUS_SUCCESS;
 }
 
-void trid_scalarS(float *__restrict a, float *__restrict b, float *__restrict c,
-                  float *__restrict d, float *__restrict u, int N, int stride) {
+void trid_scalarS(const float *__restrict a, const float *__restrict b,
+                  const float *__restrict c, float *__restrict d,
+                  float *__restrict u, int N, int stride) {
 
   trid_scalar<0>(a, b, c, d, u, N, stride);
 }
 
-void trid_x_transposeS(float *__restrict a, float *__restrict b,
-                       float *__restrict c, float *__restrict d,
+void trid_x_transposeS(const float *__restrict a, const float *__restrict b,
+                       const float *__restrict c, float *__restrict d,
                        float *__restrict u, int sys_size, int sys_pad,
                        int stride) {
 
@@ -568,8 +569,8 @@ void trid_scalar_vecS(const float *__restrict a, const float *__restrict b,
   trid_scalar_vec<FP, VECTOR, 0>(a, b, c, d, u, N, stride);
 }
 
-void trid_scalar_vecSInc(float *__restrict a, float *__restrict b,
-                         float *__restrict c, float *__restrict d,
+void trid_scalar_vecSInc(const float *__restrict a, const float *__restrict b,
+                         const float *__restrict c, float *__restrict d,
                          float *__restrict u, int N, int stride) {
 
   trid_scalar_vec<FP, VECTOR, 1>(a, b, c, d, u, N, stride);
@@ -593,30 +594,30 @@ tridStatus_t tridDmtsvStridedBatchInc(const double *a, const double *b,
   return TRID_STATUS_SUCCESS;
 }
 
-void trid_scalarD(double *__restrict a, double *__restrict b,
-                  double *__restrict c, double *__restrict d,
+void trid_scalarD(const double *__restrict a, const double *__restrict b,
+                  const double *__restrict c, double *__restrict d,
                   double *__restrict u, int N, int stride) {
 
   trid_scalar<0>(a, b, c, d, u, N, stride);
 }
 
-void trid_x_transposeD(double *__restrict a, double *__restrict b,
-                       double *__restrict c, double *__restrict d,
+void trid_x_transposeD(const double *__restrict a, const double *__restrict b,
+                       const double *__restrict c, double *__restrict d,
                        double *__restrict u, int sys_size, int sys_pad,
                        int stride) {
 
   trid_x_transpose<0>(a, b, c, d, u, sys_size, sys_pad, stride);
 }
 
-void trid_scalar_vecD(double *__restrict a, double *__restrict b,
-                      double *__restrict c, double *__restrict d,
+void trid_scalar_vecD(const double *__restrict a, const double *__restrict b,
+                      const double *__restrict c, double *__restrict d,
                       double *__restrict u, int N, int stride) {
 
   trid_scalar_vec<FP, VECTOR, 0>(a, b, c, d, u, N, stride);
 }
 
-void trid_scalar_vecDInc(double *__restrict a, double *__restrict b,
-                         double *__restrict c, double *__restrict d,
+void trid_scalar_vecDInc(const double *__restrict a, const double *__restrict b,
+                         const double *__restrict c, double *__restrict d,
                          double *__restrict u, int N, int stride) {
 
   trid_scalar_vec<FP, VECTOR, 1>(a, b, c, d, u, N, stride);
