@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8.8)
+cmake_minimum_required(VERSION 3.9)
 
 option(INTEL_CC "Use the Intel compiler." ON)
 option(BUILD_FOR_CPU "Build library for CPU architecture." OFF)
@@ -30,7 +30,7 @@ if (INTEL_CC)
   endif ()
 endif (INTEL_CC)
 
-project("libtrid")
+project("libtrid" LANGUAGES CXX)
 
 if (INTEL_CC)
   # Set compiler flags/options for Intel compiler
