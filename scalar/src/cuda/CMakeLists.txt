@@ -45,6 +45,9 @@ if (BUILD_FOR_GPU)
     add_library(tridcuda_mpi ${PROJECT_SOURCE_DIR}/src/cuda/trid_cuda_mpi.cu SHARED)
     target_include_directories(tridcuda_mpi PRIVATE ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/src/cuda/
                                                     ${PROJECT_SOURCE_DIR}/src/cuda/generics/)
+    if (USE_CUDA_AWARE_MPI)
+      target_compile_definitions(tridcuda_mpi PRIVATE TRID_CUDA_AWARE_MPI)
+    endif (USE_CUDA_AWARE_MPI)
 
     # Make binary relocatable
     set_target_properties(tridcuda PROPERTIES POSITION_INDEPENDENT_CODE ON)
