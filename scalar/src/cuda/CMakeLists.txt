@@ -1,29 +1,27 @@
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 2.8.8)
 
 if (BUILD_FOR_GPU)
-  include(CheckLanguage)
-  check_language(CUDA)
-  if (NOT CMAKE_CUDA_COMPILER)
-    message(FATAL_ERROR "Could not find CUDA compiler, cannot build for GPU")
-  endif ()
-  enable_language(CUDA)
-  set(CMAKE_CUDA_STANDARD 11)
-  set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+  find_package(CUDA REQUIRED)
+  include(FindCUDA)
 
   set(CUDA_64_BIT_DEVICE_CODE ON) # -m64 compiler option
   set(CUDA_PROPAGATE_HOST_FLAGS OFF)
 
-  set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS}         -arch=sm_35 -gencode arch=compute_60,code=sm_60 -Xptxas -dlcm=cg")
+  set(CUDA_NVCC_FLAGS
+      "${CUDA_NVCC_FLAGS}         -arch=sm_35 -gencode arch=compute_60,code=sm_60 -Xptxas -dlcm=cg -std=c++11")
   set(CUDA_NVCC_FLAGS_DEBUG "${CUDA_NVCC_FLAGS_DEBUG}   -g -G -O0 -ftz=false -fmad=false               ")
   set(CUDA_NVCC_FLAGS_RELEASE "${CUDA_NVCC_FLAGS_RELEASE} -O3                                            ")
 
-  set(CUDA_LIBRARIES ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcudart.so ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcublas.so)
-
-  add_library(tridcuda ${PROJECT_SOURCE_DIR}/src/cuda/trid_cuda.cu SHARED)
-  # Make binary relocatable
-  set_target_properties(tridcuda PROPERTIES POSITION_INDEPENDENT_CODE ON)
-  target_include_directories(tridcuda PRIVATE ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/src/cuda/
-                                              ${PROJECT_SOURCE_DIR}/src/cuda/generics/)
+  cuda_include_directories(${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/src/cuda/
+                           ${PROJECT_SOURCE_DIR}/src/cuda/generics/)
+  set(CUDA_LIBRARIES ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcudart.so, ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcublas.so)
+  cuda_add_library(
+    tridcuda
+    ${PROJECT_SOURCE_DIR}/src/cuda/trid_cuda.cu
+    SHARED
+    OPTIONS
+    -Xcompiler
+    -fPIC) # Make binary relocatable
 
   install(
     TARGETS tridcuda
@@ -40,20 +38,23 @@ if (BUILD_FOR_GPU)
   if (BUILD_FOR_MPI)
     option(USE_CUDA_AWARE_MPI "Build library with CUDA-aware MPI" OFF)
     find_package(MPI REQUIRED)
-    include_directories(SYSTEM ${MPI_INCLUDE_PATH})
+    find_package(OpenMP REQUIRED)
+    cuda_include_directories(SYSTEM ${MPI_INCLUDE_PATH})
 
-    add_library(tridcuda_mpi ${PROJECT_SOURCE_DIR}/src/cuda/trid_cuda_mpi.cu SHARED)
-    target_include_directories(tridcuda_mpi PRIVATE ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/src/cuda/
-                                                    ${PROJECT_SOURCE_DIR}/src/cuda/generics/)
+    cuda_add_library(
+      tridcuda_mpi
+      ${PROJECT_SOURCE_DIR}/src/cuda/trid_cuda_mpi.cu
+      SHARED
+      OPTIONS
+      -Xcompiler
+      -fPIC
+      -Xcompiler) # Make binary relocatable
+
     if (USE_CUDA_AWARE_MPI)
       target_compile_definitions(tridcuda_mpi PRIVATE TRID_CUDA_AWARE_MPI)
     endif (USE_CUDA_AWARE_MPI)
 
-    # Make binary relocatable
-    set_target_properties(tridcuda PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
-    target_link_libraries(tridcuda_mpi ${MPI_CXX_LIBRARIES})
-    # target_link_libraries(tridcuda_mpi tridcuda)
+    target_link_libraries(tridcuda_mpi tridcuda)
     install(
       TARGETS tridcuda_mpi
       LIBRARY DESTINATION ${CMAKE_BINARY_DIR}/lib
