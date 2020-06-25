@@ -31,12 +31,12 @@
  */
 
 // Written by Toby Flynn, University of Warwick, T.Flynn@warwick.ac.uk, 2020
-// Based on trid_linear_reg8_double2.hpp written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014 
+// Based on trid_linear_reg8_double2.hpp written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014
 
 #ifndef TRID_LINEAR_MPI_REG8_DOUBLE2_GPU_MPI__
 #define TRID_LINEAR_MPI_REG8_DOUBLE2_GPU_MPI__
 
-#define VEC 8 
+#define VEC 8
 #define WARP_SIZE 32
 
 #include <assert.h>
@@ -117,7 +117,7 @@ inline __device__ void load_array_reg8_double2(const double* __restrict__ ga, do
   // Load 4 double2 values (64bytes) from an X-line
   gind = woffset + (4*(trow)) * sys_pads + tcol*2 + n; // First index in the X-line; woffset - warp offset in global memory
   int i;
-  
+
   for(i=0; i<4; i++) {
     (*la).vec[i] = __ldg( ((double2*)&ga[gind]) );
     gind += sys_pads;
@@ -214,7 +214,7 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
                   blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
   // Warp ID in global scope - the ID wich the thread belongs to
   const int wid = tid / WARP_SIZE;
-  // Global memory offset: unique to a warp; 
+  // Global memory offset: unique to a warp;
   // every thread in a warp calculates the same woffset, which is the "begining" of 3D tile
   const int woffset = wid * WARP_SIZE * sys_pads;
   // These 4-threads do the regular memory read/write and data transpose
@@ -223,17 +223,17 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
   const int boundary_solve  = !optimized_solve && ( tid < (sys_n) );
   // A thread is active only if it works on valid memory
   const int active_thread   = optimized_solve || boundary_solve;
-  // Check if aligned memory 
+  // Check if aligned memory
   const int aligned         = (sys_pads % ALIGN_DOUBLE) == 0;
-  
+
   int n = 0;
   // Start index for this tridiagonal system
   int ind = sys_pads * tid;
-  
+
   // Local arrays used in the register shuffle
   double8 l_a, l_b, l_c, l_d, l_aa, l_cc, l_dd;
   double bb, a2, c2, d2;
-  
+
   // Check that this is an active thread
   if(active_thread) {
     // Check that this thread can perform an optimized solve
@@ -245,7 +245,7 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
         load_array_reg8_double2(b,&l_b,n, woffset, sys_pads);
         load_array_reg8_double2(c,&l_c,n, woffset, sys_pads);
         load_array_reg8_double2(d,&l_d,n, woffset, sys_pads);
-        
+
         for (int i = 0; i < 2; i++) {
           bb = 1.0 / l_b.f[i];
           d2 = bb * l_d.f[i];
@@ -255,7 +255,7 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
           l_aa.f[i] = a2;
           l_cc.f[i] = c2;
         }
-        
+
         for(int i = 2; i < VEC; i++) {
           bb = 1.0 / (l_b.f[i] - l_a.f[i] * c2);
           d2 = (l_d.f[i] - l_a.f[i] * d2) * bb;
@@ -265,11 +265,11 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
           l_aa.f[i] = a2;
           l_cc.f[i] = c2;
         }
-        
+
         store_array_reg8_double2(dd,&l_dd,n, woffset, sys_pads);
         store_array_reg8_double2(cc,&l_cc,n, woffset, sys_pads);
         store_array_reg8_double2(aa,&l_aa,n, woffset, sys_pads);
-        
+
         // Forward pass
         for(n = VEC; n < sys_size - VEC; n += VEC) {
           load_array_reg8_double2(a,&l_a,n, woffset, sys_pads);
@@ -290,7 +290,7 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
           store_array_reg8_double2(cc,&l_cc,n, woffset, sys_pads);
           store_array_reg8_double2(aa,&l_aa,n, woffset, sys_pads);
         }
-        
+
         // Finish off last part that may not fill an entire vector
         for(int i = n; i < sys_size; i++) {
           int loc_ind = ind + i;
@@ -299,14 +299,14 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
           aa[loc_ind] = (-a[loc_ind] * aa[loc_ind - 1]) * bb;
           cc[loc_ind] = c[loc_ind] * bb;
         }
-        
+
         // Backwards pass
         n -= VEC;
-        
+
         a2 = aa[ind + sys_size - 2];
         c2 = cc[ind + sys_size - 2];
         d2 = dd[ind + sys_size - 2];
-        
+
         // Do part that may not fit in vector
         for(int i = sys_size - 3; i >= n + VEC; i--) {
           int loc_ind = ind + i;
@@ -317,13 +317,13 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
           aa[loc_ind] = a2;
           cc[loc_ind] = c2;
         }
-        
+
         // Backwards pass using vectors
         for(; n > 0; n -= VEC) {
           load_array_reg8_double2(aa,&l_aa,n, woffset, sys_pads);
           load_array_reg8_double2(cc,&l_cc,n, woffset, sys_pads);
           load_array_reg8_double2(dd,&l_dd,n, woffset, sys_pads);
-          
+
           for(int i = VEC - 1; i >= 0; i--) {
             d2 = l_dd.f[i] - l_cc.f[i] * d2;
             a2 = l_aa.f[i] - l_cc.f[i] * a2;
@@ -332,19 +332,19 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
             l_cc.f[i] = c2;
             l_aa.f[i] = a2;
           }
-          
+
           store_array_reg8_double2(dd,&l_dd,n, woffset, sys_pads);
           store_array_reg8_double2(cc,&l_cc,n, woffset, sys_pads);
           store_array_reg8_double2(aa,&l_aa,n, woffset, sys_pads);
         }
-        
+
         // Final vector processed separately so that element 0 can be handled
         n = 0;
-        
+
         load_array_reg8_double2(aa,&l_aa,n, woffset, sys_pads);
         load_array_reg8_double2(cc,&l_cc,n, woffset, sys_pads);
         load_array_reg8_double2(dd,&l_dd,n, woffset, sys_pads);
-        
+
         for(int i = VEC - 1; i > 0; i--) {
           d2 = l_dd.f[i] - l_cc.f[i] * d2;
           a2 = l_aa.f[i] - l_cc.f[i] * a2;
@@ -353,16 +353,16 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
           l_cc.f[i] = c2;
           l_aa.f[i] = a2;
         }
-        
+
         bb = 1.0 / (1.0 - l_cc.f[0] * a2);
         l_dd.f[0] = bb * (l_dd.f[0] - l_cc.f[0] * d2);
         l_aa.f[0] = bb * l_aa.f[0];
         l_cc.f[0] = bb * (-l_cc.f[0] * c2);
-        
+
         store_array_reg8_double2(dd,&l_dd,n, woffset, sys_pads);
         store_array_reg8_double2(cc,&l_cc,n, woffset, sys_pads);
         store_array_reg8_double2(aa,&l_aa,n, woffset, sys_pads);
-        
+
         // Store boundary values for communication
         int i = tid * 6;
         boundaries[i + 0] = aa[ind];
@@ -375,7 +375,7 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
         // Memory is unaligned
         int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE;
         int sys_off   = ind - ind_floor;
-        
+
         // Handle start of unaligned memory
         for(int i = 0; i < VEC; i++) {
           if(i >= sys_off) {
@@ -399,7 +399,7 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
             }
           }
         }
-        
+
         int n = VEC;
         // Back to normal
         for(; n < sys_size - VEC; n += VEC) {
@@ -421,7 +421,7 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
           store_array_reg8_double2_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size);
           store_array_reg8_double2_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
         }
-        
+
         // Handle end of unaligned memory
         for(int i = n; i < sys_size + sys_off; i++) {
           int loc_ind = ind_floor + i;
@@ -433,12 +433,12 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
           aa[loc_ind] = a2;
           cc[loc_ind] = c2;
         }
-        
+
         // Backwards pass
         d2 = dd[ind_floor + sys_size + sys_off - 2];
         a2 = aa[ind_floor + sys_size + sys_off - 2];
         c2 = cc[ind_floor + sys_size + sys_off - 2];
-        
+
         n -= VEC;
 
         // Start with end of unaligned memory
@@ -451,15 +451,15 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
           aa[loc_ind] = a2;
           cc[loc_ind] = c2;
         }
-        
+
         n -= VEC;
-        
+
         // Back to normal
         for(; n > 0; n -= VEC) {
           load_array_reg8_double2_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
           load_array_reg8_double2_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size);
           load_array_reg8_double2_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size);
-          
+
           for(int i = VEC - 1; i >= 0; i--) {
             d2 = l_dd.f[i] - l_cc.f[i] * d2;
             a2 = l_aa.f[i] - l_cc.f[i] * a2;
@@ -468,12 +468,12 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
             l_cc.f[i] = c2;
             l_aa.f[i] = a2;
           }
-          
+
           store_array_reg8_double2_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size);
           store_array_reg8_double2_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size);
           store_array_reg8_double2_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
         }
-        
+
         for(int i = n + VEC - 1; i > sys_off; i--) {
           int loc_ind = ind_floor + i;
           d2 = dd[loc_ind] - cc[loc_ind] * d2;
@@ -483,7 +483,7 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
           aa[loc_ind] = a2;
           cc[loc_ind] = c2;
         }
-        
+
         bb = 1.0 / (1.0 - cc[ind] * a2);
         dd[ind] = bb * (dd[ind] - cc[ind] * d2);
         aa[ind] = bb * aa[ind];
@@ -500,7 +500,7 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
       }
     } else {
       // Normal modified Thomas if not optimized solve
-      
+
       for (int i = 0; i < 2; ++i) {
         bb = 1.0 / b[ind + i];
         dd[ind + i] = bb * d[ind + i];
@@ -529,7 +529,7 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
         aa[ind] = bb * aa[ind];
         cc[ind] = bb * (-cc[ind] * cc[ind + 1]);
       }
-      
+
       // Store boundary values for communication
       int i = tid * 6;
       boundaries[i + 0] = aa[ind];
@@ -556,7 +556,7 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
                   blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
   // Warp ID in global scope - the ID wich the thread belongs to
   const int wid = tid / WARP_SIZE;
-  // Global memory offset: unique to a warp; 
+  // Global memory offset: unique to a warp;
   // every thread in a warp calculates the same woffset, which is the "begining" of 3D tile
   const int woffset = wid * WARP_SIZE * sys_pads;
   // These 4-threads do the regular memory read/write and data transpose
@@ -565,16 +565,16 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
   const int boundary_solve  = !optimized_solve && ( tid < (sys_n) );
   // A thread is active only if it works on valid memory
   const int active_thread   = optimized_solve || boundary_solve;
-  // Check if aligned memory 
+  // Check if aligned memory
   const int aligned         = (sys_pads % ALIGN_DOUBLE) == 0;
-  
+
   int n = 0;
   // Start index for this tridiagonal system
   int ind = sys_pads * tid;
-  
+
   // Local arrays used in register shuffle
   double8 l_aa, l_cc, l_dd, l_d, l_u;
-  
+
   // Check if active thread
   if(active_thread) {
     // Set start and end dd values
@@ -586,75 +586,75 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
       if(aligned) {
         if(INC) {
           // Handle first vector
-          load_array_reg8_double2(aa,&l_aa,n, woffset, sys_size);
-          load_array_reg8_double2(cc,&l_cc,n, woffset, sys_size);
-          load_array_reg8_double2(dd,&l_dd,n, woffset, sys_size);
-          load_array_reg8_double2(u,&l_u,n, woffset, sys_size);
-          
+          load_array_reg8_double2(aa,&l_aa,n, woffset, sys_pads);
+          load_array_reg8_double2(cc,&l_cc,n, woffset, sys_pads);
+          load_array_reg8_double2(dd,&l_dd,n, woffset, sys_pads);
+          load_array_reg8_double2(u,&l_u,n, woffset, sys_pads);
+
           l_u.f[0] += dd0;
-          
+
           for(int i = 1; i < VEC; i++) {
             l_u.f[i] += l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
           }
-          
-          store_array_reg8_double2(u,&l_u,n, woffset, sys_size);
-          
+
+          store_array_reg8_double2(u,&l_u,n, woffset, sys_pads);
+
           // Iterate over remaining vectors
           for(n = VEC; n < sys_size - VEC; n += VEC) {
-            load_array_reg8_double2(aa,&l_aa,n, woffset, sys_size);
-            load_array_reg8_double2(cc,&l_cc,n, woffset, sys_size);
-            load_array_reg8_double2(dd,&l_dd,n, woffset, sys_size);
-            load_array_reg8_double2(u,&l_u,n, woffset, sys_size);
+            load_array_reg8_double2(aa,&l_aa,n, woffset, sys_pads);
+            load_array_reg8_double2(cc,&l_cc,n, woffset, sys_pads);
+            load_array_reg8_double2(dd,&l_dd,n, woffset, sys_pads);
+            load_array_reg8_double2(u,&l_u,n, woffset, sys_pads);
             for(int i = 0; i < VEC; i++) {
               l_u.f[i] += l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
             }
-            store_array_reg8_double2(u,&l_u,n, woffset, sys_size);
+            store_array_reg8_double2(u,&l_u,n, woffset, sys_pads);
           }
-          
+
           // Handle last section separately as might not completely fit into a vector
           for(int i = n; i < sys_size - 1; i++) {
             u[ind + i] += dd[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
           }
-          
+
           u[ind + sys_size - 1] += ddn;
         } else {
           // Handle first vector
-          load_array_reg8_double2(aa,&l_aa,n, woffset, sys_size);
-          load_array_reg8_double2(cc,&l_cc,n, woffset, sys_size);
-          load_array_reg8_double2(dd,&l_dd,n, woffset, sys_size);
-          
+          load_array_reg8_double2(aa,&l_aa,n, woffset, sys_pads);
+          load_array_reg8_double2(cc,&l_cc,n, woffset, sys_pads);
+          load_array_reg8_double2(dd,&l_dd,n, woffset, sys_pads);
+
           l_d.f[0] = dd0;
-          
+
           for(int i = 1; i < VEC; i++) {
             l_d.f[i] = l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
           }
-          
-          store_array_reg8_double2(d,&l_d,n, woffset, sys_size);
-          
+
+          store_array_reg8_double2(d,&l_d,n, woffset, sys_pads);
+
           // Iterate over all remaining vectors
           for(n = VEC; n < sys_size - VEC; n += VEC) {
-            load_array_reg8_double2(aa,&l_aa,n, woffset, sys_size);
-            load_array_reg8_double2(cc,&l_cc,n, woffset, sys_size);
-            load_array_reg8_double2(dd,&l_dd,n, woffset, sys_size);
+            load_array_reg8_double2(aa,&l_aa,n, woffset, sys_pads);
+            load_array_reg8_double2(cc,&l_cc,n, woffset, sys_pads);
+            load_array_reg8_double2(dd,&l_dd,n, woffset, sys_pads);
             for(int i = 0; i < VEC; i++) {
               l_d.f[i] = l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
             }
-            store_array_reg8_double2(d,&l_d,n, woffset, sys_size);
+            store_array_reg8_double2(d,&l_d,n, woffset, sys_pads);
           }
-          
+
           // Handle last section separately as might not completely fit into a vector
           for(int i = n; i < sys_size - 1; i++) {
             d[ind + i] = dd[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
           }
-          
+
           d[ind + sys_size - 1] = ddn;
         }
       } else {
-        // Unaligned memory 
+        // Unaligned memory
         if(INC) {
           int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE;
           int sys_off   = ind - ind_floor;
-          
+
           // Handle start of unaligned memory
           for(int i = 0; i < VEC; i++) {
             if(i >= sys_off) {
@@ -666,7 +666,7 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
               }
             }
           }
-          
+
           n = VEC;
           // Back to normal
           for(; n < sys_size - VEC; n += VEC) {
@@ -680,18 +680,18 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
             }
             store_array_reg8_double2_unaligned(u,&l_u,n, tid, sys_pads, sys_size);
           }
-          
+
           // Handle end of unaligned memory
           for(int i = n; i < sys_size + sys_off - 1; i++) {
             int loc_ind = ind_floor + i;
             u[loc_ind] += dd[loc_ind] - aa[loc_ind] * dd0 - cc[loc_ind] * ddn;
           }
-          
+
           u[ind + sys_size - 1] += ddn;
         } else {
           int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE;
           int sys_off   = ind - ind_floor;
-          
+
           // Handle start of unaligned memory
           for(int i = 0; i < VEC; i++) {
             if(i >= sys_off) {
@@ -703,7 +703,7 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
               }
             }
           }
-          
+
           n = VEC;
           // Back to normal
           for(; n < sys_size - VEC; n += VEC) {
@@ -717,7 +717,7 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
             }
             store_array_reg8_double2_unaligned(d,&l_d,n, tid, sys_pads, sys_size);
           }
-          
+
           // Handle end of unaligned memory
           for(int i = n; i < sys_size + sys_off - 1; i++) {
             int loc_ind = ind_floor + i;
@@ -731,19 +731,19 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
       // Normal modified Thomas backwards pass if not optimized solve
       if(INC) {
         u[ind] += dd0;
-        
+
         for(int i = 1; i < sys_size - 1; i++) {
           u[ind + i] += dd[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
         }
-        
+
         u[ind + sys_size - 1] += ddn;
       } else {
         d[ind] = dd0;
-        
+
         for(int i = 1; i < sys_size - 1; i++) {
           d[ind + i] = dd[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
         }
-        
+
         d[ind + sys_size - 1] = ddn;
       }
     }

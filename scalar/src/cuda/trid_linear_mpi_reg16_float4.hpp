@@ -248,10 +248,10 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
       // Check whether memory is aligned
       if(aligned) {
         // Process first vector separately
-        load_array_reg16(a,&l_a,n, woffset, sys_size);
-        load_array_reg16(b,&l_b,n, woffset, sys_size);
-        load_array_reg16(c,&l_c,n, woffset, sys_size);
-        load_array_reg16(d,&l_d,n, woffset, sys_size);
+        load_array_reg16(a,&l_a,n, woffset, sys_pads);
+        load_array_reg16(b,&l_b,n, woffset, sys_pads);
+        load_array_reg16(c,&l_c,n, woffset, sys_pads);
+        load_array_reg16(d,&l_d,n, woffset, sys_pads);
 
         for (int i = 0; i < 2; i++) {
           bb = 1.0f / l_b.f[i];
@@ -273,16 +273,16 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
           l_cc.f[i] = c2;
         }
 
-        store_array_reg16(dd,&l_dd,n, woffset, sys_size);
-        store_array_reg16(cc,&l_cc,n, woffset, sys_size);
-        store_array_reg16(aa,&l_aa,n, woffset, sys_size);
+        store_array_reg16(dd,&l_dd,n, woffset, sys_pads);
+        store_array_reg16(cc,&l_cc,n, woffset, sys_pads);
+        store_array_reg16(aa,&l_aa,n, woffset, sys_pads);
 
         // Forward pass
         for(n = VEC_F; n < sys_size - VEC_F; n += VEC_F) {
-          load_array_reg16(a,&l_a,n, woffset, sys_size);
-          load_array_reg16(b,&l_b,n, woffset, sys_size);
-          load_array_reg16(c,&l_c,n, woffset, sys_size);
-          load_array_reg16(d,&l_d,n, woffset, sys_size);
+          load_array_reg16(a,&l_a,n, woffset, sys_pads);
+          load_array_reg16(b,&l_b,n, woffset, sys_pads);
+          load_array_reg16(c,&l_c,n, woffset, sys_pads);
+          load_array_reg16(d,&l_d,n, woffset, sys_pads);
           #pragma unroll 16
           for(int i=0; i<VEC_F; i++) {
             bb = 1.0f / (l_b.f[i] - l_a.f[i] * c2);
@@ -293,9 +293,9 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
             l_aa.f[i] = a2;
             l_cc.f[i] = c2;
           }
-          store_array_reg16(dd,&l_dd,n, woffset, sys_size);
-          store_array_reg16(cc,&l_cc,n, woffset, sys_size);
-          store_array_reg16(aa,&l_aa,n, woffset, sys_size);
+          store_array_reg16(dd,&l_dd,n, woffset, sys_pads);
+          store_array_reg16(cc,&l_cc,n, woffset, sys_pads);
+          store_array_reg16(aa,&l_aa,n, woffset, sys_pads);
         }
 
         // Finish off last part that may not fill an entire vector
@@ -327,9 +327,9 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
 
         // Backwards pass using vectors
         for(; n > 0; n -= VEC_F) {
-          load_array_reg16(aa,&l_aa,n, woffset, sys_size);
-          load_array_reg16(cc,&l_cc,n, woffset, sys_size);
-          load_array_reg16(dd,&l_dd,n, woffset, sys_size);
+          load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
+          load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
+          load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
 
           for(int i = VEC_F - 1; i >= 0; i--) {
             d2 = l_dd.f[i] - l_cc.f[i] * d2;
@@ -340,17 +340,17 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
             l_aa.f[i] = a2;
           }
 
-          store_array_reg16(dd,&l_dd,n, woffset, sys_size);
-          store_array_reg16(cc,&l_cc,n, woffset, sys_size);
-          store_array_reg16(aa,&l_aa,n, woffset, sys_size);
+          store_array_reg16(dd,&l_dd,n, woffset, sys_pads);
+          store_array_reg16(cc,&l_cc,n, woffset, sys_pads);
+          store_array_reg16(aa,&l_aa,n, woffset, sys_pads);
         }
 
         // Final vector processed separately so that element 0 can be handled
         n = 0;
 
-        load_array_reg16(aa,&l_aa,n, woffset, sys_size);
-        load_array_reg16(cc,&l_cc,n, woffset, sys_size);
-        load_array_reg16(dd,&l_dd,n, woffset, sys_size);
+        load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
+        load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
+        load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
 
         for(int i = VEC_F - 1; i > 0; i--) {
           d2 = l_dd.f[i] - l_cc.f[i] * d2;
@@ -366,9 +366,9 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
         l_aa.f[0] = bb * l_aa.f[0];
         l_cc.f[0] = bb * (-l_cc.f[0] * c2);
 
-        store_array_reg16(dd,&l_dd,n, woffset, sys_size);
-        store_array_reg16(cc,&l_cc,n, woffset, sys_size);
-        store_array_reg16(aa,&l_aa,n, woffset, sys_size);
+        store_array_reg16(dd,&l_dd,n, woffset, sys_pads);
+        store_array_reg16(cc,&l_cc,n, woffset, sys_pads);
+        store_array_reg16(aa,&l_aa,n, woffset, sys_pads);
 
         // Store boundary values for communication
         int i = tid * 6;
@@ -594,10 +594,10 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
       if(aligned) {
         if(INC) {
           // Handle first vector
-          load_array_reg16(aa,&l_aa,n, woffset, sys_size);
-          load_array_reg16(cc,&l_cc,n, woffset, sys_size);
-          load_array_reg16(dd,&l_dd,n, woffset, sys_size);
-          load_array_reg16(u,&l_u,n, woffset, sys_size);
+          load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
+          load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
+          load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
+          load_array_reg16(u,&l_u,n, woffset, sys_pads);
 
           l_u.f[0] += dd0;
 
@@ -605,18 +605,18 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
             l_u.f[i] += l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
           }
 
-          store_array_reg16(u,&l_u,n, woffset, sys_size);
+          store_array_reg16(u,&l_u,n, woffset, sys_pads);
 
           // Iterate over remaining vectors
           for(n = VEC_F; n < sys_size - VEC_F; n += VEC_F) {
-            load_array_reg16(aa,&l_aa,n, woffset, sys_size);
-            load_array_reg16(cc,&l_cc,n, woffset, sys_size);
-            load_array_reg16(dd,&l_dd,n, woffset, sys_size);
-            load_array_reg16(u,&l_u,n, woffset, sys_size);
+            load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
+            load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
+            load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
+            load_array_reg16(u,&l_u,n, woffset, sys_pads);
             for(int i = 0; i < VEC_F; i++) {
               l_u.f[i] += l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
             }
-            store_array_reg16(u,&l_u,n, woffset, sys_size);
+            store_array_reg16(u,&l_u,n, woffset, sys_pads);
           }
 
           // Handle last section separately as might not completely fit into a vector
@@ -627,9 +627,9 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
           u[ind + sys_size - 1] += ddn;
         } else {
           // Handle first vector
-          load_array_reg16(aa,&l_aa,n, woffset, sys_size);
-          load_array_reg16(cc,&l_cc,n, woffset, sys_size);
-          load_array_reg16(dd,&l_dd,n, woffset, sys_size);
+          load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
+          load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
+          load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
 
           l_d.f[0] = dd0;
 
@@ -637,22 +637,22 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
             l_d.f[i] = l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
           }
 
-          store_array_reg16(d,&l_d,n, woffset, sys_size);
+          store_array_reg16(d,&l_d,n, woffset, sys_pads);
 
           // Iterate over all remaining vectors
           for(n = VEC_F; n < sys_size - VEC_F; n += VEC_F) {
-            load_array_reg16(aa,&l_aa,n, woffset, sys_size);
-            load_array_reg16(cc,&l_cc,n, woffset, sys_size);
-            load_array_reg16(dd,&l_dd,n, woffset, sys_size);
+            load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
+            load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
+            load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
             for(int i = 0; i < VEC_F; i++) {
               l_d.f[i] = l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
             }
-            store_array_reg16(d,&l_d,n, woffset, sys_size);
+            store_array_reg16(d,&l_d,n, woffset, sys_pads);
           }
 
           // Handle last section separately as might not completely fit into a vector
-          for(; n < sys_size - 1; n++) {
-            d[ind + n] = dd[ind + n] - aa[ind + n] * dd0 - cc[ind + n] * ddn;
+          for(int i = n; i < sys_size - 1; i++) {
+            d[ind + i] = dd[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
           }
 
           d[ind + sys_size - 1] = ddn;
