@@ -31,12 +31,12 @@
  */
 
 // Written by Toby Flynn, University of Warwick, T.Flynn@warwick.ac.uk, 2020
-// Based on trid_linear_reg16_float4.hpp written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014 
+// Based on trid_linear_reg16_float4.hpp written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014
 
 #ifndef TRID_LINEAR_MPI_REG16_FLOAT4_GPU_MPI__
 #define TRID_LINEAR_MPI_REG16_FLOAT4_GPU_MPI__
 
-#define VEC_F 16 
+#define VEC_F 16
 #define WARP_SIZE 32
 
 #include <assert.h>
@@ -50,7 +50,7 @@ typedef union {
   float  f[VEC_F];
 } float16;
 
-// transpose4x4xor() - exchanges data between 4 consecutive threads 
+// transpose4x4xor() - exchanges data between 4 consecutive threads
 inline __device__ void transpose4x4xor(float16* la) {
   float4 tmp1;
   float4 tmp2;
@@ -119,14 +119,14 @@ inline __device__ void load_array_reg16(const float* __restrict__ ga, float16* l
   int gind;
   // Array indexing can be decided in compile time -> arrays will stay in registers
   // If trow and tcol are taken as an argument, they are not know in compile time -> no optimization
-  int trow = (threadIdx.x % 32) / 4; // Threads' row index within a warp 
-  int tcol =  threadIdx.x       % 4; // Threads' colum index within a warp 
+  int trow = (threadIdx.x % 32) / 4; // Threads' row index within a warp
+  int tcol =  threadIdx.x       % 4; // Threads' colum index within a warp
 
   // Load 4 float4 values (64bytes) from an X-line
   gind = woffset + (4*(trow)) * sys_pads + tcol*4 + n; // First index in the X-line; woffset - warp offset in global memory
   int i;
   for(i=0; i<4; i++) {
-    (*la).vec[i] = __ldg( ((float4*)&ga[gind]) ); 
+    (*la).vec[i] = __ldg( ((float4*)&ga[gind]) );
     gind += sys_pads;
   }
 
@@ -159,7 +159,7 @@ inline __device__ void load_array_reg16_unaligned(float const* __restrict__ ga, 
 
 }
 
-// Store a tile with 32x16 elements into 32 float16 struct allocated in registers. Every 4 consecutive threads cooperate to transpose and store a 4 x float4 sub-tile. 
+// Store a tile with 32x16 elements into 32 float16 struct allocated in registers. Every 4 consecutive threads cooperate to transpose and store a 4 x float4 sub-tile.
 // ga - global array
 // la - local array
 inline __device__ void store_array_reg16(float* __restrict__ ga, float16* la, int n, int woffset, int sys_pads) {
@@ -167,7 +167,7 @@ inline __device__ void store_array_reg16(float* __restrict__ ga, float16* la, in
   int gind;
   // Array indexing can be decided in compile time -> arrays will stay in registers
   // If trow and tcol are taken as an argument, they are not know in compile time -> no optimization
-  int trow = (threadIdx.x % 32) / 4; // Threads' row index within a warp 
+  int trow = (threadIdx.x % 32) / 4; // Threads' row index within a warp
   int tcol =  threadIdx.x     % 4;   // Threads' colum index within a warp
 
   transpose4x4xor(la);
@@ -175,14 +175,14 @@ inline __device__ void store_array_reg16(float* __restrict__ ga, float16* la, in
   gind = woffset + (4*(trow)) * sys_pads + tcol*4 + n;
   *((float4*)&ga[gind]) = (*la).vec[0];
   gind += sys_pads;
-  *((float4*)&ga[gind]) = (*la).vec[1]; 
+  *((float4*)&ga[gind]) = (*la).vec[1];
   gind += sys_pads;
-  *((float4*)&ga[gind]) = (*la).vec[2]; 
+  *((float4*)&ga[gind]) = (*la).vec[2];
   gind += sys_pads;
-  *((float4*)&ga[gind]) = (*la).vec[3]; 
+  *((float4*)&ga[gind]) = (*la).vec[3];
 }
 
-// Same as store_array_reg16() with the following exception: if stride would cause unaligned access the index is rounded down to the its floor value to prevent missaligned access. 
+// Same as store_array_reg16() with the following exception: if stride would cause unaligned access the index is rounded down to the its floor value to prevent missaligned access.
 // ga - global array
 // la - local array
 inline __device__ void store_array_reg16_unaligned(float* __restrict__ ga, float16* __restrict__ la, int n, int tid, int sys_pads, int sys_length) {
@@ -220,7 +220,7 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
                   blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
   // Warp ID in global scope - the ID wich the thread belongs to
   const int wid = tid / WARP_SIZE;
-  // Global memory offset: unique to a warp; 
+  // Global memory offset: unique to a warp;
   // every thread in a warp calculates the same woffset, which is the "begining" of 3D tile
   const int woffset = wid * WARP_SIZE * sys_pads;
   // These 4-threads do the regular memory read/write and data transpose
@@ -229,17 +229,18 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
   const int boundary_solve  = !optimized_solve && ( tid < (sys_n) );
   // A thread is active only if it works on valid memory
   const int active_thread   = optimized_solve || boundary_solve;
-  // Check if aligned memory 
-  const int aligned         = (sys_pads % VEC_F) == 0;
-  
+  // Check if aligned memory
+  //const int aligned         = (sys_pads % VEC_F) == 0;
+  const int aligned = (sys_pads % ALIGN_FLOAT) == 0;
+
   int n = 0;
   // Start index for this tridiagonal system
   int ind = sys_pads * tid;
-  
+
   // Local arrays used in the register shuffle
   float16 l_a, l_b, l_c, l_d, l_aa, l_cc, l_dd;
   float bb, a2, c2, d2;
-  
+
   // Check that this is an active thread
   if(active_thread) {
     // Check that this thread can perform an optimized solve
@@ -251,7 +252,7 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
         load_array_reg16(b,&l_b,n, woffset, sys_size);
         load_array_reg16(c,&l_c,n, woffset, sys_size);
         load_array_reg16(d,&l_d,n, woffset, sys_size);
-        
+
         for (int i = 0; i < 2; i++) {
           bb = 1.0f / l_b.f[i];
           d2 = bb * l_d.f[i];
@@ -261,7 +262,7 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
           l_aa.f[i] = a2;
           l_cc.f[i] = c2;
         }
-        
+
         for(int i = 2; i < VEC_F; i++) {
           bb = 1.0f / (l_b.f[i] - l_a.f[i] * c2);
           d2 = (l_d.f[i] - l_a.f[i] * d2) * bb;
@@ -271,11 +272,11 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
           l_aa.f[i] = a2;
           l_cc.f[i] = c2;
         }
-        
+
         store_array_reg16(dd,&l_dd,n, woffset, sys_size);
         store_array_reg16(cc,&l_cc,n, woffset, sys_size);
         store_array_reg16(aa,&l_aa,n, woffset, sys_size);
-        
+
         // Forward pass
         for(n = VEC_F; n < sys_size - VEC_F; n += VEC_F) {
           load_array_reg16(a,&l_a,n, woffset, sys_size);
@@ -296,7 +297,7 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
           store_array_reg16(cc,&l_cc,n, woffset, sys_size);
           store_array_reg16(aa,&l_aa,n, woffset, sys_size);
         }
-        
+
         // Finish off last part that may not fill an entire vector
         for(int i = n; i < sys_size; i++) {
           int loc_ind = ind + i;
@@ -305,14 +306,14 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
           aa[loc_ind] = (-a[loc_ind] * aa[loc_ind - 1]) * bb;
           cc[loc_ind] = c[loc_ind] * bb;
         }
-        
+
         // Backwards pass
         n -= VEC_F;
-        
+
         a2 = aa[ind + sys_size - 2];
         c2 = cc[ind + sys_size - 2];
         d2 = dd[ind + sys_size - 2];
-        
+
         // Do part that may not fit in vector
         for(int i = sys_size - 3; i >= n + VEC_F; i--) {
           int loc_ind = ind + i;
@@ -323,13 +324,13 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
           aa[loc_ind] = a2;
           cc[loc_ind] = c2;
         }
-        
+
         // Backwards pass using vectors
         for(; n > 0; n -= VEC_F) {
           load_array_reg16(aa,&l_aa,n, woffset, sys_size);
           load_array_reg16(cc,&l_cc,n, woffset, sys_size);
           load_array_reg16(dd,&l_dd,n, woffset, sys_size);
-          
+
           for(int i = VEC_F - 1; i >= 0; i--) {
             d2 = l_dd.f[i] - l_cc.f[i] * d2;
             a2 = l_aa.f[i] - l_cc.f[i] * a2;
@@ -338,19 +339,19 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
             l_cc.f[i] = c2;
             l_aa.f[i] = a2;
           }
-          
+
           store_array_reg16(dd,&l_dd,n, woffset, sys_size);
           store_array_reg16(cc,&l_cc,n, woffset, sys_size);
           store_array_reg16(aa,&l_aa,n, woffset, sys_size);
         }
-        
+
         // Final vector processed separately so that element 0 can be handled
         n = 0;
-        
+
         load_array_reg16(aa,&l_aa,n, woffset, sys_size);
         load_array_reg16(cc,&l_cc,n, woffset, sys_size);
         load_array_reg16(dd,&l_dd,n, woffset, sys_size);
-        
+
         for(int i = VEC_F - 1; i > 0; i--) {
           d2 = l_dd.f[i] - l_cc.f[i] * d2;
           a2 = l_aa.f[i] - l_cc.f[i] * a2;
@@ -359,16 +360,16 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
           l_cc.f[i] = c2;
           l_aa.f[i] = a2;
         }
-        
+
         bb = 1.0f / (1.0f - l_cc.f[0] * a2);
         l_dd.f[0] = bb * (l_dd.f[0] - l_cc.f[0] * d2);
         l_aa.f[0] = bb * l_aa.f[0];
         l_cc.f[0] = bb * (-l_cc.f[0] * c2);
-        
+
         store_array_reg16(dd,&l_dd,n, woffset, sys_size);
         store_array_reg16(cc,&l_cc,n, woffset, sys_size);
         store_array_reg16(aa,&l_aa,n, woffset, sys_size);
-        
+
         // Store boundary values for communication
         int i = tid * 6;
         boundaries[i + 0] = aa[ind];
@@ -381,7 +382,7 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
         // Memory is unaligned
         int ind_floor = (ind/ALIGN_FLOAT)*ALIGN_FLOAT;
         int sys_off   = ind - ind_floor;
-        
+
         // Handle start of unaligned memory
         for(int i = 0; i < VEC_F; i++) {
           if(i >= sys_off) {
@@ -405,7 +406,7 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
             }
           }
         }
-        
+
         int n = VEC_F;
         // Back to normal
         for(; n < sys_size - VEC_F; n += VEC_F) {
@@ -427,7 +428,7 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
           store_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size);
           store_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
         }
-        
+
         // Handle end of unaligned memory
         for(int i = n; i < sys_size + sys_off; i++) {
           int loc_ind = ind_floor + i;
@@ -439,12 +440,12 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
           aa[loc_ind] = a2;
           cc[loc_ind] = c2;
         }
-        
+
         // Backwards pass
         d2 = dd[ind_floor + sys_size + sys_off - 2];
         a2 = aa[ind_floor + sys_size + sys_off - 2];
         c2 = cc[ind_floor + sys_size + sys_off - 2];
-        
+
         n -= VEC_F;
 
         // Start with end of unaligned memory
@@ -457,15 +458,15 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
           aa[loc_ind] = a2;
           cc[loc_ind] = c2;
         }
-        
+
         n -= VEC_F;
-        
+
         // Back to normal
         for(; n > 0; n -= VEC_F) {
           load_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
           load_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size);
           load_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size);
-          
+
           for(int i = VEC_F - 1; i >= 0; i--) {
             d2 = l_dd.f[i] - l_cc.f[i] * d2;
             a2 = l_aa.f[i] - l_cc.f[i] * a2;
@@ -474,12 +475,12 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
             l_cc.f[i] = c2;
             l_aa.f[i] = a2;
           }
-          
+
           store_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size);
           store_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size);
           store_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
         }
-        
+
         for(int i = n + VEC_F - 1; i > sys_off; i--) {
           int loc_ind = ind_floor + i;
           d2 = dd[loc_ind] - cc[loc_ind] * d2;
@@ -489,7 +490,7 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
           aa[loc_ind] = a2;
           cc[loc_ind] = c2;
         }
-        
+
         bb = 1.0 / (1.0 - cc[ind] * a2);
         dd[ind] = bb * (dd[ind] - cc[ind] * d2);
         aa[ind] = bb * aa[ind];
@@ -506,7 +507,7 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
       }
     } else {
       // Normal modified Thomas if not optimized solve
-      
+
       for (int i = 0; i < 2; ++i) {
         bb = 1.0f / b[ind + i];
         dd[ind + i] = bb * d[ind + i];
@@ -535,7 +536,7 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
         aa[ind] = bb * aa[ind];
         cc[ind] = bb * (-cc[ind] * cc[ind + 1]);
       }
-      
+
       // Store boundary values for communication
       int i = tid * 6;
       boundaries[i + 0] = aa[ind];
@@ -562,7 +563,7 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
                   blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
   // Warp ID in global scope - the ID wich the thread belongs to
   const int wid = tid / WARP_SIZE;
-  // Global memory offset: unique to a warp; 
+  // Global memory offset: unique to a warp;
   // every thread in a warp calculates the same woffset, which is the "begining" of 3D tile
   const int woffset = wid * WARP_SIZE * sys_pads;
   // These 4-threads do the regular memory read/write and data transpose
@@ -571,16 +572,17 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
   const int boundary_solve  = !optimized_solve && ( tid < (sys_n) );
   // A thread is active only if it works on valid memory
   const int active_thread   = optimized_solve || boundary_solve;
-  // Check if aligned memory 
-  const int aligned         = (sys_pads % VEC_F) == 0;
-  
+  // Check if aligned memory
+  //const int aligned         = (sys_pads % VEC_F) == 0;
+  const int aligned = (sys_pads % ALIGN_FLOAT) == 0;
+
   int n = 0;
   // Start index for this tridiagonal system
   int ind = sys_pads * tid;
-  
+
   // Local arrays used in register shuffle
   float16 l_aa, l_cc, l_dd, l_d, l_u;
-  
+
   // Check if active thread
   if(active_thread) {
     // Set start and end dd values
@@ -596,15 +598,15 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
           load_array_reg16(cc,&l_cc,n, woffset, sys_size);
           load_array_reg16(dd,&l_dd,n, woffset, sys_size);
           load_array_reg16(u,&l_u,n, woffset, sys_size);
-          
+
           l_u.f[0] += dd0;
-          
+
           for(int i = 1; i < VEC_F; i++) {
             l_u.f[i] += l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
           }
-          
+
           store_array_reg16(u,&l_u,n, woffset, sys_size);
-          
+
           // Iterate over remaining vectors
           for(n = VEC_F; n < sys_size - VEC_F; n += VEC_F) {
             load_array_reg16(aa,&l_aa,n, woffset, sys_size);
@@ -616,27 +618,27 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
             }
             store_array_reg16(u,&l_u,n, woffset, sys_size);
           }
-          
+
           // Handle last section separately as might not completely fit into a vector
           for(; n < sys_size - 1; n++) {
             u[ind + n] += dd[ind + n] - aa[ind + n] * dd0 - cc[ind + n] * ddn;
           }
-          
+
           u[ind + sys_size - 1] += ddn;
         } else {
           // Handle first vector
           load_array_reg16(aa,&l_aa,n, woffset, sys_size);
           load_array_reg16(cc,&l_cc,n, woffset, sys_size);
           load_array_reg16(dd,&l_dd,n, woffset, sys_size);
-          
+
           l_d.f[0] = dd0;
-          
+
           for(int i = 1; i < VEC_F; i++) {
             l_d.f[i] = l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
           }
-          
+
           store_array_reg16(d,&l_d,n, woffset, sys_size);
-          
+
           // Iterate over all remaining vectors
           for(n = VEC_F; n < sys_size - VEC_F; n += VEC_F) {
             load_array_reg16(aa,&l_aa,n, woffset, sys_size);
@@ -647,12 +649,12 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
             }
             store_array_reg16(d,&l_d,n, woffset, sys_size);
           }
-          
+
           // Handle last section separately as might not completely fit into a vector
           for(; n < sys_size - 1; n++) {
             d[ind + n] = dd[ind + n] - aa[ind + n] * dd0 - cc[ind + n] * ddn;
           }
-          
+
           d[ind + sys_size - 1] = ddn;
         }
       } else {
@@ -660,7 +662,7 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
         if(INC) {
           int ind_floor = (ind/ALIGN_FLOAT)*ALIGN_FLOAT;
           int sys_off   = ind - ind_floor;
-          
+
           // Handle start of unaligned memory
           for(int i = 0; i < VEC_F; i++) {
             if(i >= sys_off) {
@@ -672,7 +674,7 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
               }
             }
           }
-          
+
           n = VEC_F;
           // Back to normal
           for(; n < sys_size - VEC_F; n += VEC_F) {
@@ -686,18 +688,18 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
             }
             store_array_reg16_unaligned(u,&l_u,n, tid, sys_pads, sys_size);
           }
-          
+
           // Handle end of unaligned memory
           for(int i = n; i < sys_size + sys_off - 1; i++) {
             int loc_ind = ind_floor + i;
             u[loc_ind] += dd[loc_ind] - aa[loc_ind] * dd0 - cc[loc_ind] * ddn;
           }
-          
+
           u[ind + sys_size - 1] += ddn;
         } else {
           int ind_floor = (ind/ALIGN_FLOAT)*ALIGN_FLOAT;
           int sys_off   = ind - ind_floor;
-          
+
           // Handle start of unaligned memory
           for(int i = 0; i < VEC_F; i++) {
             if(i >= sys_off) {
@@ -709,8 +711,8 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
               }
             }
           }
-          
-          n = VEC;
+
+          n = VEC_F;
           // Back to normal
           for(; n < sys_size - VEC_F; n += VEC_F) {
             load_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
@@ -723,13 +725,13 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
             }
             store_array_reg16_unaligned(d,&l_d,n, tid, sys_pads, sys_size);
           }
-          
+
           // Handle end of unaligned memory
           for(int i = n; i < sys_size + sys_off - 1; i++) {
             int loc_ind = ind_floor + i;
             d[loc_ind] = dd[loc_ind] - aa[loc_ind] * dd0 - cc[loc_ind] * ddn;
           }
-          
+
           d[ind + sys_size - 1] = ddn;
         }
       }
@@ -737,19 +739,19 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
       // Normal modified Thomas backwards pass if not optimized solve
       if(INC) {
         u[ind] += dd0;
-        
+
         for(int i = 1; i < sys_size - 1; i++) {
           u[ind + i] += dd[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
         }
-        
+
         u[ind + sys_size - 1] += ddn;
       } else {
         d[ind] = dd0;
-        
+
         for(int i = 1; i < sys_size - 1; i++) {
           d[ind + i] = dd[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
         }
-        
+
         d[ind + sys_size - 1] = ddn;
       }
     }
