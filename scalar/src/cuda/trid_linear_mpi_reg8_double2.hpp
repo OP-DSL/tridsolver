@@ -237,7 +237,7 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
   // Check that this is an active thread
   if(active_thread) {
     // Check that this thread can perform an optimized solve
-    if(optimized_solve) {
+    if(optimized_solve && sys_size >= 16) {
       // Check whether memory is aligned
       if(aligned) {
         // Process first vector separately
@@ -723,7 +723,7 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
             int loc_ind = ind_floor + i;
             d[loc_ind] = dd[loc_ind] - aa[loc_ind] * dd0 - cc[loc_ind] * ddn;
           }
-          
+
           d[ind + sys_size - 1] = ddn;
         }
       }

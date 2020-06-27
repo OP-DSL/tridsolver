@@ -244,7 +244,7 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
   // Check that this is an active thread
   if(active_thread) {
     // Check that this thread can perform an optimized solve
-    if(optimized_solve) {
+    if(optimized_solve && sys_size >= 48) {
       // Check whether memory is aligned
       if(aligned) {
         // Process first vector separately
@@ -369,37 +369,6 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
         store_array_reg16(dd,&l_dd,n, woffset, sys_pads);
         store_array_reg16(cc,&l_cc,n, woffset, sys_pads);
         store_array_reg16(aa,&l_aa,n, woffset, sys_pads);
-
-        // Normal modified Thomas if not optimized solve
-
-        /*for (int i = 0; i < 2; ++i) {
-          bb = 1.0f / b[ind + i];
-          dd[ind + i] = bb * d[ind + i];
-          aa[ind + i] = bb * a[ind + i];
-          cc[ind + i] = bb * c[ind + i];
-        }
-
-        if (sys_size >= 3) {
-          // eliminate lower off-diagonal
-          for (int i = 2; i < sys_size; i++) {
-            int loc_ind = ind + i;
-            bb = 1.0f / (b[loc_ind] - a[loc_ind] * cc[loc_ind - 1]);
-            dd[loc_ind] = (d[loc_ind] - a[loc_ind] * dd[loc_ind - 1]) * bb;
-            aa[loc_ind] = (-a[loc_ind] * aa[loc_ind - 1]) * bb;
-            cc[loc_ind] = c[loc_ind] * bb;
-          }
-          // Eliminate upper off-diagonal
-          for (int i = sys_size - 3; i > 0; --i) {
-            int loc_ind = ind + i;
-            dd[loc_ind] = dd[loc_ind] - cc[loc_ind] * dd[loc_ind + 1];
-            aa[loc_ind] = aa[loc_ind] - cc[loc_ind] * aa[loc_ind + 1];
-            cc[loc_ind] = -cc[loc_ind] * cc[loc_ind + 1];
-          }
-          bb = 1.0f / (1.0f - cc[ind] * aa[ind + 1]);
-          dd[ind] = bb * (dd[ind] - cc[ind] * dd[ind + 1]);
-          aa[ind] = bb * aa[ind];
-          cc[ind] = bb * (-cc[ind] * cc[ind + 1]);
-        }*/
 
         // Store boundary values for communication
         int i = tid * 6;
