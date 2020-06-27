@@ -589,7 +589,7 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
     double dd0 = boundaries[2 * tid];
     double ddn = boundaries[2 * tid + 1];
     // Check if optimized solve
-    if(optimized_solve) {
+    if(optimized_solve && sys_size >= 48) {
       // Check if aligned memory
       if(aligned) {
         if(INC) {
