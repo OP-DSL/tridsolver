@@ -115,7 +115,7 @@ __global__ void trid_strided_multidim_forward(
     const DIM_V b_pads, const REAL *__restrict__ c, const DIM_V c_pads,
     const REAL *__restrict__ d, const DIM_V d_pads, REAL *__restrict__ aa,
     REAL *__restrict__ cc, REAL *__restrict__ dd, REAL *__restrict__ boundaries,
-    int ndim, int solvedim, int sys_n, const DIM_V dims) {
+    int ndim, int solvedim, int sys_n, const DIM_V dims, int sys_offset = 0) {
   // thread ID in block
   int tid = threadIdx.x + threadIdx.y * blockDim.x +
             threadIdx.z * blockDim.x * blockDim.y;
@@ -157,7 +157,7 @@ __global__ void trid_strided_multidim_forward(
   // set up indices for main block
   //
   // Thread ID in global scope - every thread solves one system
-  tid = threadIdx.x + threadIdx.y * blockDim.x +
+  tid = sys_offset + threadIdx.x + threadIdx.y * blockDim.x +
         blockIdx.x * blockDim.y * blockDim.x +
         blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
 
@@ -189,7 +189,7 @@ __global__ void trid_strided_multidim_forward(
   int stride_d = d_cumpads[3][solvedim];
   int sys_size = dims.v[solvedim];
 
-  if (tid < sys_n) {
+  if (tid < sys_offset + sys_n) {
     trid_strided_multidim_forward_kernel<REAL>(
         a, ind_a, stride_a, b, ind_b, stride_b, c, ind_c, stride_c, d, ind_d,
         stride_d, aa, cc, dd, boundaries, ind_bound, sys_size);
@@ -236,7 +236,7 @@ trid_strided_multidim_backward(const REAL *__restrict__ aa, const DIM_V a_pads,
                                REAL *__restrict__ d, const DIM_V d_pads,
                                REAL *__restrict__ u, const DIM_V u_pads,
                                const REAL *__restrict__ boundaries, int ndim,
-                               int solvedim, int sys_n, const DIM_V dims) {
+                               int solvedim, int sys_n, const DIM_V dims, int sys_offset = 0) {
   // thread ID in block
   int tid = threadIdx.x + threadIdx.y * blockDim.x +
             threadIdx.z * blockDim.x * blockDim.y;
@@ -278,7 +278,7 @@ trid_strided_multidim_backward(const REAL *__restrict__ aa, const DIM_V a_pads,
   // set up indices for main block
   //
   // Thread ID in global scope - every thread solves one system
-  tid = threadIdx.x + threadIdx.y * blockDim.x +
+  tid = sys_offset + threadIdx.x + threadIdx.y * blockDim.x +
         blockIdx.x * blockDim.y * blockDim.x +
         blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
 
@@ -312,7 +312,7 @@ trid_strided_multidim_backward(const REAL *__restrict__ aa, const DIM_V a_pads,
   int stride_u = d_cumpads[3][solvedim];
   int sys_size = dims.v[solvedim];
 
-  if (tid < sys_n) {
+  if (tid < sys_offset + sys_n) {
     trid_strided_multidim_backward_kernel<REAL, INC>(
         aa, ind_a, stride_a, cc, ind_c, stride_c, dd, d, ind_d, stride_d, u,
         ind_u, stride_u, boundaries, ind_bound, sys_size);
