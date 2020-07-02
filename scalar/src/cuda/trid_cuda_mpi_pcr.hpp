@@ -34,6 +34,8 @@
 
 #ifndef __TRID_CUDA_MPI_PCR_HPP
 #define __TRID_CUDA_MPI_PCR_HPP
+#include "cutil_inline.h"
+
 
 // An implementation of the PCR algorithm used to solve the reduced system.
 // Requires that threads operating on one reduced system are within the same block.
@@ -127,4 +129,33 @@ __global__ void pcr_on_reduced_kernel(REAL *input, REAL *results,
     results[2 * tridNum + reduced_ind_l] = input[d_ind];
   }
 }
+
+//
+// PCR solver for reduced systems
+//
+// Solve sys_n reduced systems from receive_buf (the result of the allgather
+// with boundaries of mpi nodes) and stores dd[0] and dd[local_size-1] of the
+// current node for each system in results.
+// num_proc: number of processes along the solving dimension
+// mpi_coord: index of the current process along the solving dimension
+// reducedSysLen: length of each reduced system
+//
+template <typename REAL>
+void thomas_on_reduced_batched(REAL *receive_buf, REAL *results,
+                               int sys_n, int num_proc, int mpi_coord, int reducedSysLen) {
+  // Calculate number of PCR iterations required
+  int P = (int) ceil(log2((REAL)reducedSysLen));
+  // Calculate number of CUDA threads required, keeping reduced systems within the same block
+  int numThreads =  ((128 / reducedSysLen) + 1) * reducedSysLen;
+  int numBlocks = (int) ceil((REAL)(sys_n * reducedSysLen) / (REAL)numThreads);
+  
+  // Call PCR kernel
+  pcr_on_reduced_kernel<REAL><<<numBlocks, numThreads>>>(receive_buf, results, mpi_coord, 
+                                                         reducedSysLen, P, sys_n);
+  
+  // Check for errros
+  cudaSafeCall( cudaPeekAtLastError() );
+  cudaSafeCall( cudaDeviceSynchronize() );
+}
+
 #endif

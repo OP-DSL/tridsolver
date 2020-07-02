@@ -132,35 +132,6 @@ void trid_linear_backward_reg<float, 1>(dim3 dimGrid_x, dim3 dimBlock_x,
       aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n);
 }
 
-
-//
-// PCR solver for reduced systems
-//
-// Solve sys_n reduced systems from receive_buf (the result of the allgather
-// with boundaries of mpi nodes) and stores dd[0] and dd[local_size-1] of the
-// current node for each system in results.
-// num_proc: number of processes along the solving dimension
-// mpi_coord: index of the current process along the solving dimension
-// reducedSysLen: length of each reduced system
-//
-template <typename REAL>
-void thomas_on_reduced_batched(REAL *receive_buf, REAL *results,
-                               int sys_n, int num_proc, int mpi_coord, int reducedSysLen) {
-  // Calculate number of PCR iterations required
-  int P = (int) ceil(log2((REAL)reducedSysLen));
-  // Calculate number of CUDA threads required, keeping reduced systems within the same block
-  int numThreads =  ((128 / reducedSysLen) + 1) * reducedSysLen;
-  int numBlocks = (int) ceil((REAL)(sys_n * reducedSysLen) / (REAL)numThreads);
-  
-  // Call PCR kernel
-  pcr_on_reduced_kernel<REAL><<<numBlocks, numThreads>>>(receive_buf, results, mpi_coord, 
-                                                         reducedSysLen, P, sys_n);
-  
-  // Check for errros
-  cudaSafeCall( cudaPeekAtLastError() );
-  cudaSafeCall( cudaDeviceSynchronize() );
-}
-
 template <typename REAL, int INC>
 void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
                                int *a_pads, const REAL *b, int *b_pads,
@@ -267,83 +238,85 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   /// >>> FORWARD
   /// <<< COMM
   // Allocate receive buffer for MPI allgather of reduced system
-  // const size_t comm_buf_size = reduced_len_l * 3 * sys_n;
   REAL *recv_buf;
   cudaSafeCall( cudaMalloc(&recv_buf, reduced_len_g * 3 * sys_n * sizeof(REAL)) );
-
-#ifdef TRID_CUDA_AWARE_MPI
-  // Gather the reduced system to all nodes (using CUDA aware MPI)
-  MPI_Allgather(boundaries, comm_buf_size, real_datatype,
-                recv_buf, comm_buf_size, real_datatype,
-                params.communicators[solvedim]);
-#else
-  // MPI buffers on host
-  std::vector<REAL> send_buf(comm_buf_size),
-      receive_buf(comm_buf_size * params.num_mpi_procs[solvedim]);
-  cudaMemcpy(send_buf.data(), boundaries, sizeof(REAL) * comm_buf_size,
-             cudaMemcpyDeviceToHost);
-  // Communicate boundary results
-  MPI_Allgather(send_buf.data(), comm_buf_size, real_datatype,
-                receive_buf.data(), comm_buf_size, real_datatype,
-                params.communicators[solvedim]);
-  // copy the results of the reduced systems to the beginning of the boundaries
-  // array
-  cudaMemcpy(recv_buf, receive_buf.data(), reduced_len_g * 3 * sys_n * sizeof(REAL),
-             cudaMemcpyHostToDevice);
-#endif
+//
+//   const size_t comm_buf_size = reduced_len_l * 3 * sys_n;
+// #ifdef TRID_CUDA_AWARE_MPI
+//   // Gather the reduced system to all nodes (using CUDA aware MPI)
+//   MPI_Allgather(boundaries, comm_buf_size, real_datatype,
+//                 recv_buf, comm_buf_size, real_datatype,
+//                 params.communicators[solvedim]);
+// #else
+//   // MPI buffers on host
+//   std::vector<REAL> send_buf(comm_buf_size),
+//       receive_buf(comm_buf_size * params.num_mpi_procs[solvedim]);
+//   cudaMemcpy(send_buf.data(), boundaries, sizeof(REAL) * comm_buf_size,
+//              cudaMemcpyDeviceToHost);
+//   // Communicate boundary results
+//   MPI_Allgather(send_buf.data(), comm_buf_size, real_datatype,
+//                 receive_buf.data(), comm_buf_size, real_datatype,
+//                 params.communicators[solvedim]);
+//   // copy the results of the reduced systems to the beginning of the boundaries
+//   // array
+//   cudaMemcpy(recv_buf, receive_buf.data(), reduced_len_g * 3 * sys_n * sizeof(REAL),
+//              cudaMemcpyHostToDevice);
+// #endif
 
   // BATCHED
-//   for (int bidx = 0; bidx < num_batches; ++bidx) {
-//     int batch_start = bidx * batch_size;
-//     int bsize = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
-//
-//     size_t comm_buf_size   = sys_bound_size * bsize;
-//     size_t comm_buf_offset = sys_bound_size * batch_start;
-//     MPI_Request request;
-// #ifdef TRID_CUDA_AWARE_MPI
-//     // Gather the reduced system to all nodes (using CUDA aware MPI)
-//     MPI_Iallgather(boundaries + comm_buf_offset, comm_buf_size, real_datatype,
-//                    recv_buf + comm_buf_offset, comm_buf_size, real_datatype,
-//                    params.communicators[solvedim], &request);
-// #else
-//     // MPI buffers on host
-//     std::vector<REAL> send_buf(comm_buf_size),
-//         receive_buf(comm_buf_size * params.num_mpi_procs[solvedim]);
-//     cudaMemcpy(send_buf.data(), boundaries + comm_buf_offset,
-//                sizeof(REAL) * comm_buf_size, cudaMemcpyDeviceToHost);
-//     // Communicate boundary results
-//     MPI_Iallgather(send_buf.data(), comm_buf_size, real_datatype,
-//                    receive_buf.data(), comm_buf_size, real_datatype,
-//                    params.communicators[solvedim], &request);
-// #endif
-//     MPI_Status status;
-//     MPI_Wait(&request, &status);
-// #ifndef TRID_CUDA_AWARE_MPI
-//     // copy the results of the reduced systems to the boundaries array
-//     cudaMemcpy(recv_buf + comm_buf_offset, receive_buf.data(),
-//                reduced_len_g * 3 * bsize * sizeof(REAL),
-//                cudaMemcpyHostToDevice);
-//     cudaSafeCall(cudaPeekAtLastError());
-//     cudaSafeCall(cudaDeviceSynchronize());
-// #endif
-//   }
+  for (int bidx = 0; bidx < num_batches; ++bidx) {
+    int batch_start = bidx * batch_size;
+    int bsize = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
+
+    size_t comm_buf_size   = sys_bound_size * bsize;
+    size_t comm_buf_offset = sys_bound_size * batch_start;
+    size_t recv_comm_buf_offset = 3 * reduced_len_g * batch_start;
+    MPI_Request request;
+#ifdef TRID_CUDA_AWARE_MPI
+    // Gather the reduced system to all nodes (using CUDA aware MPI)
+    MPI_Iallgather(boundaries + comm_buf_offset, comm_buf_size, real_datatype,
+                   recv_buf + recv_comm_buf_offset, comm_buf_size, real_datatype,
+                   params.communicators[solvedim], &request);
+#else
+    // MPI buffers on host
+    std::vector<REAL> send_buf(comm_buf_size),
+        receive_buf(comm_buf_size * params.num_mpi_procs[solvedim]);
+    cudaMemcpy(send_buf.data(), boundaries + comm_buf_offset,
+               sizeof(REAL) * comm_buf_size, cudaMemcpyDeviceToHost);
+    // Communicate boundary results
+    MPI_Iallgather(send_buf.data(), comm_buf_size, real_datatype,
+                   receive_buf.data(), comm_buf_size, real_datatype,
+                   params.communicators[solvedim], &request);
+#endif
+    MPI_Status status;
+    MPI_Wait(&request, &status);
+#ifndef TRID_CUDA_AWARE_MPI
+    // copy the results of the reduced systems to the boundaries array
+    cudaMemcpy(recv_buf + recv_comm_buf_offset, receive_buf.data(),
+               reduced_len_g * 3 * bsize * sizeof(REAL),
+               cudaMemcpyHostToDevice);
+    cudaSafeCall(cudaPeekAtLastError());
+    cudaSafeCall(cudaDeviceSynchronize());
+#endif
+  }
   /// >>> COMM
   /// <<< REDUCED
   // Solve the reduced system
-  thomas_on_reduced_batched<REAL>(recv_buf, boundaries, sys_n,
-                                    params.num_mpi_procs[solvedim],
-                                    params.mpi_coords[solvedim], reduced_len_g);
-  // BATCHED
-  // for (int bidx = 0; bidx < num_batches; ++bidx) {
-  //   int batch_start = bidx * batch_size;
-  //   int bsize = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
-  //   // Solve the reduced system
-  //   int buf_offset = sys_bound_size * batch_start;
-  //   thomas_on_reduced_batched<REAL>(recv_buf + buf_offset,
-  //                                   boundaries + buf_offset, bsize,
+  // thomas_on_reduced_batched<REAL>(recv_buf, boundaries, sys_n,
   //                                   params.num_mpi_procs[solvedim],
   //                                   params.mpi_coords[solvedim], reduced_len_g);
-  // }
+  // BATCHED
+  for (int bidx = 0; bidx < num_batches; ++bidx) {
+    int batch_start = bidx * batch_size;
+    int bsize = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
+    // Solve the reduced system
+    int buf_offset = 3 * reduced_len_g * batch_start;
+    int bound_buf_offset = 2 * batch_start;
+    thomas_on_reduced_batched<REAL>(recv_buf + buf_offset,
+                                    boundaries + bound_buf_offset, bsize,
+                                    params.num_mpi_procs[solvedim],
+                                    params.mpi_coords[solvedim], reduced_len_g);
+  }
   /// >>> REDUCED
 
   /// <<< BACKWARD
@@ -375,7 +348,7 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
           dimGrid_x, dimBlock_x, aa + batch_start * local_eq_size,
           cc + batch_start * local_eq_size, dd + batch_start * local_eq_size,
           d + batch_start * local_eq_size, u + batch_start * local_eq_size,
-          boundaries + batch_start * sys_bound_size, local_eq_size,
+          boundaries + batch_start * 2, local_eq_size,
           local_eq_size, bsize);
     } else {
       DIM_V pads, dims; // TODO

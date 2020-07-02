@@ -75,7 +75,8 @@ if(BUILD_TESTING)
       find_package(MPI REQUIRED)
       cuda_include_directories(SYSTEM ${MPI_INCLUDE_PATH})
       cuda_include_directories(${PROJECT_SOURCE_DIR}/include
-                               ${PROJECT_SOURCE_DIR}/test/)
+                               ${PROJECT_SOURCE_DIR}/test/
+                               ${PROJECT_SOURCE_DIR}/src/cuda)
       cuda_add_executable(cuda_mpi_tests catch_mpi_main.cpp test_cuda_mpi.cu)
       cuda_add_cublas_to_target(cuda_mpi_tests)
       target_link_libraries(cuda_mpi_tests Catch tridcuda_mpi ${MPI_CXX_LIBRARIES})

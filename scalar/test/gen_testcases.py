@@ -82,6 +82,16 @@ def gen_testcase(fname, shape, solvedim):
     u_float = calc_result(a, b, c, d, solvedim, precision = PRECISION_FLOAT)
     write_testcase(fname, a, b, c, d, u, u_float, solvedim)
 
+def gen_reduced_testcase(fname, shape):
+    solvedim = 0 # for reduced systems solvedim is always 0 
+    a = np.random.rand(*shape) * 0.1
+    b = np.ones(shape)
+    c = np.random.rand(*shape) * 0.1
+    d = np.random.rand(*shape)
+    u = calc_result(a, b, c, d, solvedim)
+    u_float = calc_result(a, b, c, d, solvedim, precision = PRECISION_FLOAT)
+    write_testcase(fname, a, b, c, d, u, u_float, solvedim)
+
 def main():
     gen_testcase('one_dim_small', [5], 0)
     gen_testcase('one_dim_large', [200], 0)
@@ -96,6 +106,7 @@ def main():
     gen_testcase('four_dim_large_solve1', [32, 32, 32, 32], 1)
     gen_testcase('four_dim_large_solve2', [32, 32, 32, 32], 2)
     gen_testcase('four_dim_large_solve3', [32, 32, 32, 32], 3)
+    gen_reduced_testcase('reduced_test_small', [256, 256])
 
 if __name__ == "__main__":
     main()

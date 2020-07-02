@@ -4,6 +4,8 @@
 #include "cuda_utils.hpp"
 #include "cuda_mpi_wrappers.hpp"
 
+#include "trid_cuda_mpi_pcr.hpp"
+
 #include <trid_common.h>
 #include <trid_cuda.h>
 #include <trid_mpi_cuda.hpp>
@@ -40,6 +42,7 @@ void require_allclose(const AlignedArray<Float, Align> &expected,
   }
   for (size_t j = 0, i = 0; j < N; ++j, i += stride) {
     CAPTURE(i);
+    CAPTURE(N);
     CAPTURE(expected[i]);
     CAPTURE(actual[i]);
     Float min_val = std::min(std::abs(expected[i]), std::abs(actual[i]));
@@ -60,6 +63,7 @@ void require_allclose(const Float *expected, const Float *actual, size_t N,
                       int stride = 1, std::string value = "") {
   for (size_t j = 0, i = 0; j < N; ++j, i += stride) {
     CAPTURE(value);
+    CAPTURE(N);
     CAPTURE(i);
     CAPTURE(expected[i]);
     CAPTURE(actual[i]);
@@ -147,8 +151,8 @@ void test_solver_from_file(const std::string &file_name) {
   int domain_size = 1;
   for (size_t i = 0; i < local_sizes.size(); ++i) {
     const int global_dim = mesh.dims()[i];
-    domain_offsets[i] = params.mpi_coords[i] * (global_dim / mpi_dims[i]);
-    local_sizes[i] = params.mpi_coords[i] == mpi_dims[i] - 1
+    domain_offsets[i]    = params.mpi_coords[i] * (global_dim / mpi_dims[i]);
+    local_sizes[i]       = params.mpi_coords[i] == mpi_dims[i] - 1
                          ? global_dim - domain_offsets[i]
                          : global_dim / mpi_dims[i];
     global_strides[i] = i == 0 ? 1 : global_strides[i - 1] * mesh.dims()[i - 1];
@@ -179,7 +183,7 @@ void test_solver_from_file(const std::string &file_name) {
       local_device_mesh.c().data(), local_device_mesh.d().data(), u_d.data(),
       mesh.dims().size(), mesh.solve_dim(), local_sizes.data(),
       local_sizes.data());
-  
+
   if (!INC) {
     cudaMemcpy(d.data(), local_device_mesh.d().data(),
                sizeof(Float) * domain_size, cudaMemcpyDeviceToHost);
@@ -189,6 +193,100 @@ void test_solver_from_file(const std::string &file_name) {
   }
   // Check result
   require_allclose(u, d, domain_size, 1);
+}
+
+template <typename Float>
+void test_PCR_on_reduced(const std::string &file_name) {
+  // reduced system:
+  //  b is 1 everywhere
+  //  consider each 2 element as a result of the forward run for separate mpi
+  //  nodes
+  //  one input from merged a c and d arrays
+  //    layout: [aa0 aa1 cc0 cc1 dd0 dd1 (for each system) aa1 aa2 bb1 bb2 ...]
+  //    size: 6 * sys_n * mpi_process_num
+  //  one output with the 2 d values per system based on mpi coord
+  //    layout: [d_[2*mpi_proc_id] d_[2*mpi_proc_id + 1] ...(for every system)]
+  //    size: 2 * sys_n
+
+  // AlignedArray<double, 1> aa(mesh.a()), cc(mesh.c()), dd(mesh.d());
+  MeshLoader<Float> mesh(file_name);
+  const int reduced_sys_len = mesh.dims()[mesh.solve_dim()];
+  const int num_mpi_procs   = reduced_sys_len / 2;
+  const int mpi_coord       = num_mpi_procs / 2;
+  const int sys_n =
+      std::accumulate(mesh.dims().begin() + mesh.solve_dim() + 1,
+                      mesh.dims().end(), 1, std::multiplies<int>{});
+  // buffer holding the 3 arrays (a, c, d) merged:
+  AlignedArray<Float, 1> buffer(sys_n * reduced_sys_len * 3);
+  for (int mpi_coord = 0; mpi_coord < num_mpi_procs; ++mpi_coord) {
+    for (int sys_idx = 0; sys_idx < sys_n; ++sys_idx) {
+      buffer.push_back(mesh.a()[sys_idx * reduced_sys_len + 2 * mpi_coord]);
+      buffer.push_back(mesh.a()[sys_idx * reduced_sys_len + 2 * mpi_coord + 1]);
+      buffer.push_back(mesh.c()[sys_idx * reduced_sys_len + 2 * mpi_coord]);
+      buffer.push_back(mesh.c()[sys_idx * reduced_sys_len + 2 * mpi_coord + 1]);
+      buffer.push_back(mesh.d()[sys_idx * reduced_sys_len + 2 * mpi_coord]);
+      buffer.push_back(mesh.d()[sys_idx * reduced_sys_len + 2 * mpi_coord + 1]);
+    }
+  }
+  DeviceArray<Float> buffer_d(buffer);
+  DeviceArray<Float> result_d(2 * sys_n);
+
+  thomas_on_reduced_batched<Float>(buffer_d.data(), result_d.data(), sys_n,
+                                   num_mpi_procs, mpi_coord, reduced_sys_len);
+
+  AlignedArray<Float, 1> result(2 * sys_n);
+  result.resize(2 * sys_n);
+  cudaMemcpy(result.data(), result_d.data(), sizeof(Float) * 2 * sys_n,
+             cudaMemcpyDeviceToHost);
+  // BATCHING reduced calls
+  const int batch_size     = 32;
+  const int num_batches    = 1 + (sys_n - 1) / batch_size;
+  AlignedArray<Float, 1> batched_buffer(sys_n * reduced_sys_len * 3);
+  for (int bidx = 0; bidx < num_batches; ++bidx) {
+    int batch_start = bidx * batch_size;
+    int bsize = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
+    // Solve the reduced system
+    for (int mpi_coord = 0; mpi_coord < num_mpi_procs; ++mpi_coord) {
+      for (int sys_idx = batch_start; sys_idx < batch_start + bsize;
+           ++sys_idx) {
+        batched_buffer.push_back(
+            mesh.a()[sys_idx * reduced_sys_len + 2 * mpi_coord]);
+        batched_buffer.push_back(
+            mesh.a()[sys_idx * reduced_sys_len + 2 * mpi_coord + 1]);
+        batched_buffer.push_back(
+            mesh.c()[sys_idx * reduced_sys_len + 2 * mpi_coord]);
+        batched_buffer.push_back(
+            mesh.c()[sys_idx * reduced_sys_len + 2 * mpi_coord + 1]);
+        batched_buffer.push_back(
+            mesh.d()[sys_idx * reduced_sys_len + 2 * mpi_coord]);
+        batched_buffer.push_back(
+            mesh.d()[sys_idx * reduced_sys_len + 2 * mpi_coord + 1]);
+      }
+    }
+  }
+  DeviceArray<Float> buffer_batched_d(batched_buffer);
+  DeviceArray<Float> result_batched_d(2 * sys_n);
+  const int sys_bound_size = 6;
+  for (int bidx = 0; bidx < num_batches; ++bidx) {
+    int batch_start = bidx * batch_size;
+    int bsize = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
+    // Solve the reduced system
+    int buf_offset       = sys_bound_size * num_mpi_procs * batch_start;
+    int bound_buf_offset = 2 * batch_start;
+    thomas_on_reduced_batched<Float>(buffer_batched_d.data() + buf_offset,
+                                     result_batched_d.data() + bound_buf_offset,
+                                     bsize, num_mpi_procs, mpi_coord,
+                                     reduced_sys_len);
+  }
+  AlignedArray<Float, 1> result_batched(2 * sys_n);
+  result_batched.resize(2 * sys_n);
+  cudaMemcpy(result_batched.data(), result_batched_d.data(),
+             sizeof(Float) * 2 * sys_n, cudaMemcpyDeviceToHost);
+  require_allclose(result, result_batched);
+}
+
+TEMPLATE_TEST_CASE("PCR on reduced", "[reduced]", double, float) {
+ test_PCR_on_reduced<TestType>("files/reduced_test_small");
 }
 
 TEMPLATE_TEST_CASE("cuda solver mpi: solveX", "[solver][NOINC][solvedim:0]",
