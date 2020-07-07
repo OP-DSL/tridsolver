@@ -43,6 +43,11 @@
 #include <type_traits>
 #include <sys/time.h>
 
+#include "trid_mpi_cpu_lh.hpp"
+
+#define USE_TIMER_MACRO
+#include "timer.hpp"
+
 #define ROUND_DOWN(N,step) (((N)/(step))*step)
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
@@ -53,6 +58,11 @@ template<typename REAL, int INC>
 void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a, const REAL *b,
                             const REAL *c, REAL *d, REAL *u, int ndim, int solvedim,
                             int *dims, int *pads) {
+  // Declare timers
+  TIMER_DECL(forward);
+  TIMER_DECL(backward);
+  TIMER_DECL(pcr_on_reduced);
+  TIMER_DECL(mpi_communication);
   // Calculate number of systems that will be solved in this dimension
   int n_sys = 1;
   // Calculate size needed for aa, cc and dd arrays
@@ -84,6 +94,7 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a, const 
   REAL *cc_r = (REAL *) _mm_malloc(sizeof(REAL) * sys_len_r, SIMD_WIDTH);
   REAL *dd_r = (REAL *) _mm_malloc(sizeof(REAL) * sys_len_r, SIMD_WIDTH);
 
+  TIMER_TOGGLE(forward);
   if(solvedim == 0) {
     /*********************
      *
@@ -203,11 +214,15 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a, const 
       sndbuf[buf_ind + 5] = dd[end];
     }
   }
+  TIMER_TOGGLE(forward);
 
+  TIMER_TOGGLE(mpi_communication);
   // Communicate reduced systems
   MPI_Gather(sndbuf, n_sys*3*2, mpi_datatype, rcvbuf,
              n_sys*3*2, mpi_datatype, 0, params.communicators[solvedim]);
 
+  TIMER_TOGGLE(mpi_communication);
+  TIMER_TOGGLE(pcr_on_reduced);
   // Solve reduced system on root nodes of this dimension
   if(params.mpi_coords[solvedim] == 0) {
     // Iterate over each reduced system
@@ -235,9 +250,13 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a, const 
     }
   }
 
+  TIMER_TOGGLE(pcr_on_reduced);
+  TIMER_TOGGLE(mpi_communication);
   // Send back new values from reduced solve
   MPI_Scatter(sndbuf, n_sys * 2, mpi_datatype, rcvbuf,
                n_sys * 2, mpi_datatype, 0, params.communicators[solvedim]);
+  TIMER_TOGGLE(mpi_communication);
+  TIMER_TOGGLE(backward);
 
   if(solvedim == 0) {
     /*********************
@@ -257,20 +276,11 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a, const 
     }
 
     // Do the backward pass to solve for remaining unknowns
-    if(INC) {
-      #pragma omp parallel for
-      for(int id = 0; id < n_sys; id++) {
-        int ind = id * pads[0];
-        thomas_backwardInc<REAL>(&aa[ind], &cc[ind], &dd[ind],
-                        &u[ind], dims[0], 1);
-      }
-    } else {
-      #pragma omp parallel for
-      for(int id = 0; id < n_sys; id++) {
-        int ind = id * pads[0];
-        thomas_backward<REAL>(&aa[ind], &cc[ind], &dd[ind],
-                        &d[ind], dims[0], 1);
-      }
+    #pragma omp parallel for
+    for (int id = 0; id < n_sys; id++) {
+      int ind = id * pads[0];
+      thomas_backward<REAL, INC>(&aa[ind], &cc[ind], &dd[ind], &d[ind], &u[ind],
+                                 dims[0], 1);
     }
   } else if(solvedim == 1) {
     /*********************
@@ -292,11 +302,8 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a, const 
       }
 
       // Do the backward pass to solve for remaining unknowns
-      if(INC) {
-        thomas_backwardInc_vec_strip<REAL>(aa, cc, dd, u, dims[1], pads[0], pads[0]);
-      } else {
-        thomas_backward_vec_strip<REAL>(aa, cc, dd, d, dims[1], pads[0], pads[0]);
-      }
+      thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, dims[1], pads[0],
+                                           pads[0]);
     } else {
       // Assume 3D solve
 
@@ -311,20 +318,12 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a, const 
       }
 
       // Do the backward pass to solve for remaining unknowns
-      if(INC) {
-        #pragma omp parallel for
-        for(int z = 0; z < dims[2]; z++) {
-          int ind = z * pads[0] * pads[1];
-          thomas_backwardInc_vec_strip<REAL>(&aa[ind], &cc[ind], &dd[ind],
-                                            &u[ind], dims[1], pads[0], pads[0]);
-        }
-      } else {
-        #pragma omp parallel for
-        for(int z = 0; z < dims[2]; z++) {
-          int ind = z * pads[0] * pads[1];
-          thomas_backward_vec_strip<REAL>(&aa[ind], &cc[ind], &dd[ind],
-                                          &d[ind], dims[1], pads[0], pads[0]);
-        }
+      #pragma omp parallel for
+      for (int z = 0; z < dims[2]; z++) {
+        int ind = z * pads[0] * pads[1];
+        thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
+                                             &d[ind], &u[ind], dims[1], pads[0],
+                                             pads[0]);
       }
     }
   } else if(solvedim == 2) {
@@ -345,34 +344,29 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a, const 
     }
 
     // Do the backward pass to solve for remaining unknowns
-    if(INC) {
-      #pragma omp parallel for
-      for(int ind = 0; ind < ROUND_DOWN(dims[1] * pads[0], Z_BATCH); ind += Z_BATCH) {
-        thomas_backwardInc_vec_strip<REAL>(&aa[ind], &cc[ind], &dd[ind], &u[ind],
-                                           dims[2], pads[0] * pads[1], Z_BATCH);
-      }
+    #pragma omp parallel for
+    for (int ind = 0; ind < ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
+         ind += Z_BATCH) {
+      thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
+                                           &d[ind], &u[ind], dims[2],
+                                           pads[0] * pads[1], Z_BATCH);
+    }
 
-      if(dims[1] * pads[0] != ROUND_DOWN(dims[1] * pads[0], Z_BATCH)) {
-        int ind = ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
-        int length = (dims[1] * pads[0]) - ind;
-        thomas_backwardInc_vec_strip<REAL>(&aa[ind], &cc[ind], &dd[ind], &u[ind],
-                                           dims[2], pads[0] * pads[1], length);
-      }
-    } else {
-      #pragma omp parallel for
-      for(int ind = 0; ind < ROUND_DOWN(dims[1] * pads[0], Z_BATCH); ind += Z_BATCH) {
-        thomas_backward_vec_strip<REAL>(&aa[ind], &cc[ind], &dd[ind], &d[ind], dims[2],
-                                        pads[0] * pads[1], Z_BATCH);
-      }
-
-      if(dims[1] * pads[0] != ROUND_DOWN(dims[1] * pads[0], Z_BATCH)) {
-        int ind = ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
-        int length = (dims[1] * pads[0]) - ind;
-        thomas_backward_vec_strip<REAL>(&aa[ind], &cc[ind], &dd[ind], &d[ind], dims[2],
-                                        pads[0] * pads[1], length);
-      }
+    if (dims[1] * pads[0] != ROUND_DOWN(dims[1] * pads[0], Z_BATCH)) {
+      int ind    = ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
+      int length = (dims[1] * pads[0]) - ind;
+      thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
+                                           &d[ind], &u[ind], dims[2],
+                                           pads[0] * pads[1], length);
     }
   }
+  TIMER_TOGGLE(backward);
+
+
+  TIMER_PRINT(forward);
+  TIMER_PRINT(mpi_communication);
+  TIMER_PRINT(pcr_on_reduced);
+  TIMER_PRINT(backward);
 
   // Free memory used in solve
   _mm_free(aa);
@@ -397,7 +391,7 @@ tridStatus_t tridDmtsvStridedBatchMPI(const MpiSolverParams &params,
                                       const double *a, const double *b,
                                       const double *c, double *d, double *u, int ndim,
                                       int solvedim, int *dims, int *pads, int *dims_g) {
-  tridMultiDimBatchSolve<double, 0>(params, a, b, c, d, u, ndim, solvedim, dims, pads);
+  tridMultiDimBatchSolveLH<double, 0>(params, a, b, c, d, u, ndim, solvedim, dims, pads);
   return TRID_STATUS_SUCCESS;
 }
 #else

@@ -212,8 +212,6 @@ inline void thomas_forward_vec_strip(
   int ind = 0;
   int base = 0;
   
-  int n = 0;
-  
   REAL bbi;
   
   for(int i = 0; i < 2; i++) {
@@ -262,109 +260,71 @@ inline void thomas_forward_vec_strip(
   }
 }
 
-template<typename REAL>
-inline void thomas_backward_vec_strip(
-    const REAL *__restrict__ aa, 
-    const REAL *__restrict__ cc, 
-    const REAL *__restrict__ dd, 
-          REAL *__restrict__ d, 
-    const int N, 
-    const int stride,
-    const int strip_len) {
-
-  int ind = 0;
+template <typename REAL, int INC>
+inline void thomas_backward_vec_strip(const REAL *__restrict__ aa,
+                                      const REAL *__restrict__ cc,
+                                      const REAL *__restrict__ dd,
+                                      REAL *__restrict__ d,
+                                      REAL *__restrict__ u, const int N,
+                                      const int stride, const int strip_len) {
   int base = 0;
-  
+
   #pragma omp simd
-  for(int j = 0; j < strip_len; j++) {
-    d[j] = dd[j];
-  }
-  
-  for(int i = 1; i < N - 1; i++) {
-    base = i * stride;
-    #pragma omp simd
-    for(int j = 0; j < strip_len; j++) {
-      d[base + j] = dd[base + j] - aa[base + j]*dd[j] - cc[base + j]*dd[(N-1) * stride + j];
+  for (int j = 0; j < strip_len; j++) {
+    if (INC) {
+      u[j] += dd[j];
+    } else {
+      d[j] = dd[j];
     }
   }
-  
-  #pragma omp simd
-  for(int j = 0; j < strip_len; j++) {
-    d[(N-1) * stride + j] = dd[(N-1) * stride + j];
-  }
-}
 
-template<typename REAL>
-inline void thomas_backwardInc_vec_strip(
-    const REAL *__restrict__ aa, 
-    const REAL *__restrict__ cc, 
-    const REAL *__restrict__ dd, 
-          REAL *__restrict__ u, 
-    const int N, 
-    const int stride,
-    const int strip_len) {
-
-  int ind = 0;
-  int base = 0;
-  
-  #pragma omp simd
-  for(int j = 0; j < strip_len; j++) {
-    u[j] += dd[j];
-  }
-  
-  for(int i = 1; i < N - 1; i++) {
+  for (int i = 1; i < N - 1; i++) {
     base = i * stride;
     #pragma omp simd
-    for(int j = 0; j < strip_len; j++) {
-      u[base + j] += dd[base + j] - aa[base + j]*dd[j] - cc[base + j]*dd[(N-1) * stride + j];
+    for (int j = 0; j < strip_len; j++) {
+      if (INC) {
+        u[base + j] += dd[base + j] - aa[base + j] * dd[j] -
+                       cc[base + j] * dd[(N - 1) * stride + j];
+      } else {
+        d[base + j] = dd[base + j] - aa[base + j] * dd[j] -
+                      cc[base + j] * dd[(N - 1) * stride + j];
+      }
     }
   }
-  
+
   #pragma omp simd
-  for(int j = 0; j < strip_len; j++) {
-    u[(N-1) * stride + j] += dd[(N-1) * stride + j];
+  for (int j = 0; j < strip_len; j++) {
+    if (INC) {
+      u[(N - 1) * stride + j] += dd[(N - 1) * stride + j];
+    } else {
+      d[(N - 1) * stride + j] = dd[(N - 1) * stride + j];
+    }
   }
 }
 
-template<typename REAL>
-inline void thomas_backward(
-    const REAL *__restrict__ aa, 
-    const REAL *__restrict__ cc, 
-    const REAL *__restrict__ dd, 
-          REAL *__restrict__ d, 
-    const int N, 
-    const int stride) {
-
-  int ind = 0;
-  
-  d[0] = dd[0];
-  #pragma omp simd
-  for (int i=1; i<N-1; i++) {
-    ind = i * stride;
-    //d[i] = dd[i];//dd[i] - aa[i]*dd[0] - cc[i]*dd[N-1];
-    d[ind] = dd[ind] - aa[ind]*dd[0] - cc[ind]*dd[(N-1) * stride];
+template <typename REAL, int INC>
+inline void
+thomas_backward(const REAL *__restrict__ aa, const REAL *__restrict__ cc,
+                const REAL *__restrict__ dd, REAL *__restrict__ d,
+                REAL *__restrict__ u, const int N, const int stride) {
+  if (INC) {
+    u[0] += dd[0];
+  } else {
+    d[0] = dd[0];
   }
-  d[(N-1) * stride] = dd[(N-1) * stride];
-}
-
-template<typename REAL>
-inline void thomas_backwardInc(
-    const REAL *__restrict__ aa, 
-    const REAL *__restrict__ cc, 
-    const REAL *__restrict__ dd, 
-          REAL *__restrict__ u, 
-    const int N, 
-    const int stride) {
-
-  int ind = 0;
-  
-  u[0] += dd[0];
-  #pragma omp simd
-  for (int i=1; i<N-1; i++) {
-    ind = i * stride;
-    //d[i] = dd[i];//dd[i] - aa[i]*dd[0] - cc[i]*dd[N-1];
-    u[ind] += dd[ind] - aa[ind]*dd[0] - cc[ind]*dd[(N-1) * stride];
+#pragma omp simd
+  for (int i = 1; i < N - 1; i++) {
+    int ind = i * stride;
+    if (INC) {
+      u[ind] += dd[ind] - aa[ind] * dd[0] - cc[ind] * dd[(N - 1) * stride];
+    } else {
+      d[ind] = dd[ind] - aa[ind] * dd[0] - cc[ind] * dd[(N - 1) * stride];
+    }
   }
-  u[(N-1) * stride] += dd[(N-1) * stride];
+  if (INC) {
+    u[(N - 1) * stride] += dd[(N - 1) * stride];
+  } else {
+    d[(N - 1) * stride] = dd[(N - 1) * stride];
+  }
 }
 #endif

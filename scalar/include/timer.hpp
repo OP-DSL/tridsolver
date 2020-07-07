@@ -8,7 +8,9 @@
 #  define TIMER_PRINT_MESSAGE(t, pre)                                          \
     do {                                                                       \
       std::cout << pre << " time: ";                                           \
-      t.printTimeMillis();                                                     \
+      std::cout                                                                \
+          << t.getTime<std::chrono::duration<double, std::milli>>().count()    \
+          << " ms";                                                            \
       std::cout << std::endl;                                                  \
     } while (0)
 #  define TIMER_PRINT(t) TIMER_PRINT_MESSAGE(t, #  t)
