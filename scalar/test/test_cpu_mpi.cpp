@@ -52,12 +52,12 @@ void require_allclose(const AlignedArray<Float, Align> &expected,
 template <typename Float> struct ToMpiDatatype {};
 
 template <> struct ToMpiDatatype<double> {
-  static const MPI_Datatype value;// = MPI_DOUBLE;
+  static const MPI_Datatype value; // = MPI_DOUBLE;
 };
 const MPI_Datatype ToMpiDatatype<double>::value = MPI_DOUBLE;
 
 template <> struct ToMpiDatatype<float> {
-  static const MPI_Datatype value;// = MPI_FLOAT;
+  static const MPI_Datatype value; // = MPI_FLOAT;
 };
 const MPI_Datatype ToMpiDatatype<float>::value = MPI_FLOAT;
 
@@ -147,8 +147,8 @@ void test_solver_from_file(const std::string &file_name) {
   int domain_size = 1;
   for (size_t i = 0; i < local_sizes.size(); ++i) {
     const int global_dim = mesh.dims()[i];
-    domain_offsets[i] = params.mpi_coords[i] * (global_dim / mpi_dims[i]);
-    local_sizes[i] = params.mpi_coords[i] == mpi_dims[i] - 1
+    domain_offsets[i]    = params.mpi_coords[i] * (global_dim / mpi_dims[i]);
+    local_sizes[i]       = params.mpi_coords[i] == mpi_dims[i] - 1
                          ? global_dim - domain_offsets[i]
                          : global_dim / mpi_dims[i];
     global_strides[i] = i == 0 ? 1 : global_strides[i - 1] * mesh.dims()[i - 1];
@@ -171,124 +171,66 @@ void test_solver_from_file(const std::string &file_name) {
 
   // Solve the equations
   tridStridedBatchWrapper<Float>(params, a.data(), b.data(), c.data(), d.data(),
-                 nullptr,
-                 mesh.dims().size(),
-                 mesh.solve_dim(),
-                 local_sizes.data(),
-                 local_sizes.data());
+                                 nullptr, mesh.dims().size(), mesh.solve_dim(),
+                                 local_sizes.data(), local_sizes.data());
 
   // Check result
   require_allclose(u, d, domain_size, 1);
 }
 
-TEST_CASE("mpi: solver small", "[small]") {
-  SECTION("double") {
-    SECTION("ndims: 1") {
-      test_solver_from_file<double>("files/one_dim_small");
-    }
-    SECTION("ndims: 2") {
-      SECTION("solvedim: 0") {
-        test_solver_from_file<double>("files/two_dim_small_solve0");
-      }
-      SECTION("solvedim: 1") {
-        test_solver_from_file<double>("files/two_dim_small_solve1");
-      }
-    }
+TEMPLATE_TEST_CASE("mpi: solver small", "[small]", double, float) {
+  SECTION("ndims: 1") {
+    test_solver_from_file<TestType>("files/one_dim_small");
   }
-  SECTION("float") {
-    SECTION("ndims: 1") { test_solver_from_file<float>("files/one_dim_small"); }
-    SECTION("ndims: 2") {
-      SECTION("solvedim: 0") {
-        test_solver_from_file<float>("files/two_dim_small_solve0");
-      }
-      SECTION("solvedim: 1") {
-        test_solver_from_file<float>("files/two_dim_small_solve1");
-      }
+  SECTION("ndims: 2") {
+    SECTION("solvedim: 0") {
+      test_solver_from_file<TestType>("files/two_dim_small_solve0");
+    }
+    SECTION("solvedim: 1") {
+      test_solver_from_file<TestType>("files/two_dim_small_solve1");
     }
   }
 }
 
-TEST_CASE("mpi: solver large", "[large]") {
-  SECTION("double") {
-    SECTION("ndims: 1") {
-      test_solver_from_file<double>("files/one_dim_large");
+TEMPLATE_TEST_CASE("mpi: solver large", "[large]", double, float) {
+  SECTION("ndims: 1") {
+    test_solver_from_file<TestType>("files/one_dim_large");
+  }
+  SECTION("ndims: 2") {
+    SECTION("solvedim: 0") {
+      test_solver_from_file<TestType>("files/two_dim_large_solve0");
     }
-    SECTION("ndims: 2") {
-      SECTION("solvedim: 0") {
-        test_solver_from_file<double>("files/two_dim_large_solve0");
-      }
-      SECTION("solvedim: 1") {
-        test_solver_from_file<double>("files/two_dim_large_solve1");
-      }
-    }
-    SECTION("ndims: 3") {
-      SECTION("solvedim: 0") {
-        test_solver_from_file<double>("files/three_dim_large_solve0");
-      }
-      SECTION("solvedim: 1") {
-        test_solver_from_file<double>("files/three_dim_large_solve1");
-      }
-      SECTION("solvedim: 2") {
-        test_solver_from_file<double>("files/three_dim_large_solve2");
-      }
+    SECTION("solvedim: 1") {
+      test_solver_from_file<TestType>("files/two_dim_large_solve1");
     }
   }
-  SECTION("float") {
-    SECTION("ndims: 1") { test_solver_from_file<float>("files/one_dim_large"); }
-    SECTION("ndims: 2") {
-      SECTION("solvedim: 0") {
-        test_solver_from_file<float>("files/two_dim_large_solve0");
-      }
-      SECTION("solvedim: 1") {
-        test_solver_from_file<float>("files/two_dim_large_solve1");
-      }
+  SECTION("ndims: 3") {
+    SECTION("solvedim: 0") {
+      test_solver_from_file<TestType>("files/three_dim_large_solve0");
     }
-    SECTION("ndims: 3") {
-      SECTION("solvedim: 0") {
-        test_solver_from_file<float>("files/three_dim_large_solve0");
-      }
-      SECTION("solvedim: 1") {
-        test_solver_from_file<float>("files/three_dim_large_solve1");
-      }
-      SECTION("solvedim: 2") {
-        test_solver_from_file<float>("files/three_dim_large_solve2");
-      }
+    SECTION("solvedim: 1") {
+      test_solver_from_file<TestType>("files/three_dim_large_solve1");
+    }
+    SECTION("solvedim: 2") {
+      test_solver_from_file<TestType>("files/three_dim_large_solve2");
     }
   }
 }
 
 #if MAXDIM > 3
-TEST_CASE("mpi 4D: solver large", "[large]") {
-  SECTION("double") {
-    SECTION("ndims: 4") {
-      SECTION("solvedim: 0") {
-        test_solver_from_file<double>("files/four_dim_large_solve0");
-      }
-      SECTION("solvedim: 1") {
-        test_solver_from_file<double>("files/four_dim_large_solve1");
-      }
-      SECTION("solvedim: 2") {
-        test_solver_from_file<double>("files/four_dim_large_solve2");
-      }
-      SECTION("solvedim: 3") {
-        test_solver_from_file<double>("files/four_dim_large_solve3");
-      }
+TEMPLATE_TEST_CASE("mpi 4D: solver large", "[large]", double, float) {
+  SECTION("ndims: 4") {
+    SECTION("solvedim: 0") {
+      test_solver_from_file<TestType>("files/four_dim_large_solve0");
     }
-  }
-  SECTION("float") {
-    SECTION("ndims: 4") {
-      SECTION("solvedim: 0") {
-        test_solver_from_file<float>("files/four_dim_large_solve0");
-      }
-      SECTION("solvedim: 1") {
-        test_solver_from_file<float>("files/four_dim_large_solve1");
-      }
-      SECTION("solvedim: 2") {
-        test_solver_from_file<float>("files/four_dim_large_solve2");
-      }
-      SECTION("solvedim: 3") {
-        test_solver_from_file<float>("files/four_dim_large_solve3");
-      }
+    SECTION("solvedim: 1") {
+      test_solver_from_file<TestType>("files/four_dim_large_solve1");
+    }
+    SECTION("solvedim: 2") {
+      test_solver_from_file<TestType>("files/four_dim_large_solve2");
+    }
+    SECTION("solvedim: 3") {
+      test_solver_from_file<TestType>("files/four_dim_large_solve3");
     }
   }
 }

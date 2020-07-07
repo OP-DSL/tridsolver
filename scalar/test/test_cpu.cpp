@@ -157,7 +157,7 @@ void test_from_file_scalar_vec(const std::string &file_name) {
   require_allclose(mesh.u(), d, N, stride);
 }
 
-TEST_CASE("cpu: strided batch small") {
+TEST_CASE("cpu: strided batch small", "[small]") {
   SECTION("double") {
     SECTION("ndims: 1") { test_from_file<double>("files/one_dim_small"); }
     SECTION("ndims: 2") {
@@ -184,81 +184,42 @@ TEST_CASE("cpu: strided batch small") {
   }
 }
 
-TEST_CASE("cpu: strided batch large") {
-  SECTION("double") {
-    SECTION("ndims: 1") { test_from_file<double>("files/one_dim_large"); }
-    SECTION("ndims: 2") {
-      SECTION("solvedim: 0") {
-        test_from_file<double>("files/two_dim_large_solve0");
-      }
-      SECTION("solvedim: 1") {
-        test_from_file<double>("files/two_dim_large_solve1");
-      }
+TEMPLATE_TEST_CASE("cpu: strided batch large", "[large]", double, float) {
+  SECTION("ndims: 1") { test_from_file<TestType>("files/one_dim_large"); }
+  SECTION("ndims: 2") {
+    SECTION("solvedim: 0") {
+      test_from_file<TestType>("files/two_dim_large_solve0");
     }
-  }
-  SECTION("float") {
-    SECTION("ndims: 1") { test_from_file<float>("files/one_dim_large"); }
-    SECTION("ndims: 2") {
-      SECTION("solvedim: 0") {
-        test_from_file<float>("files/two_dim_large_solve0");
-      }
-      SECTION("solvedim: 1") {
-        test_from_file<float>("files/two_dim_large_solve1");
-      }
+    SECTION("solvedim: 1") {
+      test_from_file<TestType>("files/two_dim_large_solve1");
     }
   }
 }
 
-TEST_CASE("cpu: trid_scalar small") {
-  SECTION("double") {
-    SECTION("ndims: 1") {
-      test_from_file_scalar<double>("files/one_dim_small");
-    }
-    SECTION("ndims: 2") {
-      SECTION("solvedim: 0") {
-        test_from_file_scalar<double>("files/two_dim_small_solve0");
-      }
-      SECTION("solvedim: 1") {
-        test_from_file_scalar<double>("files/two_dim_small_solve1");
-      }
-    }
+TEMPLATE_TEST_CASE("cpu: trid_scalar small", "[small]", double, float) {
+  SECTION("ndims: 1") {
+    test_from_file_scalar<TestType>("files/one_dim_small");
   }
-  SECTION("float") {
-    SECTION("ndims: 1") { test_from_file_scalar<float>("files/one_dim_small"); }
-    SECTION("ndims: 2") {
-      SECTION("solvedim: 0") {
-        test_from_file_scalar<float>("files/two_dim_small_solve0");
-      }
-      SECTION("solvedim: 1") {
-        test_from_file_scalar<float>("files/two_dim_small_solve1");
-      }
+  SECTION("ndims: 2") {
+    SECTION("solvedim: 0") {
+      test_from_file_scalar<TestType>("files/two_dim_small_solve0");
+    }
+    SECTION("solvedim: 1") {
+      test_from_file_scalar<TestType>("files/two_dim_small_solve1");
     }
   }
 }
 
-TEST_CASE("cpu: trid_scalar large") {
-  SECTION("double") {
-    SECTION("ndims: 1") {
-      test_from_file_scalar<double>("files/one_dim_large");
-    }
-    SECTION("ndims: 2") {
-      SECTION("solvedim: 0") {
-        test_from_file_scalar<double>("files/two_dim_large_solve0");
-      }
-      SECTION("solvedim: 1") {
-        test_from_file_scalar<double>("files/two_dim_large_solve1");
-      }
-    }
+TEMPLATE_TEST_CASE("cpu: trid_scalar large", "[large]", double, float) {
+  SECTION("ndims: 1") {
+    test_from_file_scalar<TestType>("files/one_dim_large");
   }
-  SECTION("float") {
-    SECTION("ndims: 1") { test_from_file_scalar<float>("files/one_dim_large"); }
-    SECTION("ndims: 2") {
-      SECTION("solvedim: 0") {
-        test_from_file_scalar<float>("files/two_dim_large_solve0");
-      }
-      SECTION("solvedim: 1") {
-        test_from_file_scalar<float>("files/two_dim_large_solve1");
-      }
+  SECTION("ndims: 2") {
+    SECTION("solvedim: 0") {
+      test_from_file_scalar<TestType>("files/two_dim_large_solve0");
+    }
+    SECTION("solvedim: 1") {
+      test_from_file_scalar<TestType>("files/two_dim_large_solve1");
     }
   }
 }
@@ -282,20 +243,10 @@ TEST_CASE("cpu: trid_scalar_vec small") {
   /* } */
 }
 
-TEST_CASE("cpu: trid_scalar_vec large") {
-  SECTION("double") {
-    SECTION("ndims: 2") {
-      SECTION("solvedim: 1") {
-        test_from_file_scalar_vec<double>("files/two_dim_large_solve1");
-      }
-    }
-  }
-  SECTION("float") {
-    SECTION("ndims: 2") {
-      SECTION("solvedim: 1") {
-        test_from_file_scalar_vec<float>("files/two_dim_large_solve1");
-      }
+TEMPLATE_TEST_CASE("cpu: trid_scalar_vec large", "[large]", double, float) {
+  SECTION("ndims: 2") {
+    SECTION("solvedim: 1") {
+      test_from_file_scalar_vec<TestType>("files/two_dim_large_solve1");
     }
   }
 }
-
