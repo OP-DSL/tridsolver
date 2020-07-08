@@ -14,7 +14,7 @@ if (BUILD_FOR_GPU)
 
   cuda_include_directories(${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/src/cuda/
                            ${PROJECT_SOURCE_DIR}/src/cuda/generics/)
-  set(CUDA_LIBRARIES ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcudart.so, ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcublas.so)
+  set(CUDA_LIBRARIES ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcudart.so) #, ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcublas.so)
   cuda_add_library(
     tridcuda
     ${PROJECT_SOURCE_DIR}/src/cuda/trid_cuda.cu
