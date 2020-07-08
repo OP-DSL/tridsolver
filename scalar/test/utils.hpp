@@ -4,6 +4,9 @@
 #include <cassert>
 #include <cmath>
 #include <fstream>
+#include <functional>
+#include <numeric>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -80,6 +83,26 @@ private:
                   AlignedArray<Float, Align> &array);
 };
 
+template <typename Float, unsigned Align = 1> class RandomMesh {
+  size_t _solve_dim;
+  std::vector<int> _dims;
+  AlignedArray<Float, Align> _a, _b, _c, _d;
+
+public:
+  RandomMesh(const std::vector<int> dims, size_t solvedim);
+
+  size_t solve_dim() const { return _solve_dim; }
+  const std::vector<int> &dims() const { return _dims; }
+  const AlignedArray<Float, Align> &a() const { return _a; }
+  const AlignedArray<Float, Align> &b() const { return _b; }
+  const AlignedArray<Float, Align> &c() const { return _c; }
+  const AlignedArray<Float, Align> &d() const { return _d; }
+
+private:
+  template <typename RandGenerator>
+  void fill_array(RandGenerator &&dist, size_t num_elements,
+                  AlignedArray<Float, Align> &array);
+};
 /**********************************************************************
  *                          Implementations                           *
  **********************************************************************/
@@ -213,5 +236,33 @@ void MeshLoader<Float, Align>::load_array(std::ifstream &f, size_t num_elements,
     array.push_back(value);
   }
 }
+
+template <typename Float, unsigned Align>
+RandomMesh<Float, Align>::RandomMesh(const std::vector<int> dims,
+                                     size_t solvedim)
+    : _solve_dim(solvedim), _dims(dims), _a{}, _b{}, _c{}, _d{} {
+  assert(_solve_dim < _dims.size() && "solve dim greater than number of dims");
+  std::mt19937 mt(1);
+  std::uniform_real_distribution<Float> dist;
+
+  size_t num_elements =
+      std::accumulate(_dims.begin(), _dims.end(), 1, std::multiplies<int>());
+  // Load arrays
+  fill_array([&]() { return -1 + 0.1 * dist(mt); }, num_elements, _a);
+  fill_array([&]() { return 2 + dist(mt); }, num_elements, _b);
+  fill_array([&]() { return -1 + 0.1 * dist(mt); }, num_elements, _c);
+  fill_array([&]() { return dist(mt); }, num_elements, _d);
+}
+
+template <typename Float, unsigned Align>
+template <typename RandGenerator>
+void RandomMesh<Float, Align>::fill_array(RandGenerator &&dist, size_t num_elements,
+                                          AlignedArray<Float, Align> &array) {
+  array.allocate(num_elements);
+  for (size_t i = 0; i < num_elements; ++i) {
+    array.push_back(dist());
+  }
+}
+
 
 #endif /* end of include guard: __UTILS_HPP */

@@ -45,8 +45,7 @@
 
 #include "trid_mpi_cpu_lh.hpp"
 
-#define USE_TIMER_MACRO
-#include "timer.hpp"
+#include "timing.h"
 
 #define ROUND_DOWN(N,step) (((N)/(step))*step)
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
@@ -58,11 +57,8 @@ template<typename REAL, int INC>
 void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a, const REAL *b,
                             const REAL *c, REAL *d, REAL *u, int ndim, int solvedim,
                             int *dims, int *pads) {
-  // Declare timers
-  TIMER_DECL(forward);
-  TIMER_DECL(backward);
-  TIMER_DECL(pcr_on_reduced);
-  TIMER_DECL(mpi_communication);
+  PROFILE_FUNCTION();
+  BEGIN_PROFILING("memalloc");
   // Calculate number of systems that will be solved in this dimension
   int n_sys = 1;
   // Calculate size needed for aa, cc and dd arrays
@@ -94,7 +90,8 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a, const 
   REAL *cc_r = (REAL *) _mm_malloc(sizeof(REAL) * sys_len_r, SIMD_WIDTH);
   REAL *dd_r = (REAL *) _mm_malloc(sizeof(REAL) * sys_len_r, SIMD_WIDTH);
 
-  TIMER_TOGGLE(forward);
+  END_PROFILING("memalloc");
+  BEGIN_PROFILING("forward");
   if(solvedim == 0) {
     /*********************
      *
@@ -214,15 +211,15 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a, const 
       sndbuf[buf_ind + 5] = dd[end];
     }
   }
-  TIMER_TOGGLE(forward);
+  END_PROFILING("forward");
 
-  TIMER_TOGGLE(mpi_communication);
+  BEGIN_PROFILING("mpi_communication");
   // Communicate reduced systems
   MPI_Gather(sndbuf, n_sys*3*2, mpi_datatype, rcvbuf,
              n_sys*3*2, mpi_datatype, 0, params.communicators[solvedim]);
 
-  TIMER_TOGGLE(mpi_communication);
-  TIMER_TOGGLE(pcr_on_reduced);
+  END_PROFILING("mpi_communication");
+  BEGIN_PROFILING("pcr_on_reduced");
   // Solve reduced system on root nodes of this dimension
   if(params.mpi_coords[solvedim] == 0) {
     // Iterate over each reduced system
@@ -250,13 +247,13 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a, const 
     }
   }
 
-  TIMER_TOGGLE(pcr_on_reduced);
-  TIMER_TOGGLE(mpi_communication);
+  END_PROFILING("pcr_on_reduced");
+  BEGIN_PROFILING("mpi_communication");
   // Send back new values from reduced solve
   MPI_Scatter(sndbuf, n_sys * 2, mpi_datatype, rcvbuf,
                n_sys * 2, mpi_datatype, 0, params.communicators[solvedim]);
-  TIMER_TOGGLE(mpi_communication);
-  TIMER_TOGGLE(backward);
+  END_PROFILING("mpi_communication");
+  BEGIN_PROFILING("backward");
 
   if(solvedim == 0) {
     /*********************
@@ -360,15 +357,10 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a, const 
                                            pads[0] * pads[1], length);
     }
   }
-  TIMER_TOGGLE(backward);
-
-
-  TIMER_PRINT(forward);
-  TIMER_PRINT(mpi_communication);
-  TIMER_PRINT(pcr_on_reduced);
-  TIMER_PRINT(backward);
+  END_PROFILING("backward");
 
   // Free memory used in solve
+  BEGIN_PROFILING("memfree");
   _mm_free(aa);
   _mm_free(cc);
   _mm_free(dd);
@@ -377,6 +369,7 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a, const 
   _mm_free(aa_r);
   _mm_free(cc_r);
   _mm_free(dd_r);
+  END_PROFILING("memfree");
 }
 
 // Solve a batch of tridiagonal systems along a specified axis ('solvedim').
@@ -391,7 +384,7 @@ tridStatus_t tridDmtsvStridedBatchMPI(const MpiSolverParams &params,
                                       const double *a, const double *b,
                                       const double *c, double *d, double *u, int ndim,
                                       int solvedim, int *dims, int *pads, int *dims_g) {
-  tridMultiDimBatchSolveLH<double, 0>(params, a, b, c, d, u, ndim, solvedim, dims, pads);
+  tridMultiDimBatchSolve<double, 0>(params, a, b, c, d, u, ndim, solvedim, dims, pads);
   return TRID_STATUS_SUCCESS;
 }
 #else

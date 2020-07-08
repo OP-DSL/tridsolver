@@ -44,8 +44,7 @@
 #include <type_traits>
 #include <sys/time.h>
 
-#define USE_TIMER_MACRO
-#include "timer.hpp"
+#include "timing.h"
 
 #define ROUND_DOWN(N, step) (((N) / (step)) * step)
 #define Z_BATCH             56
@@ -54,12 +53,6 @@ template <typename REAL, int INC>
 void tridMultiDimBatchSolveLH(const MpiSolverParams &params, const REAL *a,
                               const REAL *b, const REAL *c, REAL *d, REAL *u,
                               int ndim, int solvedim, int *dims, int *pads) {
-  // Declare timers
-  TIMER_DECL(forward);
-  TIMER_DECL(backward);
-  TIMER_DECL(pcr_on_reduced);
-  TIMER_DECL(mpi_communication);
-  // Calculate number of systems that will be solved in this dimension
   int n_sys = 1;
   // Calculate size needed for aa, cc and dd arrays
   int mem_size = 1;
@@ -97,7 +90,6 @@ void tridMultiDimBatchSolveLH(const MpiSolverParams &params, const REAL *a,
   // int batch_size = n_sys;
   for (int b_start = 0; b_start < n_sys; b_start += batch_size) {
     int b_end = std::min(batch_size + b_start, n_sys);
-    TIMER_TOGGLE(forward);
     if (solvedim == 0) {
       /*********************
        *
@@ -218,16 +210,12 @@ void tridMultiDimBatchSolveLH(const MpiSolverParams &params, const REAL *a,
         sndbuf[buf_ind + 5] = dd[end];
       }
     }
-    TIMER_TOGGLE(forward);
   } // batches
 
-  TIMER_TOGGLE(mpi_communication);
   // Communicate reduced systems
   MPI_Gather(sndbuf, n_sys * 3 * 2, mpi_datatype, rcvbuf, n_sys * 3 * 2,
              mpi_datatype, 0, params.communicators[solvedim]);
 
-  TIMER_TOGGLE(mpi_communication);
-  TIMER_TOGGLE(pcr_on_reduced);
   // Solve reduced system on root nodes of this dimension
   if (params.mpi_coords[solvedim] == 0) {
     // Iterate over each reduced system
@@ -255,13 +243,9 @@ void tridMultiDimBatchSolveLH(const MpiSolverParams &params, const REAL *a,
     }
   }
 
-  TIMER_TOGGLE(pcr_on_reduced);
-  TIMER_TOGGLE(mpi_communication);
   // Send back new values from reduced solve
   MPI_Scatter(sndbuf, n_sys * 2, mpi_datatype, rcvbuf, n_sys * 2, mpi_datatype,
               0, params.communicators[solvedim]);
-  TIMER_TOGGLE(mpi_communication);
-  TIMER_TOGGLE(backward);
 
   if (solvedim == 0) {
 /*********************
@@ -365,13 +349,6 @@ void tridMultiDimBatchSolveLH(const MpiSolverParams &params, const REAL *a,
                                            pads[0] * pads[1], length);
     }
   }
-  TIMER_TOGGLE(backward);
-
-
-  TIMER_PRINT(forward);
-  TIMER_PRINT(mpi_communication);
-  TIMER_PRINT(pcr_on_reduced);
-  TIMER_PRINT(backward);
 
   // Free memory used in solve
   _mm_free(aa);
