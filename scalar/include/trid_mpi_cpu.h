@@ -32,57 +32,52 @@
 
 // Written by Toby Flynn, University of Warwick, T.Flynn@warwick.ac.uk, 2020
 
-#ifndef __TRID_MPI_CPU_H
-#define __TRID_MPI_CPU_H
-
-#include "mpi.h"
+#ifndef TRID_MPI_CPU_H__
+#define TRID_MPI_CPU_H__
 
 #include "trid_common.h"
 #include "trid_mpi_solver_params.hpp"
 
-typedef enum {
-  TRID_STATUS_SUCCESS = 0,
-  TRID_STATUS_NOT_INITIALIZED = 1,
-  TRID_STATUS_ALLOC_FAILED = 2,
-  TRID_STATUS_INVALID_VALUE = 3,
-  TRID_STATUS_ARCH_MISMATCH = 4,
-  TRID_STATUS_MAPPING_ERROR = 5,
-  TRID_STATUS_EXECUTION_FAILED = 6,
-  TRID_STATUS_INTERNAL_ERROR = 7,
-  TRID_STATUS_MATRIX_TYPE_NOT_SUPPORTED = 8,
-  TRID_STATUS_ZERO_PIVOT = 9
-} tridStatus_t;
-
 // Solve a batch of tridiagonal systems along a specified axis ('solvedim').
-// 'a', 'b', 'c', 'd' are the parameters of the tridiagonal systems which must be stored in 
-// arrays of size 'dims' with 'ndim' dimensions. The 'pads' array specifies any padding used in 
-// the arrays (the total length of each dimension including padding).
-// 
+// 'a', 'b', 'c', 'd' are the parameters of the tridiagonal systems which must
+// be stored in arrays of size 'dims' with 'ndim' dimensions. The 'pads' array
+// specifies any padding used in the arrays (the total length of each dimension
+// including padding).
+//
 // The result is written to 'd'. 'u' is unused.
+EXTERN_C
 tridStatus_t tridDmtsvStridedBatchMPI(const MpiSolverParams &params,
                                       const double *a, const double *b,
-                                      const double *c, double *d, double *u, int ndim, 
-                                      int solvedim, int *dims, int *pads, int *dims_g);
+                                      const double *c, double *d, double *u,
+                                      int ndim, int solvedim, int *dims,
+                                      int *pads);
 
+EXTERN_C
 tridStatus_t tridSmtsvStridedBatchMPI(const MpiSolverParams &params,
                                       const float *a, const float *b,
-                                      const float *c, float *d, float *u, int ndim, 
-                                      int solvedim, int *dims, int *pads, int *dims_g);
+                                      const float *c, float *d, float *u,
+                                      int ndim, int solvedim, int *dims,
+                                      int *pads);
 
 // Solve a batch of tridiagonal systems along a specified axis ('solvedim').
-// 'a', 'b', 'c', 'd' are the parameters of the tridiagonal systems which must be stored in 
-// arrays of size 'dims' with 'ndim' dimensions. The 'pads' array specifies any padding used in 
-// the arrays (the total length of each dimension including padding).
-// 
+// 'a', 'b', 'c', 'd' are the parameters of the tridiagonal systems which must
+// be stored in arrays of size 'dims' with 'ndim' dimensions. The 'pads' array
+// specifies any padding used in the arrays (the total length of each dimension
+// including padding).
+//
 // 'u' is incremented with the results.
+EXTERN_C
 tridStatus_t tridDmtsvStridedBatchIncMPI(const MpiSolverParams &params,
                                          const double *a, const double *b,
-                                         const double *c, double *d, double *u, int ndim, 
-                                         int solvedim, int *dims, int *pads, int *dims_g);
+                                         const double *c, double *d, double *u,
+                                         int ndim, int solvedim, int *dims,
+                                         int *pads);
 
+EXTERN_C
 tridStatus_t tridSmtsvStridedBatchIncMPI(const MpiSolverParams &params,
                                          const float *a, const float *b,
-                                         const float *c, float *d, float *u, int ndim, 
-                                         int solvedim, int *dims, int *pads, int *dims_g);
+                                         const float *c, float *d, float *u,
+                                         int ndim, int solvedim, int *dims,
+                                         int *pads);
 
 #endif

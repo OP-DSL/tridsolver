@@ -75,7 +75,7 @@ tridStatus_t tridStridedBatchWrapper<float>(const MpiSolverParams &params,
                                             int ndim, int solvedim, int *dims,
                                             int *pads) {
   return tridSmtsvStridedBatchMPI(params, a, b, c, d, u, ndim, solvedim, dims,
-                                  pads, nullptr);
+                                  pads);
 }
 
 template <>
@@ -85,7 +85,7 @@ tridStatus_t tridStridedBatchWrapper<double>(const MpiSolverParams &params,
                                              double *u, int ndim, int solvedim,
                                              int *dims, int *pads) {
   return tridDmtsvStridedBatchMPI(params, a, b, c, d, u, ndim, solvedim, dims,
-                                  pads, nullptr);
+                                  pads);
 }
 
 

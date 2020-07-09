@@ -32,33 +32,13 @@
 
 // Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014 
 
-#ifndef __TRID_CUDA_H
-#define __TRID_CUDA_H
+#ifndef TRID_CUDA_H__
+#define TRID_CUDA_H__
 
-//#include "trid_common.h"
+#include "trid_common.h"
 //#include <cuda_complex.hpp>
 //typedef complex<float> complexf;
 //typedef complex<double> complexd;
-
-#ifdef __cplusplus
-   #define EXTERN_C extern "C"
-#else
-   #define EXTERN_C
-#endif
-
-/* This is just a copy of CUSPARSE enums */
-typedef enum{
-    TRID_STATUS_SUCCESS=0,
-    TRID_STATUS_NOT_INITIALIZED=1,
-    TRID_STATUS_ALLOC_FAILED=2,
-    TRID_STATUS_INVALID_VALUE=3,
-    TRID_STATUS_ARCH_MISMATCH=4,
-    TRID_STATUS_MAPPING_ERROR=5,
-    TRID_STATUS_EXECUTION_FAILED=6,
-    TRID_STATUS_INTERNAL_ERROR=7,
-    TRID_STATUS_MATRIX_TYPE_NOT_SUPPORTED=8,
-    TRID_STATUS_ZERO_PIVOT=9
-} tridStatus_t;
 
 EXTERN_C
 void initTridMultiDimBatchSolve(int ndim, int *dims, int *pads);

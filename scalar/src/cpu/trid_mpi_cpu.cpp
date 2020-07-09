@@ -383,7 +383,7 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a, const 
 tridStatus_t tridDmtsvStridedBatchMPI(const MpiSolverParams &params,
                                       const double *a, const double *b,
                                       const double *c, double *d, double *u, int ndim,
-                                      int solvedim, int *dims, int *pads, int *dims_g) {
+                                      int solvedim, int *dims, int *pads) {
   tridMultiDimBatchSolve<double, 0>(params, a, b, c, d, u, ndim, solvedim, dims, pads);
   return TRID_STATUS_SUCCESS;
 }
@@ -391,7 +391,7 @@ tridStatus_t tridDmtsvStridedBatchMPI(const MpiSolverParams &params,
 tridStatus_t tridSmtsvStridedBatchMPI(const MpiSolverParams &params,
                                       const float *a, const float *b,
                                       const float *c, float *d, float *u, int ndim,
-                                      int solvedim, int *dims, int *pads, int *dims_g) {
+                                      int solvedim, int *dims, int *pads) {
   tridMultiDimBatchSolve<float, 0>(params, a, b, c, d, u, ndim, solvedim, dims, pads);
   return TRID_STATUS_SUCCESS;
 }
@@ -407,7 +407,7 @@ tridStatus_t tridSmtsvStridedBatchMPI(const MpiSolverParams &params,
 tridStatus_t tridDmtsvStridedBatchIncMPI(const MpiSolverParams &params,
                                          const double *a, const double *b,
                                          const double *c, double *d, double *u, int ndim,
-                                         int solvedim, int *dims, int *pads, int *dims_g) {
+                                         int solvedim, int *dims, int *pads) {
   tridMultiDimBatchSolve<double, 1>(params, a, b, c, d, u, ndim, solvedim, dims, pads);
   return TRID_STATUS_SUCCESS;
 }
@@ -415,7 +415,7 @@ tridStatus_t tridDmtsvStridedBatchIncMPI(const MpiSolverParams &params,
 tridStatus_t tridSmtsvStridedBatchIncMPI(const MpiSolverParams &params,
                                          const float *a, const float *b,
                                          const float *c, float *d, float *u, int ndim,
-                                         int solvedim, int *dims, int *pads, int *dims_g) {
+                                         int solvedim, int *dims, int *pads) {
   tridMultiDimBatchSolve<float, 1>(params, a, b, c, d, u, ndim, solvedim, dims, pads);
   return TRID_STATUS_SUCCESS;
 }
