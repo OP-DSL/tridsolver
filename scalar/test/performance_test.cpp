@@ -4,39 +4,45 @@
 #include <mpi.h>
 #include <unistd.h>
 
-#include "utils.hpp"
 #include "timing.h"
-#include <trid_mpi_cpu.h>
+
+#ifndef TRID_PERF_CUDA
+#  include <trid_mpi_cpu.h>
+#  include "utils.hpp"
+#  include "cpu_mpi_wrappers.hpp"
 
 template <typename Float>
-tridStatus_t
-tridStridedBatchWrapper(const MpiSolverParams &params, const Float *a,
-                        const Float *b, const Float *c, Float *d, Float *u,
-                        int ndim, int solvedim, int *dims, int *pads);
+void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh) {
+  AlignedArray<Float, 1> d(mesh.d());
 
-template <>
-tridStatus_t tridStridedBatchWrapper<float>(const MpiSolverParams &params,
-                                            const float *a, const float *b,
-                                            const float *c, float *d, float *u,
-                                            int ndim, int solvedim, int *dims,
-                                            int *pads) {
-  return tridSmtsvStridedBatchMPI(params, a, b, c, d, u, ndim, solvedim, dims,
-                                  pads);
+  // Solve the equations
+  tridStridedBatchWrapper<Float>(params, mesh.a().data(), mesh.b().data(),
+                                 mesh.c().data(), d.data(), nullptr,
+                                 mesh.dims().size(), mesh.solve_dim(),
+                                 mesh.dims().data(), mesh.dims().data());
 }
+#else
+#  include <trid_mpi_cuda.hpp>
+#  include "cuda_utils.hpp"
+#  include "cuda_mpi_wrappers.hpp"
 
-template <>
-tridStatus_t tridStridedBatchWrapper<double>(const MpiSolverParams &params,
-                                             const double *a, const double *b,
-                                             const double *c, double *d,
-                                             double *u, int ndim, int solvedim,
-                                             int *dims, int *pads) {
-  return tridDmtsvStridedBatchMPI(params, a, b, c, d, u, ndim, solvedim, dims,
-                                  pads);
+template <typename Float>
+void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh) {
+  GPUMesh<Float> mesh_d(mesh.a(), mesh.b(), mesh.c(), mesh.d(), mesh.dims());
+
+  // Solve the equations
+  tridmtsvStridedBatchMPIWrapper<Float>(
+      params, mesh_d.a().data(), mesh_d.b().data(), mesh_d.c().data(),
+      mesh_d.d().data(), nullptr, mesh_d.dims().size(), mesh.solve_dim(),
+      mesh_d.dims().data(), mesh_d.dims().data());
 }
+#endif
+
 
 template <typename Float>
 void test_solver_with_generated(const std::vector<int> global_dims,
-                                int solvedim, bool is_global_size) {
+                                int solvedim, int batch_size,
+                                bool is_global_size) {
   int num_proc, rank;
   MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -50,7 +56,8 @@ void test_solver_with_generated(const std::vector<int> global_dims,
   MPI_Cart_create(MPI_COMM_WORLD, global_dims.size(), mpi_dims.data(),
                   periods.data(), 0, &cart_comm);
 
-  MpiSolverParams params(cart_comm, global_dims.size(), mpi_dims.data());
+  MpiSolverParams params(cart_comm, global_dims.size(), mpi_dims.data(),
+                         batch_size);
 
   // The size of the local domain.
   std::vector<int> local_sizes(global_dims.size());
@@ -68,18 +75,14 @@ void test_solver_with_generated(const std::vector<int> global_dims,
   }
 
   RandomMesh<Float> mesh(local_sizes, solvedim);
-  AlignedArray<Float, 1> d(mesh.d());
-
-  // Solve the equations
-  tridStridedBatchWrapper<Float>(params, mesh.a().data(), mesh.b().data(),
-                                 mesh.c().data(), d.data(), nullptr,
-                                 mesh.dims().size(), mesh.solve_dim(),
-                                 local_sizes.data(), local_sizes.data());
+  run_tridsolver(params, mesh);
 }
 
 void usage(const char *name) {
   std::cerr << "Usage:\n";
-  std::cerr << "\t" << name << " [-x nx -d ndims -s solvedim -l]" << std::endl;
+  std::cerr << "\t" << name
+            << " [-x nx -y ny -z nz -d ndims -s solvedim -b batch_size -l]"
+            << std::endl;
 }
 
 int main(int argc, char *argv[]) {
@@ -88,33 +91,43 @@ int main(int argc, char *argv[]) {
     printf("Error starting MPI program. Terminating.\n");
     MPI_Abort(MPI_COMM_WORLD, rc);
   }
-  int rank;
+  int num_proc, rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
 
   int opt;
-  int size            = 256;
+  int size[]          = {256, 256, 256};
   int ndims           = 2;
   int solvedim        = 0;
+  int batch_size      = 32;
   bool is_global_size = true;
-  while ((opt = getopt(argc, argv, "x:s:d:l")) != -1) {
+  while ((opt = getopt(argc, argv, "x:y:z:s:d:l:b:")) != -1) {
     switch (opt) {
-    case 'x': size = atoi(optarg); break;
+    case 'x': size[0] = atoi(optarg); break;
+    case 'y': size[1] = atoi(optarg); break;
+    case 'z': size[2] = atoi(optarg); break;
     case 'd': ndims = atoi(optarg); break;
     case 's': solvedim = atoi(optarg); break;
     case 'l': is_global_size = false; break;
+    case 'b': batch_size = atoi(optarg); break;
     default:
       if (rank == 0) usage(argv[0]);
       return 2;
       break;
     }
   }
+  assert(ndims < 4 && "ndims must be smaller than MAXDIM");
 
   std::vector<int> dims;
   for (int i = 0; i < ndims; ++i) {
-    dims.push_back(size);
+    dims.push_back(size[i]);
   }
   if (rank == 0) {
-    std::cout << argv[0] << " {" << size;
+    std::string fname = argv[0];
+    fname             = fname.substr(fname.rfind("/"));
+    std::cout << fname << " " << ndims << "DS" << solvedim << "NP" << num_proc
+              << "BS" << batch_size;
+    std::cout << " {" << size;
     for (size_t i = 1; i < dims.size(); ++i)
       std::cout << "x" << dims[i];
     std::cout << "}";
@@ -129,7 +142,8 @@ int main(int argc, char *argv[]) {
   }
   MPI_Barrier(MPI_COMM_WORLD);
 
-  test_solver_with_generated<double>(dims, solvedim, is_global_size);
+  test_solver_with_generated<double>(dims, solvedim, batch_size,
+                                     is_global_size);
 
   PROFILE_REPORT();
   MPI_Finalize();

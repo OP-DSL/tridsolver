@@ -99,9 +99,14 @@ if (BUILD_TESTING)
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
       if (USE_PROFILING)
+        # performance_test.cu is a symlink to performance_test.cpp TODO fix compilation with cpp (compile with nvcc)
         cuda_add_executable(cuda_mpi_perf_test performance_test.cu)
-        cuda_include_directories(${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/test/ ${PROJECT_SOURCE_DIR}/src/cuda)
+        cuda_include_directories(${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/test/
+                                 ${PROJECT_SOURCE_DIR}/src/cuda)
         cuda_add_cublas_to_target(cuda_mpi_perf_test)
+        target_compile_definitions(cuda_mpi_perf_test PRIVATE TRID_PERF_CUDA)
+        target_include_directories(cuda_mpi_perf_test PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
+
         target_link_libraries(
           cuda_mpi_perf_test
           tridcuda_mpi

@@ -4,6 +4,7 @@
 #include "utils.hpp"
 
 #include <trid_mpi_cpu.h>
+#include "cpu_mpi_wrappers.hpp"
 
 #include <mpi.h>
 
@@ -60,34 +61,6 @@ template <> struct ToMpiDatatype<float> {
   static const MPI_Datatype value; // = MPI_FLOAT;
 };
 const MPI_Datatype ToMpiDatatype<float>::value = MPI_FLOAT;
-
-
-template <typename Float>
-tridStatus_t
-tridStridedBatchWrapper(const MpiSolverParams &params, const Float *a,
-                        const Float *b, const Float *c, Float *d, Float *u,
-                        int ndim, int solvedim, int *dims, int *pads);
-
-template <>
-tridStatus_t tridStridedBatchWrapper<float>(const MpiSolverParams &params,
-                                            const float *a, const float *b,
-                                            const float *c, float *d, float *u,
-                                            int ndim, int solvedim, int *dims,
-                                            int *pads) {
-  return tridSmtsvStridedBatchMPI(params, a, b, c, d, u, ndim, solvedim, dims,
-                                  pads);
-}
-
-template <>
-tridStatus_t tridStridedBatchWrapper<double>(const MpiSolverParams &params,
-                                             const double *a, const double *b,
-                                             const double *c, double *d,
-                                             double *u, int ndim, int solvedim,
-                                             int *dims, int *pads) {
-  return tridDmtsvStridedBatchMPI(params, a, b, c, d, u, ndim, solvedim, dims,
-                                  pads);
-}
-
 
 // Copies the local domain defined by `local_sizes` and `offsets` from the mesh.
 //
