@@ -44,11 +44,15 @@ struct MpiSolverParams {
   // The coordinates of the current MPI process in the cartesian mesh.
   std::vector<int> mpi_coords;
 
+  // The number of system in a batch used for hide latency of the MPI
+  // communication.
+  int mpi_batch_size;
+
   // Assumes that the number
   MpiSolverParams(MPI_Comm cartesian_communicator, int num_dims,
-                  int *num_mpi_procs_)
+                  int *num_mpi_procs_, int mpi_batch_size = 32)
       : communicators(num_dims), num_mpi_procs(num_mpi_procs_),
-        mpi_coords(num_dims) {
+        mpi_coords(num_dims), mpi_batch_size(mpi_batch_size) {
     int cart_rank;
     MPI_Comm_rank(cartesian_communicator, &cart_rank);
     MPI_Cart_coords(cartesian_communicator, cart_rank, num_dims,

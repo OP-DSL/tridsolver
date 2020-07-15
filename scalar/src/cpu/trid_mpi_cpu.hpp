@@ -100,8 +100,8 @@ inline void thomas_on_reduced(
     const int N, 
     const int stride) {
   int   i, ind = 0;
-  //FP aa, bb, cc, dd, c2[N_MAX], d2[N_MAX];
-  REAL aa, bb, cc, dd, c2[N], d2[N];
+  REAL aa, bb, cc, dd, c2[N_MPI_MAX], d2[N_MPI_MAX];
+  // REAL aa, bb, cc, dd, c2[N], d2[N];
   //
   // forward pass
   //
@@ -142,7 +142,6 @@ inline void thomas_forward(
     const REAL *__restrict__ b, 
     const REAL *__restrict__ c, 
     const REAL *__restrict__ d, 
-    const REAL *__restrict__ u, 
           REAL *__restrict__ aa, 
           REAL *__restrict__ cc, 
           REAL *__restrict__ dd, 
@@ -201,7 +200,6 @@ inline void thomas_forward_vec_strip(
     const REAL *__restrict__ b, 
     const REAL *__restrict__ c, 
     const REAL *__restrict__ d, 
-    const REAL *__restrict__ u, 
           REAL *__restrict__ aa, 
           REAL *__restrict__ cc, 
           REAL *__restrict__ dd, 

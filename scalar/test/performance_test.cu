@@ -4,35 +4,10 @@
 #include <mpi.h>
 #include <unistd.h>
 
-#include "utils.hpp"
+#include "cuda_utils.hpp"
 #include "timing.h"
-#include <trid_mpi_cpu.h>
-
-template <typename Float>
-tridStatus_t
-tridStridedBatchWrapper(const MpiSolverParams &params, const Float *a,
-                        const Float *b, const Float *c, Float *d, Float *u,
-                        int ndim, int solvedim, int *dims, int *pads);
-
-template <>
-tridStatus_t tridStridedBatchWrapper<float>(const MpiSolverParams &params,
-                                            const float *a, const float *b,
-                                            const float *c, float *d, float *u,
-                                            int ndim, int solvedim, int *dims,
-                                            int *pads) {
-  return tridSmtsvStridedBatchMPI(params, a, b, c, d, u, ndim, solvedim, dims,
-                                  pads);
-}
-
-template <>
-tridStatus_t tridStridedBatchWrapper<double>(const MpiSolverParams &params,
-                                             const double *a, const double *b,
-                                             const double *c, double *d,
-                                             double *u, int ndim, int solvedim,
-                                             int *dims, int *pads) {
-  return tridDmtsvStridedBatchMPI(params, a, b, c, d, u, ndim, solvedim, dims,
-                                  pads);
-}
+#include <trid_mpi_cuda.hpp>
+#include "cuda_mpi_wrappers.hpp"
 
 template <typename Float>
 void test_solver_with_generated(const std::vector<int> global_dims,
@@ -68,13 +43,13 @@ void test_solver_with_generated(const std::vector<int> global_dims,
   }
 
   RandomMesh<Float> mesh(local_sizes, solvedim);
-  AlignedArray<Float, 1> d(mesh.d());
+  GPUMesh<Float> mesh_d(mesh.a(), mesh.b(), mesh.c(), mesh.d(), local_sizes);
 
   // Solve the equations
-  tridStridedBatchWrapper<Float>(params, mesh.a().data(), mesh.b().data(),
-                                 mesh.c().data(), d.data(), nullptr,
-                                 mesh.dims().size(), mesh.solve_dim(),
-                                 local_sizes.data(), local_sizes.data());
+  tridmtsvStridedBatchMPIWrapper<Float>(
+      params, mesh_d.a().data(), mesh_d.b().data(), mesh_d.c().data(),
+      mesh_d.d().data(), nullptr, mesh_d.dims().size(), mesh.solve_dim(),
+      local_sizes.data(), local_sizes.data());
 }
 
 void usage(const char *name) {

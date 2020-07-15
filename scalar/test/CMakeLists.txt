@@ -97,6 +97,17 @@ if (BUILD_TESTING)
         NAME catch_cuda_mpi_test
         COMMAND "mpirun" -np ${MPI_TEST_NUM_PROC} $<TARGET_FILE:cuda_mpi_tests>
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+      if (USE_PROFILING)
+        cuda_add_executable(cuda_mpi_perf_test performance_test.cu)
+        cuda_include_directories(${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/test/ ${PROJECT_SOURCE_DIR}/src/cuda)
+        cuda_add_cublas_to_target(cuda_mpi_perf_test)
+        target_link_libraries(
+          cuda_mpi_perf_test
+          tridcuda_mpi
+          profiling
+          ${MPI_CXX_LIBRARIES})
+      endif (USE_PROFILING)
     endif (BUILD_FOR_MPI)
   endif (BUILD_FOR_GPU)
 endif (BUILD_TESTING)

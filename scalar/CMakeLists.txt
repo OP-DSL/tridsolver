@@ -5,7 +5,7 @@ option(BUILD_FOR_CPU "Build library for CPU architecture." OFF)
 option(BUILD_FOR_MIC "Build library for MIC architecture." OFF)
 option(BUILD_FOR_GPU "Build library for GPU architecture." OFF)
 option(BUILD_FOR_MPI "Build library for MPI combnied with the above architectures." OFF)
-option(USE_PROFILING "Build library for MPI combnied with the above architectures." OFF)
+option(USE_PROFILING "Build timing library for to measure timings." OFF)
 
 if (INTEL_CC)
   option(PRODUCE_OPT_REPORT "Print intel optimisation reports" OFF)

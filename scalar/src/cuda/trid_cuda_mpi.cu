@@ -181,8 +181,8 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   cudaSafeCall(
       cudaMalloc(&boundaries, sys_n * 3 * reduced_len_l * sizeof(REAL)));
 
-  const int batch_size     = std::min(32, sys_n);
-  const int num_batches    = 1 + (sys_n - 1) / 32;
+  const int batch_size     = std::min(params.mpi_batch_size, sys_n);
+  const int num_batches    = 1 + (sys_n - 1) / batch_size;
   const int sys_bound_size = 3 * reduced_len_l;
   // Calculate required number of CUDA threads and blocksS
   int blockdimx = 128;

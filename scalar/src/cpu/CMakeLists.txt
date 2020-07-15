@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.8)
 
 if (USE_PROFILING)
-add_library(profiling OBJECT ./timing.cpp)
+  add_library(profiling SHARED ./timing.cpp)
 target_include_directories(
   profiling
   PRIVATE ${PROJECT_SOURCE_DIR}/include ./
@@ -22,8 +22,9 @@ if (BUILD_FOR_CPU)
 	target_include_directories(tridcpu_sp PRIVATE ${PROJECT_SOURCE_DIR}/include ./ PRIVATE ../ )
 	target_include_directories(tridcpu_dp PRIVATE ${PROJECT_SOURCE_DIR}/include ./ PRIVATE ../ )
   if (USE_PROFILING)
-    target_link_libraries(tridcpu_dp profiling)
     target_link_libraries(tridcpu_sp profiling)
+    target_link_libraries(tridcpu_dp profiling)
+    target_link_libraries(tridcpu profiling)
   endif (USE_PROFILING)
 
 	#/opt/intel/composer_xe_2015.3.187/bin/intel64/icpc -O3 -xAVX -ipo -restrict -parallel -fopenmp -qopt-report=2 -qopt-report-phase=vec -qopt-report-phase=par -offload-attribute-target=mic -mkl -offload-option,mic,ld,"-L/opt/intel/composer_xe_2015.3.187/mkl/lib/mic -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -L/opt/intel/composer_xe_2015.3.187/compiler/lib/mic -limf -lintlc -lsvml -lirng -liomp5 -loffload -lcilkrts" -DFPPREC=0  -DN_MAX=1024  -I./include -I./libtrid  -D__OFFLOAD__ src/adi_cpu.cpp -L./libtrid/lib -limf -lintlc -lsvml -lirng  -o adi_phi_offload
