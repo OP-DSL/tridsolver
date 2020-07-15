@@ -525,7 +525,8 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
 template <typename REAL, int INC>
 void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
                             const REAL *b, const REAL *c, REAL *d, REAL *u,
-                            int ndim, int solvedim, int *dims, int *pads) {
+                            int ndim, int solvedim, const int *dims,
+                            const int *pads) {
   PROFILE_FUNCTION();
   BEGIN_PROFILING("memalloc");
   // Calculate number of systems that will be solved in this dimension
@@ -640,8 +641,9 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
 
 template <typename REAL, int INC>
 void tridMultiDimBatchSolve_orig(const MpiSolverParams &params, const REAL *a,
-                            const REAL *b, const REAL *c, REAL *d, REAL *u,
-                            int ndim, int solvedim, int *dims, int *pads) {
+                                 const REAL *b, const REAL *c, REAL *d, REAL *u,
+                                 int ndim, int solvedim, const int *dims,
+                                 const int *pads) {
   PROFILE_FUNCTION();
   BEGIN_PROFILING("memalloc");
   // Calculate number of systems that will be solved in this dimension
@@ -713,50 +715,60 @@ void tridMultiDimBatchSolve_orig(const MpiSolverParams &params, const REAL *a,
 }
 
 // Solve a batch of tridiagonal systems along a specified axis ('solvedim').
-// 'a', 'b', 'c', 'd' are the parameters of the tridiagonal systems which must be stored in
-// arrays of size 'dims' with 'ndim' dimensions. The 'pads' array specifies any padding used in
-// the arrays (the total length of each dimension including padding).
+// 'a', 'b', 'c', 'd' are the parameters of the tridiagonal systems which must
+// be stored in arrays of size 'dims' with 'ndim' dimensions. The 'pads' array
+// specifies any padding used in the arrays (the total length of each dimension
+// including padding).
 //
 // The result is written to 'd'. 'u' is unused.
 
 #if FPPREC == 1
 tridStatus_t tridDmtsvStridedBatchMPI(const MpiSolverParams &params,
                                       const double *a, const double *b,
-                                      const double *c, double *d, double *u, int ndim,
-                                      int solvedim, int *dims, int *pads) {
-  tridMultiDimBatchSolve<double, 0>(params, a, b, c, d, u, ndim, solvedim, dims, pads);
+                                      const double *c, double *d, double *u,
+                                      int ndim, int solvedim, const int *dims,
+                                      const int *pads) {
+  tridMultiDimBatchSolve<double, 0>(params, a, b, c, d, u, ndim, solvedim, dims,
+                                    pads);
   return TRID_STATUS_SUCCESS;
 }
 #else
 tridStatus_t tridSmtsvStridedBatchMPI(const MpiSolverParams &params,
                                       const float *a, const float *b,
-                                      const float *c, float *d, float *u, int ndim,
-                                      int solvedim, int *dims, int *pads) {
-  tridMultiDimBatchSolve<float, 0>(params, a, b, c, d, u, ndim, solvedim, dims, pads);
+                                      const float *c, float *d, float *u,
+                                      int ndim, int solvedim, const int *dims,
+                                      const int *pads) {
+  tridMultiDimBatchSolve<float, 0>(params, a, b, c, d, u, ndim, solvedim, dims,
+                                   pads);
   return TRID_STATUS_SUCCESS;
 }
 #endif
 
 // Solve a batch of tridiagonal systems along a specified axis ('solvedim').
-// 'a', 'b', 'c', 'd' are the parameters of the tridiagonal systems which must be stored in
-// arrays of size 'dims' with 'ndim' dimensions. The 'pads' array specifies any padding used in
-// the arrays (the total length of each dimension including padding).
+// 'a', 'b', 'c', 'd' are the parameters of the tridiagonal systems which must
+// be stored in arrays of size 'dims' with 'ndim' dimensions. The 'pads' array
+// specifies any padding used in the arrays (the total length of each dimension
+// including padding).
 //
 // 'u' is incremented with the results.
 #if FPPREC == 1
 tridStatus_t tridDmtsvStridedBatchIncMPI(const MpiSolverParams &params,
                                          const double *a, const double *b,
-                                         const double *c, double *d, double *u, int ndim,
-                                         int solvedim, int *dims, int *pads) {
-  tridMultiDimBatchSolve<double, 1>(params, a, b, c, d, u, ndim, solvedim, dims, pads);
+                                         const double *c, double *d, double *u,
+                                         int ndim, int solvedim,
+                                         const int *dims, const int *pads) {
+  tridMultiDimBatchSolve<double, 1>(params, a, b, c, d, u, ndim, solvedim, dims,
+                                    pads);
   return TRID_STATUS_SUCCESS;
 }
 #else
 tridStatus_t tridSmtsvStridedBatchIncMPI(const MpiSolverParams &params,
                                          const float *a, const float *b,
-                                         const float *c, float *d, float *u, int ndim,
-                                         int solvedim, int *dims, int *pads) {
-  tridMultiDimBatchSolve<float, 1>(params, a, b, c, d, u, ndim, solvedim, dims, pads);
+                                         const float *c, float *d, float *u,
+                                         int ndim, int solvedim,
+                                         const int *dims, const int *pads) {
+  tridMultiDimBatchSolve<float, 1>(params, a, b, c, d, u, ndim, solvedim, dims,
+                                   pads);
   return TRID_STATUS_SUCCESS;
 }
 #endif
