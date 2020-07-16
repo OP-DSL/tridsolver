@@ -41,8 +41,9 @@ void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh) {
 
 template <typename Float>
 void test_solver_with_generated(const std::vector<int> global_dims,
-                                int solvedim, int batch_size,
-                                bool is_global_size) {
+                                int solvedim,
+                                MpiSolverParams::MPICommStrategy strategy,
+                                int batch_size, bool is_global_size) {
   int num_proc, rank;
   MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -57,7 +58,7 @@ void test_solver_with_generated(const std::vector<int> global_dims,
                   periods.data(), 0, &cart_comm);
 
   MpiSolverParams params(cart_comm, global_dims.size(), mpi_dims.data(),
-                         batch_size);
+                         batch_size, strategy);
 
   // The size of the local domain.
   std::vector<int> local_sizes(global_dims.size());
@@ -81,7 +82,8 @@ void test_solver_with_generated(const std::vector<int> global_dims,
 void usage(const char *name) {
   std::cerr << "Usage:\n";
   std::cerr << "\t" << name
-            << " [-x nx -y ny -z nz -d ndims -s solvedim -b batch_size -l]"
+            << " [-x nx -y ny -z nz -l -d ndims -s solvedim -b batch_size -m "
+               "mpir_strat_idx]"
             << std::endl;
 }
 
@@ -100,8 +102,9 @@ int main(int argc, char *argv[]) {
   int ndims           = 2;
   int solvedim        = 0;
   int batch_size      = 32;
+  int mpi_strat_idx   = 0;
   bool is_global_size = true;
-  while ((opt = getopt(argc, argv, "x:y:z:s:d:l:b:")) != -1) {
+  while ((opt = getopt(argc, argv, "lx:y:z:s:d:b:")) != -1) {
     switch (opt) {
     case 'x': size[0] = atoi(optarg); break;
     case 'y': size[1] = atoi(optarg); break;
@@ -110,6 +113,7 @@ int main(int argc, char *argv[]) {
     case 's': solvedim = atoi(optarg); break;
     case 'l': is_global_size = false; break;
     case 'b': batch_size = atoi(optarg); break;
+    case 'm': mpi_strat_idx = atoi(optarg); break;
     default:
       if (rank == 0) usage(argv[0]);
       return 2;
@@ -117,6 +121,8 @@ int main(int argc, char *argv[]) {
     }
   }
   assert(ndims < 4 && "ndims must be smaller than MAXDIM");
+  assert(mpi_strat_idx < 4 && mpi_strat_idx > 0 &&
+         "No such communication strategy");
 
   std::vector<int> dims;
   for (int i = 0; i < ndims; ++i) {
@@ -127,7 +133,7 @@ int main(int argc, char *argv[]) {
     fname             = fname.substr(fname.rfind("/"));
     std::cout << fname << " " << ndims << "DS" << solvedim << "NP" << num_proc
               << "BS" << batch_size;
-    std::cout << " {" << size;
+    std::cout << " {" << dims[0];
     for (size_t i = 1; i < dims.size(); ++i)
       std::cout << "x" << dims[i];
     std::cout << "}";
@@ -142,7 +148,7 @@ int main(int argc, char *argv[]) {
   }
   MPI_Barrier(MPI_COMM_WORLD);
 
-  test_solver_with_generated<double>(dims, solvedim, batch_size,
+  test_solver_with_generated<double>(dims, solvedim, MpiSolverParams::MPICommStrategy(mpi_strat_idx), batch_size,
                                      is_global_size);
 
   PROFILE_REPORT();

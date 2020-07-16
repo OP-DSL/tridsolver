@@ -91,8 +91,9 @@ void copy_strided(const AlignedArray<Float, Alignment> &src,
   }
 }
 
-template <typename Float>
+template <typename Float, int INC, MpiSolverParams::MPICommStrategy strategy>
 void test_solver_from_file(const std::string &file_name) {
+  assert(INC == 0 && "Increment testing not implemented");
   // The dimension of the MPI decomposition is the same as solve_dim
   MeshLoader<Float> mesh(file_name);
 
@@ -109,7 +110,8 @@ void test_solver_from_file(const std::string &file_name) {
   MPI_Cart_create(MPI_COMM_WORLD, mesh.dims().size(), mpi_dims.data(),
                   periods.data(), 0, &cart_comm);
 
-  MpiSolverParams params(cart_comm, mesh.dims().size(), mpi_dims.data());
+  MpiSolverParams params(cart_comm, mesh.dims().size(), mpi_dims.data(), 32,
+                         strategy);
 
   // The size of the local domain.
   std::vector<int> local_sizes(mesh.dims().size());
@@ -151,59 +153,95 @@ void test_solver_from_file(const std::string &file_name) {
   require_allclose(u, d, domain_size, 1);
 }
 
-TEMPLATE_TEST_CASE("mpi: solver small", "[small]", double, float) {
+enum ResDest { assign = 0, increment };
+
+#define PARAM_COMBOS                                                           \
+  (double, assign, MpiSolverParams::GATHER_SCATTER),                           \
+      (double, assign, MpiSolverParams::ALLGATHER),                            \
+      (double, assign, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),           \
+      (double, assign, MpiSolverParams::LATENCY_HIDING_TWO_STEP),              \
+      (float, assign, MpiSolverParams::GATHER_SCATTER),                        \
+      (float, assign, MpiSolverParams::ALLGATHER),                             \
+      (float, assign, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),            \
+      (float, assign, MpiSolverParams::LATENCY_HIDING_TWO_STEP)
+
+
+TEMPLATE_TEST_CASE_SIG("mpi: solver small", "[small]",
+                       ((typename TestType, ResDest INC,
+                         MpiSolverParams::MPICommStrategy strategy),
+                        TestType, INC, strategy),
+                       PARAM_COMBOS) {
   SECTION("ndims: 1") {
-    test_solver_from_file<TestType>("files/one_dim_small");
+    test_solver_from_file<TestType, INC, strategy>("files/one_dim_small");
   }
   SECTION("ndims: 2") {
     SECTION("solvedim: 0") {
-      test_solver_from_file<TestType>("files/two_dim_small_solve0");
+      test_solver_from_file<TestType, INC, strategy>(
+          "files/two_dim_small_solve0");
     }
     SECTION("solvedim: 1") {
-      test_solver_from_file<TestType>("files/two_dim_small_solve1");
+      test_solver_from_file<TestType, INC, strategy>(
+          "files/two_dim_small_solve1");
     }
   }
 }
 
-TEMPLATE_TEST_CASE("mpi: solver large", "[large]", double, float) {
+TEMPLATE_TEST_CASE_SIG("mpi: solver large", "[large]",
+                       ((typename TestType, ResDest INC,
+                         MpiSolverParams::MPICommStrategy strategy),
+                        TestType, INC, strategy),
+                       PARAM_COMBOS) {
   SECTION("ndims: 1") {
-    test_solver_from_file<TestType>("files/one_dim_large");
+    test_solver_from_file<TestType, INC, strategy>("files/one_dim_large");
   }
   SECTION("ndims: 2") {
     SECTION("solvedim: 0") {
-      test_solver_from_file<TestType>("files/two_dim_large_solve0");
+      test_solver_from_file<TestType, INC, strategy>(
+          "files/two_dim_large_solve0");
     }
     SECTION("solvedim: 1") {
-      test_solver_from_file<TestType>("files/two_dim_large_solve1");
+      test_solver_from_file<TestType, INC, strategy>(
+          "files/two_dim_large_solve1");
     }
   }
   SECTION("ndims: 3") {
     SECTION("solvedim: 0") {
-      test_solver_from_file<TestType>("files/three_dim_large_solve0");
+      test_solver_from_file<TestType, INC, strategy>(
+          "files/three_dim_large_solve0");
     }
     SECTION("solvedim: 1") {
-      test_solver_from_file<TestType>("files/three_dim_large_solve1");
+      test_solver_from_file<TestType, INC, strategy>(
+          "files/three_dim_large_solve1");
     }
     SECTION("solvedim: 2") {
-      test_solver_from_file<TestType>("files/three_dim_large_solve2");
+      test_solver_from_file<TestType, INC, strategy>(
+          "files/three_dim_large_solve2");
     }
   }
 }
 
 #if MAXDIM > 3
-TEMPLATE_TEST_CASE("mpi 4D: solver large", "[large]", double, float) {
+TEMPLATE_TEST_CASE_SIG("mpi 4D: solver large", "[large]",
+                       ((typename TestType, ResDest INC,
+                         MpiSolverParams::MPICommStrategy strategy),
+                        TestType, INC, strategy),
+                       PARAM_COMBOS) {
   SECTION("ndims: 4") {
     SECTION("solvedim: 0") {
-      test_solver_from_file<TestType>("files/four_dim_large_solve0");
+      test_solver_from_file<TestType, INC, strategy>(
+          "files/four_dim_large_solve0");
     }
     SECTION("solvedim: 1") {
-      test_solver_from_file<TestType>("files/four_dim_large_solve1");
+      test_solver_from_file<TestType, INC, strategy>(
+          "files/four_dim_large_solve1");
     }
     SECTION("solvedim: 2") {
-      test_solver_from_file<TestType>("files/four_dim_large_solve2");
+      test_solver_from_file<TestType, INC, strategy>(
+          "files/four_dim_large_solve2");
     }
     SECTION("solvedim: 3") {
-      test_solver_from_file<TestType>("files/four_dim_large_solve3");
+      test_solver_from_file<TestType, INC, strategy>(
+          "files/four_dim_large_solve3");
     }
   }
 }
