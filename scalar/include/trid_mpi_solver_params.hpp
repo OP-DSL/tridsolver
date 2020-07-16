@@ -32,6 +32,20 @@
 #include <vector>
 
 struct MpiSolverParams {
+  // MPI communication strategies
+  enum MPICommStrategy {
+    GATHER_SCATTER = 0, // Gather boundaries on first nodes solve reduced system
+                        // and scatter results
+    ALLGATHER,          // Gather boundaries and solve reduced on all nodes
+    LATENCY_HIDING_INTERLEAVED, // Perform solves in mini-batches. Do forward
+                                // run of the current mini-batch start
+                                // communication and finish the previous
+                                // mini-batch
+    LATENCY_HIDING_TWO_STEP     // Perform solves in min-batches. First step:
+                            // forwards and start communication, second step:
+                            // wait for ready requests and finish mini-batches
+  };
+
   // This will be an array with a communicator for each dimension. Separate
   // communicator that includes every node calculating the same set of equations
   // as the current node for each dimension.
@@ -44,15 +58,20 @@ struct MpiSolverParams {
   // The coordinates of the current MPI process in the cartesian mesh.
   std::vector<int> mpi_coords;
 
-  // The number of system in a batch used for hide latency of the MPI
+  // The number of system in a mini-batch used for hide latency of the MPI
   // communication.
   int mpi_batch_size;
 
+  // Used MPI communication strategy
+  MPICommStrategy strategy;
+
   // Assumes that the number
   MpiSolverParams(MPI_Comm cartesian_communicator, int num_dims,
-                  int *num_mpi_procs_, int mpi_batch_size = 32)
+                  int *num_mpi_procs_, int mpi_batch_size = 32,
+                  MPICommStrategy _strategy = LATENCY_HIDING_INTERLEAVED)
       : communicators(num_dims), num_mpi_procs(num_mpi_procs_),
-        mpi_coords(num_dims), mpi_batch_size(mpi_batch_size) {
+        mpi_coords(num_dims), mpi_batch_size(mpi_batch_size),
+        strategy(_strategy) {
     int cart_rank;
     MPI_Comm_rank(cartesian_communicator, &cart_rank);
     MPI_Cart_coords(cartesian_communicator, cart_rank, num_dims,

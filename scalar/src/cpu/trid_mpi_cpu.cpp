@@ -42,6 +42,7 @@
 
 #include <type_traits>
 #include <sys/time.h>
+#include <cassert>
 
 #include "timing.h"
 
@@ -520,8 +521,428 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
   }
 }
 
+// LH2
+template <typename REAL, int INC>
+inline void tridMultiDimBatchSolve_simple(
+    const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
+    REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
+    const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, REAL *aa_r,
+    REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r,
+    const MPI_Datatype &mpi_datatype, int n_sys) {
+  int batch_size  = std::min(n_sys, params.mpi_batch_size);
+  int num_batches = 1 + (n_sys - 1) / batch_size;
+  std::vector<MPI_Request> requests(num_batches);
 
+  for (int bidx = 0; bidx < num_batches; ++bidx) {
+    int batch_start = bidx * batch_size;
+    int bsize = bidx == num_batches - 1 ? n_sys - batch_start : batch_size;
+    BEGIN_PROFILING("forward");
+    forward_batched(a, b, c, d, aa, cc, dd, sndbuf, dims, pads, ndim, solvedim,
+                    batch_start, batch_start + bsize);
+    END_PROFILING("forward");
+    BEGIN_PROFILING("mpi_communication");
+    // Send boundaries of the current batch
+    size_t comm_size          = len_r_local * bsize;
+    size_t buffer_offset      = len_r_local * batch_start;
+    size_t recv_buffer_offset = 3 * sys_len_r * batch_start;
+    // Communicate reduced systems
+    MPI_Iallgather(sndbuf + buffer_offset, comm_size, mpi_datatype,
+                   rcvbuf + recv_buffer_offset, comm_size, mpi_datatype,
+                   params.communicators[solvedim], &requests[bidx]);
+    END_PROFILING("mpi_communication");
+  }
+  // start processing messages
+  MPI_Status status;
+  for (int finished_batches = 0; finished_batches < num_batches;
+       ++finished_batches) {
+    // wait for the previous MPI transaction to finish
+    int bidx;
+    BEGIN_PROFILING("mpi_communication");
+    int rc = MPI_Waitany(requests.size(), requests.data(), &bidx, &status);
+    assert(rc == MPI_SUCCESS && "error MPI communication failed");
+    END_PROFILING("mpi_communication");
+
+    int batch_start = bidx * batch_size;
+    int bsize = bidx == num_batches - 1 ? n_sys - batch_start : batch_size;
+    // Finish the previous batch
+    BEGIN_PROFILING("pcr_on_reduced");
+    // Solve reduced systems on each node
+    solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads,
+                          solvedim, sys_len_r, batch_start,
+                          batch_start + bsize);
+    END_PROFILING("pcr_on_reduced");
+    BEGIN_PROFILING("backward");
+    backward_batched<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim,
+                                batch_start, batch_start + bsize);
+    END_PROFILING("backward");
+  }
+}
 // LH
+template <typename REAL, int INC>
+inline void tridMultiDimBatchSolve_LH(
+    const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
+    REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
+    const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, REAL *aa_r,
+    REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r,
+    const MPI_Datatype &mpi_datatype, int n_sys) {
+  int batch_size  = std::min(n_sys, params.mpi_batch_size);
+  int num_batches = 1 + (n_sys - 1) / batch_size;
+  MPI_Request request;
+
+  for (int bidx = 0; bidx < num_batches; ++bidx) {
+    int batch_start = bidx * batch_size;
+    int bsize = bidx == num_batches - 1 ? n_sys - batch_start : batch_size;
+    BEGIN_PROFILING("forward");
+    forward_batched(a, b, c, d, aa, cc, dd, sndbuf, dims, pads, ndim, solvedim,
+                    batch_start, batch_start + bsize);
+    END_PROFILING("forward");
+    BEGIN_PROFILING("mpi_communication");
+    // wait for the previous MPI transaction to finish
+    if (bidx != 0) {
+      MPI_Status status;
+      MPI_Wait(&request, &status);
+    }
+    // Send boundaries of the current batch
+    size_t comm_size          = len_r_local * bsize;
+    size_t buffer_offset      = len_r_local * batch_start;
+    size_t recv_buffer_offset = 3 * sys_len_r * batch_start;
+    // Communicate reduced systems
+    MPI_Iallgather(sndbuf + buffer_offset, comm_size, mpi_datatype,
+                   rcvbuf + recv_buffer_offset, comm_size, mpi_datatype,
+                   params.communicators[solvedim], &request);
+    END_PROFILING("mpi_communication");
+    // Finish the previous batch
+    if (bidx != 0) {
+      int batch_start = (bidx - 1) * batch_size;
+      int bsize       = batch_size;
+      BEGIN_PROFILING("pcr_on_reduced");
+      // Solve reduced systems on each node
+      solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads,
+                            solvedim, sys_len_r, batch_start,
+                            batch_start + bsize);
+      END_PROFILING("pcr_on_reduced");
+      BEGIN_PROFILING("backward");
+      backward_batched<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim,
+                                  batch_start, batch_start + bsize);
+      END_PROFILING("backward");
+    }
+  }
+  // wait for last message and finish last batch
+  BEGIN_PROFILING("mpi_communication");
+  MPI_Status status;
+  MPI_Wait(&request, &status);
+  END_PROFILING("mpi_communication");
+  // Finish the previous batch
+  int batch_start = (num_batches - 1) * batch_size;
+  int bsize       = n_sys - batch_start;
+  BEGIN_PROFILING("pcr_on_reduced");
+  // Solve reduced systems on each node
+  solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads,
+                        solvedim, sys_len_r, batch_start, batch_start + bsize);
+  END_PROFILING("pcr_on_reduced");
+  BEGIN_PROFILING("backward");
+  backward_batched<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim,
+                              batch_start, batch_start + bsize);
+  END_PROFILING("backward");
+}
+
+
+template <typename REAL, int INC>
+inline void tridMultiDimBatchSolve_allgather(
+    const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
+    REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
+    const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, REAL *aa_r,
+    REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r,
+    const MPI_Datatype &mpi_datatype, int n_sys) {
+  BEGIN_PROFILING("forward");
+  forward(a, b, c, d, aa, cc, dd, sndbuf, dims, pads, ndim, solvedim, n_sys);
+  END_PROFILING("forward");
+  BEGIN_PROFILING("mpi_communication");
+  // Communicate reduced systems
+  MPI_Allgather(sndbuf, n_sys * len_r_local, mpi_datatype, rcvbuf,
+                n_sys * len_r_local, mpi_datatype,
+                params.communicators[solvedim]);
+
+  END_PROFILING("mpi_communication");
+  BEGIN_PROFILING("pcr_on_reduced");
+  // Solve reduced systems on each node
+  solve_reduced(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads, solvedim,
+                sys_len_r, n_sys);
+  END_PROFILING("pcr_on_reduced");
+  BEGIN_PROFILING("backward");
+  backward<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim, n_sys);
+  END_PROFILING("backward");
+}
+
+template<typename REAL, int INC>
+inline void tridMultiDimBatchSolve_gather_scatter(
+    const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
+    REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
+    const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, REAL *aa_r,
+    REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r,
+    const MPI_Datatype &mpi_datatype, int n_sys) {
+// TODO refactor this as above
+
+  if(solvedim == 0) {
+    /*********************
+     *
+     * X Dimension Solve
+     *
+     *********************/
+
+    // Do modified thomas forward pass
+    #pragma omp parallel for
+    for (int id = 0; id < n_sys; id++) {
+      int ind = id * pads[0];
+      thomas_forward<REAL>(&a[ind], &b[ind], &c[ind], &d[ind], &aa[ind],
+                           &cc[ind], &dd[ind], dims[0], 1);
+    }
+
+    // Pack reduced systems (boundaries of each tridiagonal system)
+    #pragma omp parallel for
+    for(int id = 0; id < n_sys; id++) {
+      int buf_ind = id * 6;
+      int data_ind = id * pads[0];
+      sndbuf[buf_ind]     = aa[data_ind];
+      sndbuf[buf_ind + 1] = aa[data_ind + dims[0] - 1];
+      sndbuf[buf_ind + 2] = cc[data_ind];
+      sndbuf[buf_ind + 3] = cc[data_ind + dims[0] - 1];
+      sndbuf[buf_ind + 4] = dd[data_ind];
+      sndbuf[buf_ind + 5] = dd[data_ind + dims[0] - 1];
+    }
+  } else if(solvedim == 1) {
+    /*********************
+     *
+     * Y Dimension Solve
+     *
+     *********************/
+
+    // Check if 2D solve
+    if(ndim == 2) {
+      // Do modified thomas forward pass
+      thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, dims[1], pads[0],
+                                     pads[0]);
+
+      // Pack reduced systems (boundaries of each tridiagonal system)
+      #pragma omp parallel for
+      for(int id = 0; id < n_sys; id++) {
+        int start = id;
+        int end = start + (pads[0] * (dims[1] - 1));
+        int buf_ind = id * 6;
+        sndbuf[buf_ind]     = aa[start];
+        sndbuf[buf_ind + 1] = aa[end];
+        sndbuf[buf_ind + 2] = cc[start];
+        sndbuf[buf_ind + 3] = cc[end];
+        sndbuf[buf_ind + 4] = dd[start];
+        sndbuf[buf_ind + 5] = dd[end];
+      }
+    } else {
+      // Assume 3D solve
+
+      // Do modified thomas forward pass
+      // Iterate over each z 'layer'
+      #pragma omp parallel for
+      for(int z = 0; z < dims[2]; z++) {
+        int ind = z * pads[0] * pads[1];
+        thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
+                                       &aa[ind], &cc[ind], &dd[ind], dims[1],
+                                       pads[0], pads[0]);
+      }
+
+      // Pack reduced systems (boundaries of each tridiagonal system)
+      #pragma omp parallel for
+      for(int id = 0; id < n_sys; id++) {
+        int start = (id/dims[0]) * pads[0] * pads[1] + (id % dims[0]);
+        int end = start + (pads[0] * (dims[1] - 1));
+        int buf_ind = id * 6;
+        sndbuf[buf_ind]     = aa[start];
+        sndbuf[buf_ind + 1] = aa[end];
+        sndbuf[buf_ind + 2] = cc[start];
+        sndbuf[buf_ind + 3] = cc[end];
+        sndbuf[buf_ind + 4] = dd[start];
+        sndbuf[buf_ind + 5] = dd[end];
+      }
+    }
+  } else if(solvedim == 2) {
+    /*********************
+     *
+     * Z Dimension Solve
+     *
+     *********************/
+
+    // Do modified thomas forward pass
+    // Iterate over strips of length Z_BATCH
+    #pragma omp parallel for
+    for(int ind = 0; ind < ROUND_DOWN(dims[1] * pads[0], Z_BATCH); ind += Z_BATCH) {
+      thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
+                                     &aa[ind], &cc[ind], &dd[ind], dims[2],
+                                     pads[0] * pads[1], Z_BATCH);
+    }
+
+    // Do final strip if number of systems isn't a multiple of Z_BATCH
+    if (dims[1] * pads[0] != ROUND_DOWN(dims[1] * pads[0], Z_BATCH)) {
+      int ind    = ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
+      int length = (dims[1] * pads[0]) - ind;
+      thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
+                                     &aa[ind], &cc[ind], &dd[ind], dims[2],
+                                     pads[0] * pads[1], length);
+    }
+
+    // Pack reduced systems (boundaries of each tridiagonal system)
+    #pragma omp parallel for
+    for(int id = 0; id < n_sys; id++) {
+      int start = (id/dims[0]) * pads[0] + (id % dims[0]);
+      int end = start + (pads[0] * pads[1] * (dims[2] - 1));
+      int buf_ind = id * 6;
+      sndbuf[buf_ind]     = aa[start];
+      sndbuf[buf_ind + 1] = aa[end];
+      sndbuf[buf_ind + 2] = cc[start];
+      sndbuf[buf_ind + 3] = cc[end];
+      sndbuf[buf_ind + 4] = dd[start];
+      sndbuf[buf_ind + 5] = dd[end];
+    }
+  }
+
+  // Communicate reduced systems
+  MPI_Gather(sndbuf, n_sys * len_r_local, mpi_datatype, rcvbuf,
+             n_sys * len_r_local, mpi_datatype, 0,
+             params.communicators[solvedim]);
+
+  // Solve reduced system on root nodes of this dimension
+  if(params.mpi_coords[solvedim] == 0) {
+    // Iterate over each reduced system
+    for(int id = 0; id < n_sys; id++) {
+      // Unpack this reduced system from receive buffer
+      for(int p = 0; p < params.num_mpi_procs[solvedim]; p++) {
+        int buf_ind = p * n_sys * 2 * 3;
+        aa_r[p * 2]     = rcvbuf[buf_ind + id * 6];
+        aa_r[p * 2 + 1] = rcvbuf[buf_ind + id * 6 + 1];
+        cc_r[p * 2]     = rcvbuf[buf_ind + id * 6 + 2];
+        cc_r[p * 2 + 1] = rcvbuf[buf_ind + id * 6 + 3];
+        dd_r[p * 2]     = rcvbuf[buf_ind + id * 6 + 4];
+        dd_r[p * 2 + 1] = rcvbuf[buf_ind + id * 6 + 5];
+      }
+
+      // Solve reduced system
+      thomas_on_reduced<REAL>(aa_r, cc_r, dd_r, sys_len_r, 1);
+
+      // Pack result into send buffer
+      for(int p = 0; p < params.num_mpi_procs[solvedim]; p++) {
+        int buf_ind = p * n_sys * 2;
+        sndbuf[buf_ind + id * 2]     = dd_r[p * 2];
+        sndbuf[buf_ind + id * 2 + 1] = dd_r[p * 2 + 1];
+      }
+    }
+  }
+
+  // Send back new values from reduced solve
+  MPI_Scatter(sndbuf, n_sys * 2, mpi_datatype, rcvbuf,
+               n_sys * 2, mpi_datatype, 0, params.communicators[solvedim]);
+
+  if(solvedim == 0) {
+    /*********************
+     *
+     * X Dimension Solve
+     *
+     *********************/
+
+    // Unpack reduced solution
+    #pragma omp parallel for
+    for(int id = 0; id < n_sys; id++) {
+      // Gather coefficients of a,c,d
+      int data_ind = id * pads[0];
+      int buf_ind = id * 2;
+      dd[data_ind]               = rcvbuf[buf_ind];
+      dd[data_ind + dims[0] - 1] = rcvbuf[buf_ind + 1];
+    }
+
+    // Do the backward pass to solve for remaining unknowns
+    #pragma omp parallel for
+    for (int id = 0; id < n_sys; id++) {
+      int ind = id * pads[0];
+      thomas_backward<REAL, INC>(&aa[ind], &cc[ind], &dd[ind], &d[ind], &u[ind],
+                                 dims[0], 1);
+    }
+  } else if(solvedim == 1) {
+    /*********************
+     *
+     * Y Dimension Solve
+     *
+     *********************/
+
+    // Check if 2D solve
+    if(ndim == 2) {
+      // Unpack reduced solution
+      #pragma omp parallel for
+      for(int id = 0; id < n_sys; id++) {
+        int start = id;
+        int end = start + (pads[0] * (dims[1] - 1));
+        int buf_ind = id * 2;
+        dd[start] = rcvbuf[buf_ind];
+        dd[end]   = rcvbuf[buf_ind + 1];
+      }
+
+      // Do the backward pass to solve for remaining unknowns
+      thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, dims[1], pads[0],
+                                           pads[0]);
+    } else {
+      // Assume 3D solve
+
+      // Unpack reduced solution
+      #pragma omp parallel for
+      for(int id = 0; id < n_sys; id++) {
+        int start = (id/dims[0]) * pads[0] * pads[1] + (id % dims[0]);
+        int end = start + (pads[0] * (dims[1] - 1));
+        int buf_ind = id * 2;
+        dd[start] = rcvbuf[buf_ind];
+        dd[end]   = rcvbuf[buf_ind + 1];
+      }
+
+      // Do the backward pass to solve for remaining unknowns
+      #pragma omp parallel for
+      for (int z = 0; z < dims[2]; z++) {
+        int ind = z * pads[0] * pads[1];
+        thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
+                                             &d[ind], &u[ind], dims[1], pads[0],
+                                             pads[0]);
+      }
+    }
+  } else if(solvedim == 2) {
+    /*********************
+     *
+     * Z Dimension Solve
+     *
+     *********************/
+
+    // Unpack reduced solution
+    #pragma omp parallel for
+    for(int id = 0; id < n_sys; id++) {
+      int start = (id/dims[0]) * pads[0] + (id % dims[0]);
+      int end = start + (pads[0] * pads[1] * (dims[2] - 1));
+      int buf_ind = id * 2;
+      dd[start] = rcvbuf[buf_ind];
+      dd[end]   = rcvbuf[buf_ind + 1];
+    }
+
+    // Do the backward pass to solve for remaining unknowns
+    #pragma omp parallel for
+    for (int ind = 0; ind < ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
+         ind += Z_BATCH) {
+      thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
+                                           &d[ind], &u[ind], dims[2],
+                                           pads[0] * pads[1], Z_BATCH);
+    }
+
+    if (dims[1] * pads[0] != ROUND_DOWN(dims[1] * pads[0], Z_BATCH)) {
+      int ind    = ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
+      int length = (dims[1] * pads[0]) - ind;
+      thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
+                                           &d[ind], &u[ind], dims[2],
+                                           pads[0] * pads[1], length);
+    }
+  }
+}
+
 template <typename REAL, int INC>
 void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
                             const REAL *b, const REAL *c, REAL *d, REAL *u,
@@ -565,141 +986,30 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
   REAL *dd_r = (REAL *)_mm_malloc(sizeof(REAL) * sys_len_r * n_sys, SIMD_WIDTH);
 
   END_PROFILING("memalloc");
-  int batch_size  = std::min(n_sys, params.mpi_batch_size);
-  int num_batches = 1 + (n_sys - 1) / batch_size;
-  MPI_Request request;
-  
-  for(int bidx = 0; bidx < num_batches; ++bidx) {
-    int batch_start = bidx * batch_size;
-    int bsize = bidx == num_batches - 1 ? n_sys - batch_start : batch_size;
-    BEGIN_PROFILING("forward");
-    forward_batched(a, b, c, d, aa, cc, dd, sndbuf, dims, pads, ndim, solvedim,
-            batch_start, batch_start + bsize);
-    END_PROFILING("forward");
-    BEGIN_PROFILING("mpi_communication");
-    // wait for the previous MPI transaction to finish
-    if (bidx != 0) {
-      MPI_Status status;
-      MPI_Wait(&request, &status);
-    }
-    // Send boundaries of the current batch
-    size_t comm_size = len_r_local * bsize;
-    size_t buffer_offset = len_r_local * batch_start;
-    size_t recv_buffer_offset = 3 * sys_len_r * batch_start;
-    // Communicate reduced systems
-    MPI_Iallgather(sndbuf + buffer_offset, comm_size, mpi_datatype,
-                   rcvbuf + recv_buffer_offset, comm_size, mpi_datatype,
-                   params.communicators[solvedim], &request);
-    END_PROFILING("mpi_communication");
-    // Finish the previous batch
-    if (bidx != 0) {
-      int batch_start      = (bidx - 1) * batch_size;
-      int bsize            = batch_size;
-      BEGIN_PROFILING("pcr_on_reduced");
-      // Solve reduced systems on each node
-      solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads,
-                            solvedim, sys_len_r, batch_start,
-                            batch_start + bsize);
-      END_PROFILING("pcr_on_reduced");
-      BEGIN_PROFILING("backward");
-      backward_batched<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim,
-                                  batch_start, batch_start + bsize);
-      END_PROFILING("backward");
-    }
+
+  switch (params.strategy) {
+  case MpiSolverParams::GATHER_SCATTER:
+    tridMultiDimBatchSolve_gather_scatter<REAL, INC>(
+        params, a, b, c, d, u, aa, cc, dd, ndim, solvedim, dims, pads, sndbuf,
+        rcvbuf, aa_r, cc_r, dd_r, len_r_local, sys_len_r, mpi_datatype, n_sys);
+    break;
+  case MpiSolverParams::ALLGATHER:
+    tridMultiDimBatchSolve_allgather<REAL, INC>(
+        params, a, b, c, d, u, aa, cc, dd, ndim, solvedim, dims, pads, sndbuf,
+        rcvbuf, aa_r, cc_r, dd_r, len_r_local, sys_len_r, mpi_datatype, n_sys);
+    break;
+  case MpiSolverParams::LATENCY_HIDING_INTERLEAVED:
+    tridMultiDimBatchSolve_LH<REAL, INC>(
+        params, a, b, c, d, u, aa, cc, dd, ndim, solvedim, dims, pads, sndbuf,
+        rcvbuf, aa_r, cc_r, dd_r, len_r_local, sys_len_r, mpi_datatype, n_sys);
+    break;
+  case MpiSolverParams::LATENCY_HIDING_TWO_STEP:
+    tridMultiDimBatchSolve_simple<REAL, INC>(
+        params, a, b, c, d, u, aa, cc, dd, ndim, solvedim, dims, pads, sndbuf,
+        rcvbuf, aa_r, cc_r, dd_r, len_r_local, sys_len_r, mpi_datatype, n_sys);
+    break;
+  default: assert(false && "Unknown communication strategy");
   }
-  // wait for last message and finish last batch
-  BEGIN_PROFILING("mpi_communication");
-  MPI_Status status;
-  MPI_Wait(&request, &status);
-  END_PROFILING("mpi_communication");
-  // Finish the previous batch
-  int batch_start = (num_batches - 1) * batch_size;
-  int bsize       = n_sys - batch_start;
-  BEGIN_PROFILING("pcr_on_reduced");
-  // Solve reduced systems on each node
-  solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads,
-                        solvedim, sys_len_r, batch_start, batch_start + bsize);
-  END_PROFILING("pcr_on_reduced");
-  BEGIN_PROFILING("backward");
-  backward_batched<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim,
-                              batch_start, batch_start + bsize);
-  END_PROFILING("backward");
-
-  // Free memory used in solve
-  BEGIN_PROFILING("memfree");
-  _mm_free(aa);
-  _mm_free(cc);
-  _mm_free(dd);
-  _mm_free(sndbuf);
-  _mm_free(rcvbuf);
-  _mm_free(aa_r);
-  _mm_free(cc_r);
-  _mm_free(dd_r);
-  END_PROFILING("memfree");
-}
-
-
-template <typename REAL, int INC>
-void tridMultiDimBatchSolve_orig(const MpiSolverParams &params, const REAL *a,
-                                 const REAL *b, const REAL *c, REAL *d, REAL *u,
-                                 int ndim, int solvedim, const int *dims,
-                                 const int *pads) {
-  PROFILE_FUNCTION();
-  BEGIN_PROFILING("memalloc");
-  // Calculate number of systems that will be solved in this dimension
-  int n_sys = 1;
-  // Calculate size needed for aa, cc and dd arrays
-  int mem_size = 1;
-  for (int i = 0; i < ndim; i++) {
-    if (i != solvedim) {
-      n_sys *= dims[i];
-    }
-    mem_size *= pads[i];
-  }
-
-  // Allocate memory for aa, cc and dd arrays
-  REAL *aa = (REAL *)_mm_malloc(mem_size * sizeof(REAL), SIMD_WIDTH);
-  REAL *cc = (REAL *)_mm_malloc(mem_size * sizeof(REAL), SIMD_WIDTH);
-  REAL *dd = (REAL *)_mm_malloc(mem_size * sizeof(REAL), SIMD_WIDTH);
-
-  // Length of a reduced system
-  int len_r_local = 2 * 3;
-  int sys_len_r   = 2 * params.num_mpi_procs[solvedim];
-
-  // Allocate memory for send and receive buffers
-  REAL *sndbuf =
-      (REAL *)_mm_malloc(n_sys * len_r_local * sizeof(REAL), SIMD_WIDTH);
-  REAL *rcvbuf =
-      (REAL *)_mm_malloc(n_sys * sys_len_r * 3 * sizeof(REAL), SIMD_WIDTH);
-
-  // Get MPI datatype
-  const MPI_Datatype mpi_datatype =
-      std::is_same<REAL, double>::value ? MPI_DOUBLE : MPI_FLOAT;
-
-  // Allocate memory for reduced solve
-  REAL *aa_r = (REAL *)_mm_malloc(sizeof(REAL) * sys_len_r * n_sys, SIMD_WIDTH);
-  REAL *cc_r = (REAL *)_mm_malloc(sizeof(REAL) * sys_len_r * n_sys, SIMD_WIDTH);
-  REAL *dd_r = (REAL *)_mm_malloc(sizeof(REAL) * sys_len_r * n_sys, SIMD_WIDTH);
-
-  END_PROFILING("memalloc");
-  BEGIN_PROFILING("forward");
-  forward(a, b, c, d, aa, cc, dd, sndbuf, dims, pads, ndim, solvedim, n_sys);
-  END_PROFILING("forward");
-  BEGIN_PROFILING("mpi_communication");
-  // Communicate reduced systems
-  MPI_Allgather(sndbuf, n_sys * len_r_local, mpi_datatype, rcvbuf,
-                n_sys * len_r_local, mpi_datatype,
-                params.communicators[solvedim]);
-
-  END_PROFILING("mpi_communication");
-  BEGIN_PROFILING("pcr_on_reduced");
-  // Solve reduced systems on each node
-  solve_reduced(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads, solvedim,
-                sys_len_r, n_sys);
-  END_PROFILING("pcr_on_reduced");
-  BEGIN_PROFILING("backward");
-  backward<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim, n_sys);
-  END_PROFILING("backward");
 
   // Free memory used in solve
   BEGIN_PROFILING("memfree");
