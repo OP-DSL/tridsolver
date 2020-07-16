@@ -121,7 +121,7 @@ void copy_strided(const AlignedArray<Float, Alignment> &src,
   }
 }
 
-template <typename Float, bool INC = false>
+template <typename Float, int INC, MpiSolverParams::MPICommStrategy strategy>
 void test_solver_from_file(const std::string &file_name) {
   // The dimension of the MPI decomposition is the same as solve_dim
   MeshLoader<Float> mesh(file_name);
@@ -140,7 +140,8 @@ void test_solver_from_file(const std::string &file_name) {
   MPI_Cart_create(MPI_COMM_WORLD, mesh.dims().size(), mpi_dims.data(),
                   periods.data(), 0, &cart_comm);
 
-  MpiSolverParams params(cart_comm, mesh.dims().size(), mpi_dims.data());
+  MpiSolverParams params(cart_comm, mesh.dims().size(), mpi_dims.data(), 256,
+                         strategy);
 
   // The size of the local domain.
   std::vector<int> local_sizes(mesh.dims().size());
@@ -239,8 +240,8 @@ void test_PCR_on_reduced(const std::string &file_name) {
   cudaMemcpy(result.data(), result_d.data(), sizeof(Float) * 2 * sys_n,
              cudaMemcpyDeviceToHost);
   // BATCHING reduced calls
-  const int batch_size     = 32;
-  const int num_batches    = 1 + (sys_n - 1) / batch_size;
+  const int batch_size  = 32;
+  const int num_batches = 1 + (sys_n - 1) / batch_size;
   AlignedArray<Float, 1> batched_buffer(sys_n * reduced_sys_len * 3);
   for (int bidx = 0; bidx < num_batches; ++bidx) {
     int batch_start = bidx * batch_size;
@@ -286,123 +287,111 @@ void test_PCR_on_reduced(const std::string &file_name) {
 }
 
 TEMPLATE_TEST_CASE("PCR on reduced", "[reduced]", double, float) {
- test_PCR_on_reduced<TestType>("files/reduced_test_small");
+  test_PCR_on_reduced<TestType>("files/reduced_test_small");
 }
 
-TEMPLATE_TEST_CASE("cuda solver mpi: solveX", "[solver][NOINC][solvedim:0]",
-                   double, float) {
+enum ResDest { assign = 0, increment };
+
+#define PARAM_COMBOS                                                           \
+  (double, assign, MpiSolverParams::ALLGATHER),                                \
+      (double, assign, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),           \
+      (double, assign, MpiSolverParams::LATENCY_HIDING_TWO_STEP),              \
+      (float, assign, MpiSolverParams::ALLGATHER),                             \
+      (float, assign, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),            \
+      (float, assign, MpiSolverParams::LATENCY_HIDING_TWO_STEP),               \
+      (double, increment, MpiSolverParams::ALLGATHER),                         \
+      (double, increment, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),        \
+      (double, increment, MpiSolverParams::LATENCY_HIDING_TWO_STEP),           \
+      (float, increment, MpiSolverParams::ALLGATHER),                          \
+      (float, increment, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),         \
+      (float, increment, MpiSolverParams::LATENCY_HIDING_TWO_STEP)
+
+TEMPLATE_TEST_CASE_SIG("cuda solver mpi: solveX", "[solver][solvedim:0]",
+                       ((typename TestType, ResDest INC,
+                         MpiSolverParams::MPICommStrategy strategy),
+                        TestType, INC, strategy),
+                       PARAM_COMBOS) {
   SECTION("ndims: 1") {
-    test_solver_from_file<TestType>("files/one_dim_large");
+    test_solver_from_file<TestType, INC, strategy>("files/one_dim_large");
   }
   SECTION("ndims: 2") {
-    test_solver_from_file<TestType>("files/two_dim_large_solve0");
+    test_solver_from_file<TestType, INC, strategy>(
+        "files/two_dim_large_solve0");
   }
   SECTION("ndims: 3") {
-    test_solver_from_file<TestType>("files/three_dim_large_solve0");
+    test_solver_from_file<TestType, INC, strategy>(
+        "files/three_dim_large_solve0");
   }
 }
 
-TEMPLATE_TEST_CASE("cuda solver mpi: solveY", "[solver][NOINC][solvedim:1]",
-                   double, float) {
+TEMPLATE_TEST_CASE_SIG("cuda solver mpi: solveY", "[solver][solvedim:1]",
+                       ((typename TestType, ResDest INC,
+                         MpiSolverParams::MPICommStrategy strategy),
+                        TestType, INC, strategy),
+                       PARAM_COMBOS) {
   SECTION("ndims: 2") {
-    test_solver_from_file<TestType>("files/two_dim_large_solve1");
+    test_solver_from_file<TestType, INC, strategy>(
+        "files/two_dim_large_solve1");
   }
   SECTION("ndims: 3") {
-    test_solver_from_file<TestType>("files/three_dim_large_solve1");
+    test_solver_from_file<TestType, INC, strategy>(
+        "files/three_dim_large_solve1");
   }
 }
 
-TEMPLATE_TEST_CASE("cuda solver mpi: solveZ", "[solver][NOINC][solvedim:2]",
-                   double, float) {
+TEMPLATE_TEST_CASE_SIG("cuda solver mpi: solveZ", "[solver][solvedim:2]",
+                       ((typename TestType, ResDest INC,
+                         MpiSolverParams::MPICommStrategy strategy),
+                        TestType, INC, strategy),
+                       PARAM_COMBOS) {
   SECTION("ndims: 3") {
-    test_solver_from_file<TestType>("files/three_dim_large_solve2");
-  }
-}
-
-TEMPLATE_TEST_CASE("cuda solver mpi inc: solveX", "[solver][INC][solvedim:0]",
-                   double, float) {
-  SECTION("ndims: 1") {
-    test_solver_from_file<TestType, true>("files/one_dim_large");
-  }
-  SECTION("ndims: 2") {
-    test_solver_from_file<TestType, true>("files/two_dim_large_solve0");
-  }
-  SECTION("ndims: 3") {
-    test_solver_from_file<TestType, true>("files/three_dim_large_solve0");
-  }
-}
-
-TEMPLATE_TEST_CASE("cuda solver mpi inc: solveY", "[solver][INC][solvedim:1]",
-                   double, float) {
-  SECTION("ndims: 2") {
-    test_solver_from_file<TestType, true>("files/two_dim_large_solve1");
-  }
-  SECTION("ndims: 3") {
-    test_solver_from_file<TestType, true>("files/three_dim_large_solve1");
-  }
-}
-
-TEMPLATE_TEST_CASE("cuda solver mpi inc: solveZ", "[solver][INC][solvedim:2]",
-                   double, float) {
-  SECTION("ndims: 3") {
-    test_solver_from_file<TestType, true>("files/three_dim_large_solve2");
+    test_solver_from_file<TestType, INC, strategy>(
+        "files/three_dim_large_solve2");
   }
 }
 
 #if MAXDIM > 3
-TEMPLATE_TEST_CASE("cuda solver mpi 4D: solveX", "[solver][NOINC][solvedim:0]",
-                   double, float) {
+TEMPLATE_TEST_CASE_SIG("cuda solver mpi 4D: solveX", "[solver][solvedim:0]",
+                       ((typename TestType, ResDest INC,
+                         MpiSolverParams::MPICommStrategy strategy),
+                        TestType, INC, strategy),
+                       PARAM_COMBOS) {
   SECTION("ndims: 4") {
-    test_solver_from_file<TestType>("files/four_dim_large_solve0");
+    test_solver_from_file<TestType, INC, strategy>(
+        "files/four_dim_large_solve0");
   }
 }
 
-TEMPLATE_TEST_CASE("cuda solver mpi 4D: solveY", "[solver][NOINC][solvedim:1]",
-                   double, float) {
+TEMPLATE_TEST_CASE_SIG("cuda solver mpi 4D: solveY", "[solver][solvedim:1]",
+                       ((typename TestType, ResDest INC,
+                         MpiSolverParams::MPICommStrategy strategy),
+                        TestType, INC, strategy),
+                       PARAM_COMBOS) {
   SECTION("ndims: 4") {
-    test_solver_from_file<TestType>("files/four_dim_large_solve1");
+    test_solver_from_file<TestType, INC, strategy>(
+        "files/four_dim_large_solve1");
   }
 }
 
-TEMPLATE_TEST_CASE("cuda solver mpi 4D: solveZ", "[solver][NOINC][solvedim:2]",
-                   double, float) {
+TEMPLATE_TEST_CASE_SIG("cuda solver mpi 4D: solveZ", "[solver][solvedim:2]",
+                       ((typename TestType, ResDest INC,
+                         MpiSolverParams::MPICommStrategy strategy),
+                        TestType, INC, strategy),
+                       PARAM_COMBOS) {
   SECTION("ndims: 4") {
-    test_solver_from_file<TestType>("files/four_dim_large_solve2");
+    test_solver_from_file<TestType, INC, strategy>(
+        "files/four_dim_large_solve2");
   }
 }
 
-TEMPLATE_TEST_CASE("cuda solver mpi inc 4D: solveX",
-                   "[solver][INC][solvedim:0]", double, float) {
+TEMPLATE_TEST_CASE_SIG("cuda solver mpi: solve3", "[solver][solvedim:3]",
+                       ((typename TestType, ResDest INC,
+                         MpiSolverParams::MPICommStrategy strategy),
+                        TestType, INC, strategy),
+                       PARAM_COMBOS) {
   SECTION("ndims: 4") {
-    test_solver_from_file<TestType, true>("files/four_dim_large_solve0");
-  }
-}
-
-TEMPLATE_TEST_CASE("cuda solver mpi inc 4D: solveY",
-                   "[solver][INC][solvedim:1]", double, float) {
-  SECTION("ndims: 4") {
-    test_solver_from_file<TestType, true>("files/four_dim_large_solve1");
-  }
-}
-
-TEMPLATE_TEST_CASE("cuda solver mpi inc 4D: solveZ",
-                   "[solver][INC][solvedim:2]", double, float) {
-  SECTION("ndims: 4") {
-    test_solver_from_file<TestType, true>("files/four_dim_large_solve2");
-  }
-}
-
-TEMPLATE_TEST_CASE("cuda solver mpi inc: solve3", "[solver][INC][solvedim:3]",
-                   double, float) {
-  SECTION("ndims: 4") {
-    test_solver_from_file<TestType, true>("files/four_dim_large_solve3");
-  }
-}
-
-TEMPLATE_TEST_CASE("cuda solver mpi: solve3", "[solver][NOINC][solvedim:3]",
-                   double, float) {
-  SECTION("ndims: 4") {
-    test_solver_from_file<TestType>("files/four_dim_large_solve3");
+    test_solver_from_file<TestType, INC, strategy>(
+        "files/four_dim_large_solve3");
   }
 }
 #endif

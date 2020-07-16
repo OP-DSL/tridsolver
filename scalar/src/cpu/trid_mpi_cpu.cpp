@@ -52,6 +52,18 @@
 
 #define Z_BATCH 56
 
+// define MPI_datatype
+#if __cplusplus >= 201402L
+namespace {
+template <typename REAL>
+const MPI_Datatype mpi_datatype =
+    std::is_same<REAL, double>::value ? MPI_DOUBLE : MPI_FLOAT;
+}
+#define MPI_DATATYPE(REAL) mpi_datatype<REAL> 
+#else 
+#define MPI_DATATYPE(REAL) (std::is_same<REAL, double>::value ? MPI_DOUBLE : MPI_FLOAT)
+#endif
+
 template <typename REAL>
 inline void copy_boundaries_strided(const REAL *aa, const REAL *cc,
                                     const REAL *dd, REAL *sndbuf,
@@ -527,8 +539,7 @@ inline void tridMultiDimBatchSolve_simple(
     const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
     REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
     const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, REAL *aa_r,
-    REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r,
-    const MPI_Datatype &mpi_datatype, int n_sys) {
+    REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r, int n_sys) {
   int batch_size  = std::min(n_sys, params.mpi_batch_size);
   int num_batches = 1 + (n_sys - 1) / batch_size;
   std::vector<MPI_Request> requests(num_batches);
@@ -546,8 +557,8 @@ inline void tridMultiDimBatchSolve_simple(
     size_t buffer_offset      = len_r_local * batch_start;
     size_t recv_buffer_offset = 3 * sys_len_r * batch_start;
     // Communicate reduced systems
-    MPI_Iallgather(sndbuf + buffer_offset, comm_size, mpi_datatype,
-                   rcvbuf + recv_buffer_offset, comm_size, mpi_datatype,
+    MPI_Iallgather(sndbuf + buffer_offset, comm_size, MPI_DATATYPE(REAL),
+                   rcvbuf + recv_buffer_offset, comm_size, MPI_DATATYPE(REAL),
                    params.communicators[solvedim], &requests[bidx]);
     END_PROFILING("mpi_communication");
   }
@@ -555,7 +566,7 @@ inline void tridMultiDimBatchSolve_simple(
   MPI_Status status;
   for (int finished_batches = 0; finished_batches < num_batches;
        ++finished_batches) {
-    // wait for the previous MPI transaction to finish
+    // wait for a MPI transaction to finish
     int bidx;
     BEGIN_PROFILING("mpi_communication");
     int rc = MPI_Waitany(requests.size(), requests.data(), &bidx, &status);
@@ -564,13 +575,14 @@ inline void tridMultiDimBatchSolve_simple(
 
     int batch_start = bidx * batch_size;
     int bsize = bidx == num_batches - 1 ? n_sys - batch_start : batch_size;
-    // Finish the previous batch
+    // Finish the solve for batch
     BEGIN_PROFILING("pcr_on_reduced");
     // Solve reduced systems on each node
     solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads,
                           solvedim, sys_len_r, batch_start,
                           batch_start + bsize);
     END_PROFILING("pcr_on_reduced");
+    // Perform the backward run of the modified thomas algorithm
     BEGIN_PROFILING("backward");
     backward_batched<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim,
                                 batch_start, batch_start + bsize);
@@ -583,8 +595,7 @@ inline void tridMultiDimBatchSolve_LH(
     const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
     REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
     const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, REAL *aa_r,
-    REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r,
-    const MPI_Datatype &mpi_datatype, int n_sys) {
+    REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r, int n_sys) {
   int batch_size  = std::min(n_sys, params.mpi_batch_size);
   int num_batches = 1 + (n_sys - 1) / batch_size;
   MPI_Request request;
@@ -607,8 +618,8 @@ inline void tridMultiDimBatchSolve_LH(
     size_t buffer_offset      = len_r_local * batch_start;
     size_t recv_buffer_offset = 3 * sys_len_r * batch_start;
     // Communicate reduced systems
-    MPI_Iallgather(sndbuf + buffer_offset, comm_size, mpi_datatype,
-                   rcvbuf + recv_buffer_offset, comm_size, mpi_datatype,
+    MPI_Iallgather(sndbuf + buffer_offset, comm_size, MPI_DATATYPE(REAL),
+                   rcvbuf + recv_buffer_offset, comm_size, MPI_DATATYPE(REAL),
                    params.communicators[solvedim], &request);
     END_PROFILING("mpi_communication");
     // Finish the previous batch
@@ -652,15 +663,14 @@ inline void tridMultiDimBatchSolve_allgather(
     const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
     REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
     const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, REAL *aa_r,
-    REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r,
-    const MPI_Datatype &mpi_datatype, int n_sys) {
+    REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r, int n_sys) {
   BEGIN_PROFILING("forward");
   forward(a, b, c, d, aa, cc, dd, sndbuf, dims, pads, ndim, solvedim, n_sys);
   END_PROFILING("forward");
   BEGIN_PROFILING("mpi_communication");
   // Communicate reduced systems
-  MPI_Allgather(sndbuf, n_sys * len_r_local, mpi_datatype, rcvbuf,
-                n_sys * len_r_local, mpi_datatype,
+  MPI_Allgather(sndbuf, n_sys * len_r_local, MPI_DATATYPE(REAL), rcvbuf,
+                n_sys * len_r_local, MPI_DATATYPE(REAL),
                 params.communicators[solvedim]);
 
   END_PROFILING("mpi_communication");
@@ -674,14 +684,13 @@ inline void tridMultiDimBatchSolve_allgather(
   END_PROFILING("backward");
 }
 
-template<typename REAL, int INC>
+template <typename REAL, int INC>
 inline void tridMultiDimBatchSolve_gather_scatter(
     const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
     REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
     const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, REAL *aa_r,
-    REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r,
-    const MPI_Datatype &mpi_datatype, int n_sys) {
-// TODO refactor this as above
+    REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r, int n_sys) {
+  // TODO refactor this as above
 
   if(solvedim == 0) {
     /*********************
@@ -804,8 +813,8 @@ inline void tridMultiDimBatchSolve_gather_scatter(
   }
 
   // Communicate reduced systems
-  MPI_Gather(sndbuf, n_sys * len_r_local, mpi_datatype, rcvbuf,
-             n_sys * len_r_local, mpi_datatype, 0,
+  MPI_Gather(sndbuf, n_sys * len_r_local, MPI_DATATYPE(REAL), rcvbuf,
+             n_sys * len_r_local, MPI_DATATYPE(REAL), 0,
              params.communicators[solvedim]);
 
   // Solve reduced system on root nodes of this dimension
@@ -836,8 +845,8 @@ inline void tridMultiDimBatchSolve_gather_scatter(
   }
 
   // Send back new values from reduced solve
-  MPI_Scatter(sndbuf, n_sys * 2, mpi_datatype, rcvbuf,
-               n_sys * 2, mpi_datatype, 0, params.communicators[solvedim]);
+  MPI_Scatter(sndbuf, n_sys * 2, MPI_DATATYPE(REAL), rcvbuf,
+               n_sys * 2, MPI_DATATYPE(REAL), 0, params.communicators[solvedim]);
 
   if(solvedim == 0) {
     /*********************
@@ -976,10 +985,6 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
   REAL *rcvbuf =
       (REAL *)_mm_malloc(n_sys * sys_len_r * 3 * sizeof(REAL), SIMD_WIDTH);
 
-  // Get MPI datatype
-  const MPI_Datatype mpi_datatype =
-      std::is_same<REAL, double>::value ? MPI_DOUBLE : MPI_FLOAT;
-
   // Allocate memory for reduced solve
   REAL *aa_r = (REAL *)_mm_malloc(sizeof(REAL) * sys_len_r * n_sys, SIMD_WIDTH);
   REAL *cc_r = (REAL *)_mm_malloc(sizeof(REAL) * sys_len_r * n_sys, SIMD_WIDTH);
@@ -991,22 +996,22 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
   case MpiSolverParams::GATHER_SCATTER:
     tridMultiDimBatchSolve_gather_scatter<REAL, INC>(
         params, a, b, c, d, u, aa, cc, dd, ndim, solvedim, dims, pads, sndbuf,
-        rcvbuf, aa_r, cc_r, dd_r, len_r_local, sys_len_r, mpi_datatype, n_sys);
+        rcvbuf, aa_r, cc_r, dd_r, len_r_local, sys_len_r, n_sys);
     break;
   case MpiSolverParams::ALLGATHER:
     tridMultiDimBatchSolve_allgather<REAL, INC>(
         params, a, b, c, d, u, aa, cc, dd, ndim, solvedim, dims, pads, sndbuf,
-        rcvbuf, aa_r, cc_r, dd_r, len_r_local, sys_len_r, mpi_datatype, n_sys);
+        rcvbuf, aa_r, cc_r, dd_r, len_r_local, sys_len_r, n_sys);
     break;
   case MpiSolverParams::LATENCY_HIDING_INTERLEAVED:
     tridMultiDimBatchSolve_LH<REAL, INC>(
         params, a, b, c, d, u, aa, cc, dd, ndim, solvedim, dims, pads, sndbuf,
-        rcvbuf, aa_r, cc_r, dd_r, len_r_local, sys_len_r, mpi_datatype, n_sys);
+        rcvbuf, aa_r, cc_r, dd_r, len_r_local, sys_len_r, n_sys);
     break;
   case MpiSolverParams::LATENCY_HIDING_TWO_STEP:
     tridMultiDimBatchSolve_simple<REAL, INC>(
         params, a, b, c, d, u, aa, cc, dd, ndim, solvedim, dims, pads, sndbuf,
-        rcvbuf, aa_r, cc_r, dd_r, len_r_local, sys_len_r, mpi_datatype, n_sys);
+        rcvbuf, aa_r, cc_r, dd_r, len_r_local, sys_len_r, n_sys);
     break;
   default: assert(false && "Unknown communication strategy");
   }
