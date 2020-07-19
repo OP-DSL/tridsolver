@@ -47,7 +47,7 @@
 
 #include "cutil_inline.h"
 
-#include "timing.h"
+#include "cuda_timing.h"
 
 #include <cassert>
 #include <functional>
@@ -199,8 +199,10 @@ inline void backward_batched(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
         aa, pads, cc, pads, dd, d, pads, u, pads, boundaries, ndim, solvedim,
         bsize, dims, start_sys);
   }
+#if PROFILING == 0
   cudaSafeCall(cudaPeekAtLastError());
   cudaSafeCall(cudaDeviceSynchronize());
+#endif
 }
 
 template <typename REAL, int INC>
@@ -240,11 +242,11 @@ inline void tridMultiDimBatchSolveMPI_LH(
     int bsize = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
     // Do modified thomas forward pass
     // For the bidx-th batch
-    BEGIN_PROFILING("thomas_forward");
+    BEGIN_PROFILING_CUDA("thomas_forward");
     forward_batched(dimGrid_x, dimBlock_x, a, a_pads, b, b_pads, c, c_pads, d,
                     d_pads, aa, cc, dd, boundaries, dims, ndim, solvedim,
                     batch_start, bsize);
-    END_PROFILING("thomas_forward");
+    END_PROFILING_CUDA("thomas_forward");
     BEGIN_PROFILING("mpi_communication");
     // wait for the previous MPI transaction to finish
     if (bidx != 0) {
@@ -282,7 +284,7 @@ inline void tridMultiDimBatchSolveMPI_LH(
     END_PROFILING("mpi_communication");
     // Finish the previous batch
     if (bidx != 0) {
-      BEGIN_PROFILING("pcr_on_reduced");
+      BEGIN_PROFILING_CUDA("pcr_on_reduced");
       int batch_start      = (bidx - 1) * batch_size;
       int bsize            = batch_size;
       int buf_offset       = 3 * reduced_len_g * batch_start;
@@ -291,13 +293,13 @@ inline void tridMultiDimBatchSolveMPI_LH(
           recv_buf + buf_offset, boundaries + bound_buf_offset, bsize,
           params.num_mpi_procs[solvedim], params.mpi_coords[solvedim],
           reduced_len_g);
-      END_PROFILING("pcr_on_reduced");
+      END_PROFILING_CUDA("pcr_on_reduced");
       // Perform the backward run of the modified thomas algorithm
-      BEGIN_PROFILING("thomas_backward");
+      BEGIN_PROFILING_CUDA("thomas_backward");
       backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd,
                        d_pads, boundaries, d, u, u_pads, dims, ndim, solvedim,
                        batch_start, bsize);
-      END_PROFILING("thomas_backward");
+      END_PROFILING_CUDA("thomas_backward");
     }
   } // batches
   BEGIN_PROFILING("mpi_communication");
@@ -316,20 +318,20 @@ inline void tridMultiDimBatchSolveMPI_LH(
   cudaSafeCall(cudaDeviceSynchronize());
 #endif
   END_PROFILING("mpi_communication");
-  BEGIN_PROFILING("pcr_on_reduced");
+  BEGIN_PROFILING_CUDA("pcr_on_reduced");
   // Solve the reduced system
   int bound_buf_offset = 2 * batch_start;
   thomas_on_reduced_batched<REAL>(recv_buf + recv_comm_buf_offset,
                                   boundaries + bound_buf_offset, bsize,
                                   params.num_mpi_procs[solvedim],
                                   params.mpi_coords[solvedim], reduced_len_g);
-  END_PROFILING("pcr_on_reduced");
+  END_PROFILING_CUDA("pcr_on_reduced");
   // Perform the backward run of the modified thomas algorithm
-  BEGIN_PROFILING("thomas_backward");
+  BEGIN_PROFILING_CUDA("thomas_backward");
   backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd,
                               d_pads, boundaries, d, u, u_pads, dims, ndim,
                               solvedim, batch_start, bsize);
-  END_PROFILING("thomas_backward");
+  END_PROFILING_CUDA("thomas_backward");
 
   // Free memory used in solve
   cudaSafeCall(cudaFree(recv_buf));
@@ -372,11 +374,11 @@ inline void tridMultiDimBatchSolveMPI_simple(
     int bsize = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
     // Do modified thomas forward pass
     // For the bidx-th batch
-    BEGIN_PROFILING("thomas_forward");
+    BEGIN_PROFILING_CUDA("thomas_forward");
     forward_batched(dimGrid_x, dimBlock_x, a, a_pads, b, b_pads, c, c_pads, d,
                     d_pads, aa, cc, dd, boundaries, dims, ndim, solvedim,
                     batch_start, bsize);
-    END_PROFILING("thomas_forward");
+    END_PROFILING_CUDA("thomas_forward");
     BEGIN_PROFILING("mpi_communication");
     // Send boundaries of the current batch
     size_t comm_buf_size        = 3 * reduced_len_l * bsize;
@@ -421,20 +423,20 @@ inline void tridMultiDimBatchSolveMPI_simple(
 #endif
     END_PROFILING("mpi_communication");
     // Finish the solve for batch
-    BEGIN_PROFILING("pcr_on_reduced");
+    BEGIN_PROFILING_CUDA("pcr_on_reduced");
     int buf_offset       = 3 * reduced_len_g * batch_start;
     int bound_buf_offset = 2 * batch_start;
     thomas_on_reduced_batched<REAL>(recv_buf + buf_offset,
                                     boundaries + bound_buf_offset, bsize,
                                     params.num_mpi_procs[solvedim],
                                     params.mpi_coords[solvedim], reduced_len_g);
-    END_PROFILING("pcr_on_reduced");
+    END_PROFILING_CUDA("pcr_on_reduced");
     // Perform the backward run of the modified thomas algorithm
-    BEGIN_PROFILING("thomas_backward");
+    BEGIN_PROFILING_CUDA("thomas_backward");
     backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads,
                                 dd, d_pads, boundaries, d, u, u_pads, dims,
                                 ndim, solvedim, batch_start, bsize);
-    END_PROFILING("thomas_backward");
+    END_PROFILING_CUDA("thomas_backward");
   }
   // Free memory used in solve
   cudaSafeCall(cudaFree(recv_buf));
@@ -462,11 +464,11 @@ void tridMultiDimBatchSolveMPI_allgather(
   dim3 dimBlock_x(blockdimx, blockdimy);
   
   // Do modified thomas forward pass
-  BEGIN_PROFILING("thomas_forward");
+  BEGIN_PROFILING_CUDA("thomas_forward");
   forward_batched(dimGrid_x, dimBlock_x, a, a_pads, b, b_pads, c, c_pads, d,
                   d_pads, aa, cc, dd, boundaries, dims, ndim, solvedim, 0,
                   sys_n);
-  END_PROFILING("thomas_forward");
+  END_PROFILING_CUDA("thomas_forward");
 
   BEGIN_PROFILING("mpi_communication");
   // Allocate receive buffer for MPI allgather of reduced system
@@ -497,17 +499,17 @@ void tridMultiDimBatchSolveMPI_allgather(
   END_PROFILING("mpi_communication");
 
   // Solve the reduced system
-  BEGIN_PROFILING("pcr_on_reduced");
+  BEGIN_PROFILING_CUDA("pcr_on_reduced");
   thomas_on_reduced_batched<REAL>(recv_buf, boundaries, sys_n, 
                                     params.num_mpi_procs[solvedim],
                                     params.mpi_coords[solvedim], reduced_len_g);
-  END_PROFILING("pcr_on_reduced");
+  END_PROFILING_CUDA("pcr_on_reduced");
   // Do the backward pass to solve for remaining unknowns
-  BEGIN_PROFILING("thomas_backward");
+  BEGIN_PROFILING_CUDA("thomas_backward");
   backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd,
                               d_pads, boundaries, d, u, u_pads, dims, ndim,
                               solvedim, 0, sys_n);
-  END_PROFILING("thomas_backward");
+  END_PROFILING_CUDA("thomas_backward");
 
   // Free memory used in solve
   cudaSafeCall( cudaFree(recv_buf) );
@@ -520,8 +522,8 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
                                const int *c_pads, REAL *d, const int *d_pads,
                                REAL *u, const int *u_pads, int ndim,
                                int solvedim, const int *dims) {
-  PROFILE_FUNCTION();
-  BEGIN_PROFILING("memalloc");
+  // PROFILE_FUNCTION();
+  // BEGIN_PROFILING("memalloc");
   // TODO paddings!!
   assert(solvedim < ndim);
   assert((
@@ -555,7 +557,11 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   cudaSafeCall(cudaMalloc(&dd, local_helper_size * sizeof(REAL)));
   cudaSafeCall(cudaMalloc(&boundaries, sys_n * 3 * loc_red_len * sizeof(REAL)));
 
-  END_PROFILING("memalloc");
+#if PROFILING
+  MPI_Barrier(params.communicators[solvedim]);
+  BEGIN_PROFILING("tridMultiDimBatchSolveMPI");
+#endif
+  // END_PROFILING("memalloc");
   switch (params.strategy) {
   case MpiSolverParams::GATHER_SCATTER:
     assert(false && "GATHER_SCATTER is not implemented for CUDA");
@@ -577,13 +583,17 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
     break;
   default: assert(false && "Unknown communication strategy");
   }
-  BEGIN_PROFILING("memfree");
+#if PROFILING
+  MPI_Barrier(params.communicators[solvedim]);
+  END_PROFILING("tridMultiDimBatchSolveMPI");
+#endif
+  // BEGIN_PROFILING("memfree");
   // Free memory used in solve
   cudaSafeCall(cudaFree(aa));
   cudaSafeCall(cudaFree(cc));
   cudaSafeCall(cudaFree(dd));
   cudaSafeCall(cudaFree(boundaries));
-  END_PROFILING("memfree");
+  // END_PROFILING("memfree");
 }
 
 template <typename REAL, int INC>

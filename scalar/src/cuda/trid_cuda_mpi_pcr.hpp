@@ -146,16 +146,17 @@ void thomas_on_reduced_batched(REAL *receive_buf, REAL *results,
   // Calculate number of PCR iterations required
   int P = (int) ceil(log2((REAL)reducedSysLen));
   // Calculate number of CUDA threads required, keeping reduced systems within the same block
-  int numThreads =  ((128 / reducedSysLen) + 1) * reducedSysLen;
+  int numThreads =  (((128 - 1) / reducedSysLen) + 1) * reducedSysLen;
   int numBlocks = (int) ceil((REAL)(sys_n * reducedSysLen) / (REAL)numThreads);
   
   // Call PCR kernel
   pcr_on_reduced_kernel<REAL><<<numBlocks, numThreads>>>(receive_buf, results, mpi_coord, 
                                                          reducedSysLen, P, sys_n);
-  
+#if PROFILING == 0
   // Check for errros
   cudaSafeCall( cudaPeekAtLastError() );
   cudaSafeCall( cudaDeviceSynchronize() );
+#endif
 }
 
 #endif

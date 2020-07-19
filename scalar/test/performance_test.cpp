@@ -1,12 +1,14 @@
+#include <cctype>
 #include <iostream>
 #include <map>
+#include <string>
 #include <vector>
 #include <mpi.h>
 #include <unistd.h>
 
-#include "timing.h"
 
 #ifndef TRID_PERF_CUDA
+#  include "timing.h"
 #  include <trid_mpi_cpu.h>
 #  include "utils.hpp"
 #  include "cpu_mpi_wrappers.hpp"
@@ -22,6 +24,7 @@ void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh) {
                                  mesh.dims().data(), mesh.dims().data());
 }
 #else
+#  include "cuda_timing.h"
 #  include <trid_mpi_cuda.hpp>
 #  include "cuda_utils.hpp"
 #  include "cuda_mpi_wrappers.hpp"
@@ -38,6 +41,26 @@ void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh) {
 }
 #endif
 
+void print_local_sizes(int rank, int num_proc,
+                       const std::vector<int> &mpi_coords,
+                       const std::vector<int> &local_sizes) {
+  if (rank == 0) {
+    std::cout << "########## Local decomp sizes ##########\n";
+  }
+  for (int i = 0; i < num_proc; ++i) {
+    // Print the outputs
+    if (i == rank) {
+      std::string idx  = std::to_string(mpi_coords[0]),
+                  dims = std::to_string(local_sizes[0]);
+      for (size_t j = 1; j < local_sizes.size(); ++j) {
+        idx += "," + std::to_string(mpi_coords[j]);
+        dims += "x" + std::to_string(local_sizes[j]);
+      }
+      std::cout << "# Rank " << i << "(" + idx + "){" + dims + "}\n";
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
+}
 
 template <typename Float>
 void test_solver_with_generated(const std::vector<int> global_dims,
@@ -49,7 +72,9 @@ void test_solver_with_generated(const std::vector<int> global_dims,
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   // Create rectangular grid
-  std::vector<int> mpi_dims(global_dims.size()), periods(global_dims.size(), 0);
+  std::vector<int> mpi_dims(global_dims.size(), 0),
+      periods(global_dims.size(), 0);
+  mpi_dims[solvedim] = std::min(num_proc, 2); // TODO parameter
   MPI_Dims_create(num_proc, global_dims.size(), mpi_dims.data());
 
   // Create communicator for grid
@@ -75,8 +100,18 @@ void test_solver_with_generated(const std::vector<int> global_dims,
     local_sizes = global_dims;
   }
 
+  print_local_sizes(rank, num_proc, params.mpi_coords, local_sizes);
+
   RandomMesh<Float> mesh(local_sizes, solvedim);
   run_tridsolver(params, mesh);
+}
+
+std::ostream &operator<<(std::ostream &o,
+                         const MpiSolverParams::MPICommStrategy &s) {
+  const char *labels[] = {"Gather-scatter", "Allgather",
+                          "LatenctyHiding-interleaved",
+                          "LatencyHiding-two-step"};
+  return o << labels[s];
 }
 
 void usage(const char *name) {
@@ -102,9 +137,9 @@ int main(int argc, char *argv[]) {
   int ndims           = 2;
   int solvedim        = 0;
   int batch_size      = 32;
-  int mpi_strat_idx   = 0;
+  int mpi_strat_idx   = 1;
   bool is_global_size = true;
-  while ((opt = getopt(argc, argv, "lx:y:z:s:d:b:")) != -1) {
+  while ((opt = getopt(argc, argv, "lx:y:z:s:d:b:m:")) != -1) {
     switch (opt) {
     case 'x': size[0] = atoi(optarg); break;
     case 'y': size[1] = atoi(optarg); break;
@@ -123,16 +158,17 @@ int main(int argc, char *argv[]) {
   assert(ndims < 4 && "ndims must be smaller than MAXDIM");
   assert(mpi_strat_idx < 4 && mpi_strat_idx > 0 &&
          "No such communication strategy");
-
+  MpiSolverParams::MPICommStrategy strategy =
+      MpiSolverParams::MPICommStrategy(mpi_strat_idx);
   std::vector<int> dims;
   for (int i = 0; i < ndims; ++i) {
     dims.push_back(size[i]);
   }
   if (rank == 0) {
     std::string fname = argv[0];
-    fname             = fname.substr(fname.rfind("/"));
+    fname             = fname.substr(fname.rfind("/") + 1);
     std::cout << fname << " " << ndims << "DS" << solvedim << "NP" << num_proc
-              << "BS" << batch_size;
+              << "BS" << batch_size << " " << strategy;
     std::cout << " {" << dims[0];
     for (size_t i = 1; i < dims.size(); ++i)
       std::cout << "x" << dims[i];
@@ -148,7 +184,7 @@ int main(int argc, char *argv[]) {
   }
   MPI_Barrier(MPI_COMM_WORLD);
 
-  test_solver_with_generated<double>(dims, solvedim, MpiSolverParams::MPICommStrategy(mpi_strat_idx), batch_size,
+  test_solver_with_generated<double>(dims, solvedim, strategy, batch_size,
                                      is_global_size);
 
   PROFILE_REPORT();

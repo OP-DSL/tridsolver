@@ -60,16 +60,7 @@ void Timing::report() {
                 << "Rank " << i << "\n"
                 << "##########################\n";
 #endif
-      int parent              = -1;
-      std::string indentation = "  ";
-      for (const auto &element : loops) {
-        const LoopData &l = element.second;
-        if (l.parent == parent) {
-          std::cout << indentation + element.first + ": " +
-                           std::to_string(l.time) + " seconds\n";
-          reportWithParent(l.index, indentation + "  ");
-        }
-      }
+      reportWithParent(-1, "  ");
 #ifdef USE_MPI
     }
     MPI_Barrier(MPI_COMM_WORLD);

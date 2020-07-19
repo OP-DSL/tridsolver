@@ -110,7 +110,7 @@ if (BUILD_TESTING)
         target_link_libraries(
           cuda_mpi_perf_test
           tridcuda_mpi
-          profiling
+          profiling_cuda
           ${MPI_CXX_LIBRARIES})
       endif (USE_PROFILING)
     endif (BUILD_FOR_MPI)
