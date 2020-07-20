@@ -66,7 +66,7 @@ template <typename Float>
 void test_solver_with_generated(const std::vector<int> global_dims,
                                 int solvedim,
                                 MpiSolverParams::MPICommStrategy strategy,
-                                int batch_size, bool is_global_size) {
+                                int batch_size, int mpi_parts_in_s) {
   int num_proc, rank;
   MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -74,7 +74,7 @@ void test_solver_with_generated(const std::vector<int> global_dims,
   // Create rectangular grid
   std::vector<int> mpi_dims(global_dims.size(), 0),
       periods(global_dims.size(), 0);
-  mpi_dims[solvedim] = std::min(num_proc, 2); // TODO parameter
+  mpi_dims[solvedim] = std::min(num_proc, mpi_parts_in_s);
   MPI_Dims_create(num_proc, global_dims.size(), mpi_dims.data());
 
   // Create communicator for grid
@@ -88,16 +88,12 @@ void test_solver_with_generated(const std::vector<int> global_dims,
   // The size of the local domain.
   std::vector<int> local_sizes(global_dims.size());
   // The starting indices of the local domain in each dimension.
-  if (is_global_size) {
-    for (size_t i = 0; i < local_sizes.size(); ++i) {
-      const int global_dim = global_dims[i];
-      size_t domain_offset = params.mpi_coords[i] * (global_dim / mpi_dims[i]);
-      local_sizes[i]       = params.mpi_coords[i] == mpi_dims[i] - 1
-                           ? global_dim - domain_offset
-                           : global_dim / mpi_dims[i];
-    }
-  } else {
-    local_sizes = global_dims;
+  for (size_t i = 0; i < local_sizes.size(); ++i) {
+    const int global_dim = global_dims[i];
+    size_t domain_offset = params.mpi_coords[i] * (global_dim / mpi_dims[i]);
+    local_sizes[i]       = params.mpi_coords[i] == mpi_dims[i] - 1
+                         ? global_dim - domain_offset
+                         : global_dim / mpi_dims[i];
   }
 
   print_local_sizes(rank, num_proc, params.mpi_coords, local_sizes);
@@ -117,8 +113,8 @@ std::ostream &operator<<(std::ostream &o,
 void usage(const char *name) {
   std::cerr << "Usage:\n";
   std::cerr << "\t" << name
-            << " [-x nx -y ny -z nz -l -d ndims -s solvedim -b batch_size -m "
-               "mpir_strat_idx]"
+            << " [-x nx -y ny -z nz -d ndims -s solvedim -b batch_size -m "
+               "mpir_strat_idx -p num_partitions_along_solvedim]"
             << std::endl;
 }
 
@@ -138,17 +134,17 @@ int main(int argc, char *argv[]) {
   int solvedim        = 0;
   int batch_size      = 32;
   int mpi_strat_idx   = 1;
-  bool is_global_size = true;
-  while ((opt = getopt(argc, argv, "lx:y:z:s:d:b:m:")) != -1) {
+  int mpi_parts_in_s  = 0; // 0 means automatic
+  while ((opt = getopt(argc, argv, "x:y:z:s:d:b:m:p:")) != -1) {
     switch (opt) {
     case 'x': size[0] = atoi(optarg); break;
     case 'y': size[1] = atoi(optarg); break;
     case 'z': size[2] = atoi(optarg); break;
     case 'd': ndims = atoi(optarg); break;
     case 's': solvedim = atoi(optarg); break;
-    case 'l': is_global_size = false; break;
     case 'b': batch_size = atoi(optarg); break;
     case 'm': mpi_strat_idx = atoi(optarg); break;
+    case 'p': mpi_parts_in_s = atoi(optarg); break;
     default:
       if (rank == 0) usage(argv[0]);
       return 2;
@@ -173,7 +169,6 @@ int main(int argc, char *argv[]) {
     for (size_t i = 1; i < dims.size(); ++i)
       std::cout << "x" << dims[i];
     std::cout << "}";
-    if (!is_global_size) std::cout << "/node";
     std::cout << " solvedim" << solvedim << "\n";
   }
   if (solvedim >= (int)dims.size()) {
@@ -185,7 +180,7 @@ int main(int argc, char *argv[]) {
   MPI_Barrier(MPI_COMM_WORLD);
 
   test_solver_with_generated<double>(dims, solvedim, strategy, batch_size,
-                                     is_global_size);
+                                     mpi_parts_in_s);
 
   PROFILE_REPORT();
   MPI_Finalize();
