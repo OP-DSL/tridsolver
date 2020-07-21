@@ -281,9 +281,9 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
       int bsize            = batch_size;
       int buf_offset       = 3 * reduced_len_g * batch_start;
       int bound_buf_offset = 2 * batch_start;
-      thomas_on_reduced_batched<REAL>(
-          recv_buf + buf_offset, boundaries + bound_buf_offset, bsize,
-          params.mpi_coords[solvedim], reduced_len_g);
+      pcr_on_reduced_batched<REAL>(recv_buf + buf_offset,
+                                   boundaries + bound_buf_offset, bsize,
+                                   params.mpi_coords[solvedim], reduced_len_g);
       END_PROFILING_CUDA("pcr_on_reduced");
       // Perform the backward run of the modified thomas algorithm
       BEGIN_PROFILING_CUDA("thomas_backward");
@@ -311,9 +311,9 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
   BEGIN_PROFILING_CUDA("pcr_on_reduced");
   // Solve the reduced system
   int bound_buf_offset = 2 * batch_start;
-  thomas_on_reduced_batched<REAL>(recv_buf + recv_comm_buf_offset,
-                                  boundaries + bound_buf_offset, bsize,
-                                  params.mpi_coords[solvedim], reduced_len_g);
+  pcr_on_reduced_batched<REAL>(recv_buf + recv_comm_buf_offset,
+                               boundaries + bound_buf_offset, bsize,
+                               params.mpi_coords[solvedim], reduced_len_g);
   END_PROFILING_CUDA("pcr_on_reduced");
   // Perform the backward run of the modified thomas algorithm
   BEGIN_PROFILING_CUDA("thomas_backward");
@@ -408,9 +408,9 @@ inline void tridMultiDimBatchSolveMPI_simple(
     BEGIN_PROFILING_CUDA("pcr_on_reduced");
     int buf_offset       = 3 * reduced_len_g * batch_start;
     int bound_buf_offset = 2 * batch_start;
-    thomas_on_reduced_batched<REAL>(recv_buf + buf_offset,
-                                    boundaries + bound_buf_offset, bsize,
-                                    params.mpi_coords[solvedim], reduced_len_g);
+    pcr_on_reduced_batched<REAL>(recv_buf + buf_offset,
+                                 boundaries + bound_buf_offset, bsize,
+                                 params.mpi_coords[solvedim], reduced_len_g);
     END_PROFILING_CUDA("pcr_on_reduced");
     // Perform the backward run of the modified thomas algorithm
     BEGIN_PROFILING_CUDA("thomas_backward");
@@ -479,8 +479,8 @@ BEGIN_PROFILING("mpi_communication");
 
   // Solve the reduced system
   BEGIN_PROFILING_CUDA("pcr_on_reduced");
-  thomas_on_reduced_batched<REAL>(recv_buf, boundaries, sys_n,
-                                  params.mpi_coords[solvedim], reduced_len_g);
+  pcr_on_reduced_batched<REAL>(recv_buf, boundaries, sys_n,
+                               params.mpi_coords[solvedim], reduced_len_g);
   END_PROFILING_CUDA("pcr_on_reduced");
   // Do the backward pass to solve for remaining unknowns
   BEGIN_PROFILING_CUDA("thomas_backward");

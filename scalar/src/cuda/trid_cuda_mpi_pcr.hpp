@@ -135,7 +135,7 @@ __global__ void pcr_on_reduced_kernel(REAL *input, REAL *results,
 // reducedSysLen: length of each reduced system
 //
 template <typename REAL>
-void thomas_on_reduced_batched(REAL *receive_buf, REAL *results, int sys_n,
+void pcr_on_reduced_batched(REAL *receive_buf, REAL *results, int sys_n,
                                int mpi_coord, int reducedSysLen) {
   // Calculate number of PCR iterations required
   int P = (int)ceil(log2((REAL)reducedSysLen));

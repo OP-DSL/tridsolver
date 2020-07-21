@@ -232,8 +232,8 @@ void test_PCR_on_reduced(const std::string &file_name) {
   DeviceArray<Float> buffer_d(buffer);
   DeviceArray<Float> result_d(2 * sys_n);
 
-  thomas_on_reduced_batched<Float>(buffer_d.data(), result_d.data(), sys_n,
-                                   num_mpi_procs, mpi_coord, reduced_sys_len);
+  pcr_on_reduced_batched<Float>(buffer_d.data(), result_d.data(), sys_n,
+                                mpi_coord, reduced_sys_len);
 
   AlignedArray<Float, 1> result(2 * sys_n);
   result.resize(2 * sys_n);
@@ -274,10 +274,9 @@ void test_PCR_on_reduced(const std::string &file_name) {
     // Solve the reduced system
     int buf_offset       = sys_bound_size * num_mpi_procs * batch_start;
     int bound_buf_offset = 2 * batch_start;
-    thomas_on_reduced_batched<Float>(buffer_batched_d.data() + buf_offset,
-                                     result_batched_d.data() + bound_buf_offset,
-                                     bsize, num_mpi_procs, mpi_coord,
-                                     reduced_sys_len);
+    pcr_on_reduced_batched<Float>(buffer_batched_d.data() + buf_offset,
+                                  result_batched_d.data() + bound_buf_offset,
+                                  bsize, mpi_coord, reduced_sys_len);
   }
   AlignedArray<Float, 1> result_batched(2 * sys_n);
   result_batched.resize(2 * sys_n);
