@@ -38,41 +38,36 @@
 
 
 // An implementation of the PCR algorithm used to solve the reduced system.
-// Requires that threads operating on one reduced system are within the same block.
+// Requires that threads operating on one reduced system are within the same
+// block.
 // 'input' is the reduced systems gathered from the allgather
-// 'results' is where the results of the reduced solve relevant to this mpi_coord are stored
-// 'mpi_coord' is the index of the current MPI process along the solving dimension
+// 'results' is where the results of the reduced solve relevant to this
+//           mpi_coord are stored
+// 'mpi_coord' is the index of the current MPI process along the solving
+//             dimension
 // 'n' is the length of each reduced system
 // 'P' is the number of PCR iterations
 // 'sys_n' is the number of reduced systems in total
-template<typename REAL>
-__global__ void pcr_on_reduced_kernel(REAL *input, REAL *results, 
-                                      const int mpi_coord, const int n, const int P, 
-                                      const int sys_n) {
+template <typename REAL>
+__global__ void pcr_on_reduced_kernel(REAL *input, REAL *results,
+                                      const int mpi_coord, const int n,
+                                      const int P, const int sys_n) {
   const int tid = threadIdx.x + threadIdx.y * blockDim.x +
                   blockIdx.x * blockDim.y * blockDim.x +
                   blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
-  
+
   int tridNum = tid / n;
-  int i = tid % n;
-  
-  
+  int i       = tid % n;
+
+
   // Indices of each coefficient in the 'input' array
   int a_ind = (6 * sys_n * (i / 2)) + (tridNum * 6) + (i % 2);
   int c_ind = (6 * sys_n * (i / 2)) + (tridNum * 6) + 2 + (i % 2);
   int d_ind = (6 * sys_n * (i / 2)) + (tridNum * 6) + 4 + (i % 2);
 
   // Check if thread is within bounds
-  if(tridNum >= sys_n) {
+  if (tridNum >= sys_n) return;
 
-    for(int p = 0; p < P; p++) {
-      __syncthreads();
-      __syncthreads();
-    }
-    
-    return;
-  }
-  
   REAL a_m, a_p, c_m, c_p, d_m, d_p;
 
   int s = 1;
@@ -92,7 +87,7 @@ __global__ void pcr_on_reduced_kernel(REAL *input, REAL *results,
       int d_m_ind = (6 * sys_n * ((i - s) / 2)) + (tridNum * 6) + 4 + ((i - s) % 2);
       d_m = input[d_m_ind];
     }
-    
+
     // Get the plus elements
     if(i + s >= n) {
       a_p = (REAL) 0.0;
@@ -124,8 +119,8 @@ __global__ void pcr_on_reduced_kernel(REAL *input, REAL *results,
   }
   
   // Store results of this reduced solve that are relevant to this MPI process
-  if(i >= 2 * mpi_coord && i < 2 * (mpi_coord + 1)) {
-    int reduced_ind_l = i - (2 * mpi_coord);
+  if (i >= 2 * mpi_coord && i < 2 * (mpi_coord + 1)) {
+    int reduced_ind_l                    = i - (2 * mpi_coord);
     results[2 * tridNum + reduced_ind_l] = input[d_ind];
   }
 }
@@ -136,27 +131,22 @@ __global__ void pcr_on_reduced_kernel(REAL *input, REAL *results,
 // Solve sys_n reduced systems from receive_buf (the result of the allgather
 // with boundaries of mpi nodes) and stores dd[0] and dd[local_size-1] of the
 // current node for each system in results.
-// num_proc: number of processes along the solving dimension
 // mpi_coord: index of the current process along the solving dimension
 // reducedSysLen: length of each reduced system
 //
 template <typename REAL>
-void thomas_on_reduced_batched(REAL *receive_buf, REAL *results,
-                               int sys_n, int num_proc, int mpi_coord, int reducedSysLen) {
+void thomas_on_reduced_batched(REAL *receive_buf, REAL *results, int sys_n,
+                               int mpi_coord, int reducedSysLen) {
   // Calculate number of PCR iterations required
-  int P = (int) ceil(log2((REAL)reducedSysLen));
-  // Calculate number of CUDA threads required, keeping reduced systems within the same block
-  int numThreads =  (((128 - 1) / reducedSysLen) + 1) * reducedSysLen;
-  int numBlocks = (int) ceil((REAL)(sys_n * reducedSysLen) / (REAL)numThreads);
-  
+  int P = (int)ceil(log2((REAL)reducedSysLen));
+  // Calculate number of CUDA threads required, keeping reduced systems within
+  // the same block
+  int numThreads = (((128 - 1) / reducedSysLen) + 1) * reducedSysLen;
+  int numBlocks  = (int)ceil((REAL)(sys_n * reducedSysLen) / (REAL)numThreads);
+
   // Call PCR kernel
-  pcr_on_reduced_kernel<REAL><<<numBlocks, numThreads>>>(receive_buf, results, mpi_coord, 
-                                                         reducedSysLen, P, sys_n);
-#if PROFILING == 0
-  // Check for errros
-  cudaSafeCall( cudaPeekAtLastError() );
-  cudaSafeCall( cudaDeviceSynchronize() );
-#endif
+  pcr_on_reduced_kernel<REAL><<<numBlocks, numThreads>>>(
+      receive_buf, results, mpi_coord, reducedSysLen, P, sys_n);
 }
 
 #endif

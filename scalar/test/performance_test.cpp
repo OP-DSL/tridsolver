@@ -1,9 +1,11 @@
 #include <cctype>
+#include <chrono>
 #include <iostream>
 #include <map>
 #include <string>
 #include <vector>
 #include <mpi.h>
+#include <thread>
 #include <unistd.h>
 
 
@@ -41,23 +43,27 @@ void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh) {
 }
 #endif
 
-void print_local_sizes(int rank, int num_proc,
+void print_local_sizes(int rank, int num_proc, const int *mpi_dims,
                        const std::vector<int> &mpi_coords,
                        const std::vector<int> &local_sizes) {
-  if (rank == 0) {
-    std::cout << "########## Local decomp sizes ##########\n";
-  }
   for (int i = 0; i < num_proc; ++i) {
     // Print the outputs
     if (i == rank) {
-      std::string idx  = std::to_string(mpi_coords[0]),
-                  dims = std::to_string(local_sizes[0]);
+      std::string idx    = std::to_string(mpi_coords[0]),
+                  dims   = std::to_string(local_sizes[0]),
+                  m_dims = std::to_string(mpi_dims[0]);
       for (size_t j = 1; j < local_sizes.size(); ++j) {
         idx += "," + std::to_string(mpi_coords[j]);
         dims += "x" + std::to_string(local_sizes[j]);
+        m_dims += "x" + std::to_string(mpi_dims[j]);
+      }
+      if (rank == 0) {
+        std::cout << "########## Local decomp sizes {" + m_dims +
+                         "} ##########\n";
       }
       std::cout << "# Rank " << i << "(" + idx + "){" + dims + "}\n";
     }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
     MPI_Barrier(MPI_COMM_WORLD);
   }
 }
@@ -96,7 +102,8 @@ void test_solver_with_generated(const std::vector<int> global_dims,
                          : global_dim / mpi_dims[i];
   }
 
-  print_local_sizes(rank, num_proc, params.mpi_coords, local_sizes);
+  print_local_sizes(rank, num_proc, params.num_mpi_procs, params.mpi_coords,
+                    local_sizes);
 
   RandomMesh<Float> mesh(local_sizes, solvedim);
   run_tridsolver(params, mesh);
@@ -105,7 +112,7 @@ void test_solver_with_generated(const std::vector<int> global_dims,
 std::ostream &operator<<(std::ostream &o,
                          const MpiSolverParams::MPICommStrategy &s) {
   const char *labels[] = {"Gather-scatter", "Allgather",
-                          "LatenctyHiding-interleaved",
+                          "LatencyHiding-interleaved",
                           "LatencyHiding-two-step"};
   return o << labels[s];
 }
@@ -129,12 +136,12 @@ int main(int argc, char *argv[]) {
   MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
 
   int opt;
-  int size[]          = {256, 256, 256};
-  int ndims           = 2;
-  int solvedim        = 0;
-  int batch_size      = 32;
-  int mpi_strat_idx   = 1;
-  int mpi_parts_in_s  = 0; // 0 means automatic
+  int size[]         = {256, 256, 256};
+  int ndims          = 2;
+  int solvedim       = 0;
+  int batch_size     = 32;
+  int mpi_strat_idx  = 1;
+  int mpi_parts_in_s = 0; // 0 means automatic
   while ((opt = getopt(argc, argv, "x:y:z:s:d:b:m:p:")) != -1) {
     switch (opt) {
     case 'x': size[0] = atoi(optarg); break;
