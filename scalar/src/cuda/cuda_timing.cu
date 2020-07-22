@@ -10,37 +10,46 @@ std::map<std::string, Timing::LoopData> Timing::loops;
 std::vector<int> Timing::stack;
 int Timing::counter = 0;
 
+
+void Timing::pushRange(const std::string &_name) {
+  nvtxRangePushA(_name.c_str());
+}
+void Timing::popRange() { nvtxRangePop(); }
+void Timing::markStart(const std::string &_name) { nvtxMarkA(_name.c_str()); }
+
 void Timing::startTimer(const std::string &_name) {
-  auto now = clock::now();
+  pushRange(_name);
   if (loops.size() == 0) counter = 0;
   int parent           = stack.size() == 0 ? -1 : stack.back();
   std::string fullname = _name + "(" + std::to_string(parent) + ")";
   int index;
   if (loops.find(fullname) != loops.end()) {
-    loops[fullname].current = now;
+    loops[fullname].current = clock::now();
     index                   = loops[fullname].index;
   } else {
+    index                  = counter;
     loops[fullname]        = LoopData(); // = {counter++, parent, 0.0, now, {}};
     loops[fullname].index  = counter++;
     loops[fullname].parent = parent;
-    loops[fullname].current = now;
-    index                   = counter - 1;
+    loops[fullname].current = clock::now();
   }
   stack.push_back(index);
 }
 
 void Timing::stopTimer(const std::string &_name) {
+  auto now             = clock::now();
   stack.pop_back();
   int parent           = stack.empty() ? -1 : stack.back();
   std::string fullname = _name + "(" + std::to_string(parent) + ")";
-  auto now             = clock::now();
   loops[fullname].time +=
       std::chrono::duration_cast<std::chrono::duration<double>>(
           now - loops[fullname].current)
           .count();
+  popRange();
 }
 
 void Timing::startTimerCUDA(const std::string &_name) {
+  markStart(_name);
   if (loops.size() == 0) counter = 0;
   int parent           = stack.size() == 0 ? -1 : stack.back();
   std::string fullname = _name + "(" + std::to_string(parent) + ")";
@@ -56,7 +65,9 @@ void Timing::startTimerCUDA(const std::string &_name) {
     loops[fullname]        = LoopData(); // = {counter++, parent, 0.0, now, {}};
     loops[fullname].index  = counter++;
     loops[fullname].parent = parent;
-    loops[fullname].event_pairs = {start};
+    // loops[fullname].event_pairs = {start};
+    loops[fullname].event_pairs.reserve(10);
+    loops[fullname].event_pairs.push_back(start);
     index                       = counter - 1;
   }
   stack.push_back(index);

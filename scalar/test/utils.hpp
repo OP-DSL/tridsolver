@@ -10,8 +10,8 @@
 #include <string>
 #include <vector>
 
-constexpr double ABS_TOLERANCE = 1e-11;
-constexpr double REL_TOLERANCE = 1e-11;
+constexpr double ABS_TOLERANCE       = 1e-11;
+constexpr double REL_TOLERANCE       = 1e-11;
 constexpr double ABS_TOLERANCE_FLOAT = 1e-6;
 constexpr double REL_TOLERANCE_FLOAT = 1e-5;
 
@@ -163,11 +163,11 @@ template <typename T, unsigned Align>
 void AlignedArray<T, Align>::allocate(size_t capacity) {
   assert(_capacity == 0 && "Array has already been allocated");
   assert(padded_data == nullptr && "Array has already been allocated");
-  _capacity = capacity;
-  _size = 0;
+  _capacity                       = capacity;
+  _size                           = 0;
   constexpr unsigned ELEMENT_SIZE = sizeof(T) / sizeof(char);
-  padded_data = new char[capacity * ELEMENT_SIZE + Align];
-  const size_t ptr = reinterpret_cast<size_t>(padded_data);
+  padded_data                     = new char[capacity * ELEMENT_SIZE + Align];
+  const size_t ptr                = reinterpret_cast<size_t>(padded_data);
   if (ptr % Align == 0) {
     padding = 0;
   } else {
@@ -177,8 +177,7 @@ void AlignedArray<T, Align>::allocate(size_t capacity) {
 
 template <typename T, unsigned Align>
 void AlignedArray<T, Align>::resize(size_t size, T default_val) {
-  if (_capacity == 0)
-    allocate(size);
+  if (_capacity == 0) allocate(size);
   assert(_size == 0 && "Array has already been initialised");
   for (int i = 0; i < size; ++i) {
     this->push_back(default_val);
@@ -242,21 +241,34 @@ RandomMesh<Float, Align>::RandomMesh(const std::vector<int> dims,
                                      size_t solvedim)
     : _solve_dim(solvedim), _dims(dims), _a{}, _b{}, _c{}, _d{} {
   assert(_solve_dim < _dims.size() && "solve dim greater than number of dims");
-  std::mt19937 mt(1);
-  std::uniform_real_distribution<Float> dist;
+  std::mt19937 mt[] = {std::mt19937(1), std::mt19937(2), std::mt19937(3),
+                       std::mt19937(4)};
+  std::uniform_real_distribution<Float> dist[4];
 
   size_t num_elements =
       std::accumulate(_dims.begin(), _dims.end(), 1, std::multiplies<int>());
   // Load arrays
-  fill_array([&]() { return -1 + 0.1 * dist(mt); }, num_elements, _a);
-  fill_array([&]() { return 2 + dist(mt); }, num_elements, _b);
-  fill_array([&]() { return -1 + 0.1 * dist(mt); }, num_elements, _c);
-  fill_array([&]() { return dist(mt); }, num_elements, _d);
+#pragma omp parallel for
+  for (int i = 0; i < 4; ++i) {
+    switch (i) {
+    case 0:
+      fill_array([&]() { return -1 + 0.1 * dist[i](mt[i]); }, num_elements, _a);
+      break;
+    case 1:
+      fill_array([&]() { return 2 + dist[i](mt[i]); }, num_elements, _b);
+      break;
+    case 2:
+      fill_array([&]() { return -1 + 0.1 * dist[i](mt[i]); }, num_elements, _c);
+      break;
+    default: fill_array([&]() { return dist[i](mt[i]); }, num_elements, _d);
+    }
+  }
 }
 
 template <typename Float, unsigned Align>
 template <typename RandGenerator>
-void RandomMesh<Float, Align>::fill_array(RandGenerator &&dist, size_t num_elements,
+void RandomMesh<Float, Align>::fill_array(RandGenerator &&dist,
+                                          size_t num_elements,
                                           AlignedArray<Float, Align> &array) {
   array.allocate(num_elements);
   for (size_t i = 0; i < num_elements; ++i) {

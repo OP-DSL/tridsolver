@@ -9,6 +9,7 @@
 #include <vector>
 #include <iostream>
 #include "cutil_inline.h"
+#include <nvToolsExt.h>
 
 class Timing {
   using clock      = std::chrono::high_resolution_clock;
@@ -40,6 +41,9 @@ public:
   static void stopTimer(const std::string &_name);
   static void startTimerCUDA(const std::string &_name);
   static void stopTimerCUDA(const std::string &_name);
+  static void pushRange(const std::string &_name);
+  static void popRange();
+  static void markStart(const std::string &_name);
   static void report();
 };
 
@@ -53,12 +57,28 @@ public:
 #  define PROFILE_SCOPE(name) Timing timer##__LINE__(name)
 #  define PROFILE_FUNCTION()  PROFILE_SCOPE(__FUNCTION__)
 #  define PROFILE_REPORT()    Timing::report()
+#  if PROFILING > 1
+#    define BEGIN_PROFILING2(name)      BEGIN_PROFILING(name)
+#    define END_PROFILING2(name)        END_PROFILING(name)
+#    define BEGIN_PROFILING_CUDA2(name) BEGIN_PROFILING_CUDA(name)
+#    define END_PROFILING_CUDA2(name)   END_PROFILING_CUDA(name)
+#  else
+#    define BEGIN_PROFILING2(name)      Timing::pushRange(name)
+#    define END_PROFILING2(name)        Timing::popRange()
+#    define BEGIN_PROFILING_CUDA2(name) Timing::markStart(name)
+#    define END_PROFILING_CUDA2(name)
+#  endif
 #else
 #  define BEGIN_PROFILING(name)
 #  define END_PROFILING(name)
 
 #  define BEGIN_PROFILING_CUDA(name)
 #  define END_PROFILING_CUDA(name)
+
+#  define BEGIN_PROFILING2(name)
+#  define END_PROFILING2(name)
+#  define BEGIN_PROFILING_CUDA2(name)
+#  define END_PROFILING_CUDA2(name)
 
 #  define PROFILE_SCOPE(name)
 #  define PROFILE_FUNCTION()

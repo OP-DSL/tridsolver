@@ -37,13 +37,23 @@ if (BUILD_FOR_GPU)
   set(CUDA_LIBRARIES ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcudart.so) # , ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcublas.so)
 
   if (USE_PROFILING)
+    # PROFILE disables macros with the suffix 2 to achieve lower overhead to use with profiler
+
+    # DETAILED enables all macros and performs deatailed time measures, but has bigger overhead
+    set(PROFILING_LEVEL "DETAILED" CACHE STRING "Level of details for profiling")
+    set_property(CACHE PROFILING_LEVEL PROPERTY STRINGS PROFILE DETAILED)
     cuda_add_library(profiling_cuda SHARED ./cuda_timing.cu)
-    # target_include_directories(profiling PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
     target_compile_options(profiling_cuda PRIVATE -fPIC)
     if (BUILD_FOR_MPI)
       target_compile_definitions(profiling_cuda PRIVATE -DUSE_MPI)
     endif (BUILD_FOR_MPI)
-    target_compile_definitions(profiling_cuda PUBLIC -DPROFILING=1)
+    if (${PROFILING_LEVEL} STREQUAL "PROFILE")
+      target_compile_definitions(profiling_cuda PUBLIC -DPROFILING=1)
+    else (${PROFILING_LEVEL} STREQUAL "PROFILE")
+      target_compile_definitions(profiling_cuda PUBLIC -DPROFILING=2)
+    endif (${PROFILING_LEVEL} STREQUAL "PROFILE")
+    target_link_directories(profiling_cuda PUBLIC "${CUDA_TOOLKIT_ROOT_DIR}/lib64")
+    target_link_libraries(profiling_cuda nvToolsExt)
   endif (USE_PROFILING)
 
   cuda_add_library(

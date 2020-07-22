@@ -16,14 +16,17 @@
 #  include "cpu_mpi_wrappers.hpp"
 
 template <typename Float>
-void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh) {
+void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh, int num_iters) {
   AlignedArray<Float, 1> d(mesh.d());
 
   // Solve the equations
-  tridStridedBatchWrapper<Float>(params, mesh.a().data(), mesh.b().data(),
-                                 mesh.c().data(), d.data(), nullptr,
-                                 mesh.dims().size(), mesh.solve_dim(),
-                                 mesh.dims().data(), mesh.dims().data());
+  while (num_iters--) {
+    tridStridedBatchWrapper<Float>(params, mesh.a().data(), mesh.b().data(),
+                                   mesh.c().data(), d.data(), nullptr,
+                                   mesh.dims().size(), mesh.solve_dim(),
+                                   mesh.dims().data(), mesh.dims().data());
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
 }
 #else
 #  include "cuda_timing.h"
@@ -32,14 +35,17 @@ void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh) {
 #  include "cuda_mpi_wrappers.hpp"
 
 template <typename Float>
-void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh) {
+void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh, int num_iters) {
   GPUMesh<Float> mesh_d(mesh.a(), mesh.b(), mesh.c(), mesh.d(), mesh.dims());
 
   // Solve the equations
-  tridmtsvStridedBatchMPIWrapper<Float>(
-      params, mesh_d.a().data(), mesh_d.b().data(), mesh_d.c().data(),
-      mesh_d.d().data(), nullptr, mesh_d.dims().size(), mesh.solve_dim(),
-      mesh_d.dims().data(), mesh_d.dims().data());
+  while (num_iters--) {
+    tridmtsvStridedBatchMPIWrapper<Float>(
+        params, mesh_d.a().data(), mesh_d.b().data(), mesh_d.c().data(),
+        mesh_d.d().data(), nullptr, mesh_d.dims().size(), mesh.solve_dim(),
+        mesh_d.dims().data(), mesh_d.dims().data());
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
 }
 #endif
 
@@ -72,7 +78,7 @@ template <typename Float>
 void test_solver_with_generated(const std::vector<int> global_dims,
                                 int solvedim,
                                 MpiSolverParams::MPICommStrategy strategy,
-                                int batch_size, int mpi_parts_in_s) {
+                                int batch_size, int mpi_parts_in_s, int num_iters) {
   int num_proc, rank;
   MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -106,7 +112,7 @@ void test_solver_with_generated(const std::vector<int> global_dims,
                     local_sizes);
 
   RandomMesh<Float> mesh(local_sizes, solvedim);
-  run_tridsolver(params, mesh);
+  run_tridsolver(params, mesh, num_iters);
 }
 
 std::ostream &operator<<(std::ostream &o,
@@ -119,10 +125,11 @@ std::ostream &operator<<(std::ostream &o,
 
 void usage(const char *name) {
   std::cerr << "Usage:\n";
-  std::cerr << "\t" << name
-            << " [-x nx -y ny -z nz -d ndims -s solvedim -b batch_size -m "
-               "mpir_strat_idx -p num_partitions_along_solvedim]"
-            << std::endl;
+  std::cerr
+      << "\t" << name
+      << " [-x nx -y ny -z nz -d ndims -s solvedim -b batch_size -m "
+         "mpir_strat_idx -p num_partitions_along_solvedim] -n num_iterations"
+      << std::endl;
 }
 
 int main(int argc, char *argv[]) {
@@ -141,8 +148,9 @@ int main(int argc, char *argv[]) {
   int solvedim       = 0;
   int batch_size     = 32;
   int mpi_strat_idx  = 1;
+  int num_iters      = 1;
   int mpi_parts_in_s = 0; // 0 means automatic
-  while ((opt = getopt(argc, argv, "x:y:z:s:d:b:m:p:")) != -1) {
+  while ((opt = getopt(argc, argv, "x:y:z:s:d:b:m:p:n:")) != -1) {
     switch (opt) {
     case 'x': size[0] = atoi(optarg); break;
     case 'y': size[1] = atoi(optarg); break;
@@ -151,6 +159,7 @@ int main(int argc, char *argv[]) {
     case 's': solvedim = atoi(optarg); break;
     case 'b': batch_size = atoi(optarg); break;
     case 'm': mpi_strat_idx = atoi(optarg); break;
+    case 'n': num_iters = atoi(optarg); break;
     case 'p': mpi_parts_in_s = atoi(optarg); break;
     default:
       if (rank == 0) usage(argv[0]);
@@ -187,7 +196,7 @@ int main(int argc, char *argv[]) {
   MPI_Barrier(MPI_COMM_WORLD);
 
   test_solver_with_generated<double>(dims, solvedim, strategy, batch_size,
-                                     mpi_parts_in_s);
+                                     mpi_parts_in_s, num_iters);
 
   PROFILE_REPORT();
   MPI_Finalize();
