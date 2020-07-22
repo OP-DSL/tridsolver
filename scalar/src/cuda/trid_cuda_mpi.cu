@@ -210,7 +210,7 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
    REAL *send_buf, REAL *receive_buf,
 #endif
     int sys_n) {
-  BEGIN_PROFILING("host-overhead");
+  BEGIN_PROFILING2("host-overhead");
   // length of reduced system
   const int reduced_len_l = 2;
   const int reduced_len_g = reduced_len_l * params.num_mpi_procs[solvedim];
@@ -227,19 +227,19 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
   dim3 dimGrid_x(dimgridx, dimgridy);
   dim3 dimBlock_x(blockdimx, blockdimy);
   std::vector<MPI_Request> requests(num_batches);
-  END_PROFILING("host-overhead");
+  END_PROFILING2("host-overhead");
   for (int bidx = 0; bidx < num_batches; ++bidx) {
     int batch_start = bidx * batch_size;
     int bsize = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
     // Do modified thomas forward pass
     // For the bidx-th batch
-    BEGIN_PROFILING_CUDA("thomas_forward");
+    BEGIN_PROFILING_CUDA2("thomas_forward");
     forward_batched(dimGrid_x, dimBlock_x, a, a_pads, b, b_pads, c, c_pads, d,
                     d_pads, aa, cc, dd, boundaries, dims, ndim, solvedim,
                     batch_start, bsize);
     cudaSafeCall(cudaDeviceSynchronize());
-    END_PROFILING_CUDA("thomas_forward");
-    BEGIN_PROFILING("mpi_communication");
+    END_PROFILING_CUDA2("thomas_forward");
+    BEGIN_PROFILING2("mpi_communication");
     // wait for the previous MPI transaction to finish
     if (bidx != 0) {
       MPI_Status status;
@@ -273,10 +273,10 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
                    comm_buf_size, MPI_DATATYPE(REAL),
                    params.communicators[solvedim], &requests[bidx]);
 #endif
-    END_PROFILING("mpi_communication");
+    END_PROFILING2("mpi_communication");
     // Finish the previous batch
     if (bidx != 0) {
-      BEGIN_PROFILING_CUDA("pcr_on_reduced");
+      BEGIN_PROFILING_CUDA2("pcr_on_reduced");
       int batch_start      = (bidx - 1) * batch_size;
       int bsize            = batch_size;
       int buf_offset       = 3 * reduced_len_g * batch_start;
@@ -284,16 +284,16 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
       pcr_on_reduced_batched<REAL>(recv_buf + buf_offset,
                                    boundaries + bound_buf_offset, bsize,
                                    params.mpi_coords[solvedim], reduced_len_g);
-      END_PROFILING_CUDA("pcr_on_reduced");
+      END_PROFILING_CUDA2("pcr_on_reduced");
       // Perform the backward run of the modified thomas algorithm
-      BEGIN_PROFILING_CUDA("thomas_backward");
+      BEGIN_PROFILING_CUDA2("thomas_backward");
       backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd,
                        d_pads, boundaries, d, u, u_pads, dims, ndim, solvedim,
                        batch_start, bsize);
-      END_PROFILING_CUDA("thomas_backward");
+      END_PROFILING_CUDA2("thomas_backward");
     }
   } // batches
-  BEGIN_PROFILING("mpi_communication");
+  BEGIN_PROFILING2("mpi_communication");
   // Need to finish last batch: receive message, do reduced and backward
   // wait for the last MPI transaction to finish
   MPI_Status status;
@@ -307,20 +307,20 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
       recv_buf + recv_comm_buf_offset, receive_buf + recv_comm_buf_offset,
       reduced_len_g * 3 * bsize * sizeof(REAL), cudaMemcpyHostToDevice);
 #endif
-  END_PROFILING("mpi_communication");
-  BEGIN_PROFILING_CUDA("pcr_on_reduced");
+  END_PROFILING2("mpi_communication");
+  BEGIN_PROFILING_CUDA2("pcr_on_reduced");
   // Solve the reduced system
   int bound_buf_offset = 2 * batch_start;
   pcr_on_reduced_batched<REAL>(recv_buf + recv_comm_buf_offset,
                                boundaries + bound_buf_offset, bsize,
                                params.mpi_coords[solvedim], reduced_len_g);
-  END_PROFILING_CUDA("pcr_on_reduced");
+  END_PROFILING_CUDA2("pcr_on_reduced");
   // Perform the backward run of the modified thomas algorithm
-  BEGIN_PROFILING_CUDA("thomas_backward");
+  BEGIN_PROFILING_CUDA2("thomas_backward");
   backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd,
                               d_pads, boundaries, d, u, u_pads, dims, ndim,
                               solvedim, batch_start, bsize);
-  END_PROFILING_CUDA("thomas_backward");
+  END_PROFILING_CUDA2("thomas_backward");
 }
 
 template <typename REAL, int INC>
@@ -334,7 +334,7 @@ inline void tridMultiDimBatchSolveMPI_simple(
    REAL *send_buf, REAL *receive_buf,
 #endif
     int sys_n) {
-  BEGIN_PROFILING("host-overhead");
+  BEGIN_PROFILING2("host-overhead");
 
   // length of reduced system
   const int reduced_len_l = 2;
@@ -352,19 +352,19 @@ inline void tridMultiDimBatchSolveMPI_simple(
   dim3 dimGrid_x(dimgridx, dimgridy);
   dim3 dimBlock_x(blockdimx, blockdimy);
   std::vector<MPI_Request> requests(num_batches);
-  END_PROFILING("host-overhead");
+  END_PROFILING2("host-overhead");
   for (int bidx = 0; bidx < num_batches; ++bidx) {
     int batch_start = bidx * batch_size;
     int bsize = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
     // Do modified thomas forward pass
     // For the bidx-th batch
-    BEGIN_PROFILING_CUDA("thomas_forward");
+    BEGIN_PROFILING_CUDA2("thomas_forward");
     forward_batched(dimGrid_x, dimBlock_x, a, a_pads, b, b_pads, c, c_pads, d,
                     d_pads, aa, cc, dd, boundaries, dims, ndim, solvedim,
                     batch_start, bsize);
     cudaSafeCall(cudaDeviceSynchronize());
-    END_PROFILING_CUDA("thomas_forward");
-    BEGIN_PROFILING("mpi_communication");
+    END_PROFILING_CUDA2("thomas_forward");
+    BEGIN_PROFILING2("mpi_communication");
     // Send boundaries of the current batch
     size_t comm_buf_size        = 3 * reduced_len_l * bsize;
     size_t comm_buf_offset      = 3 * reduced_len_l * batch_start;
@@ -384,14 +384,14 @@ inline void tridMultiDimBatchSolveMPI_simple(
                    comm_buf_size, MPI_DATATYPE(REAL),
                    params.communicators[solvedim], &requests[bidx]);
 #endif
-    END_PROFILING("mpi_communication");
+    END_PROFILING2("mpi_communication");
   } // batches
   MPI_Status status;
   for (int finished_batches = 0; finished_batches < num_batches;
        ++finished_batches) {
     // wait for a MPI transaction to finish
     int bidx;
-    BEGIN_PROFILING("mpi_communication");
+    BEGIN_PROFILING2("mpi_communication");
     int rc = MPI_Waitany(requests.size(), requests.data(), &bidx, &status);
     assert(rc == MPI_SUCCESS && "error MPI communication failed");
     int batch_start = bidx * batch_size;
@@ -403,21 +403,21 @@ inline void tridMultiDimBatchSolveMPI_simple(
         recv_buf + recv_comm_buf_offset, receive_buf + recv_comm_buf_offset,
         reduced_len_g * 3 * bsize * sizeof(REAL), cudaMemcpyHostToDevice, 0);
 #endif
-    END_PROFILING("mpi_communication");
+    END_PROFILING2("mpi_communication");
     // Finish the solve for batch
-    BEGIN_PROFILING_CUDA("pcr_on_reduced");
+    BEGIN_PROFILING_CUDA2("pcr_on_reduced");
     int buf_offset       = 3 * reduced_len_g * batch_start;
     int bound_buf_offset = 2 * batch_start;
     pcr_on_reduced_batched<REAL>(recv_buf + buf_offset,
                                  boundaries + bound_buf_offset, bsize,
                                  params.mpi_coords[solvedim], reduced_len_g);
-    END_PROFILING_CUDA("pcr_on_reduced");
+    END_PROFILING_CUDA2("pcr_on_reduced");
     // Perform the backward run of the modified thomas algorithm
-    BEGIN_PROFILING_CUDA("thomas_backward");
+    BEGIN_PROFILING_CUDA2("thomas_backward");
     backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads,
                                 dd, d_pads, boundaries, d, u, u_pads, dims,
                                 ndim, solvedim, batch_start, bsize);
-    END_PROFILING_CUDA("thomas_backward");
+    END_PROFILING_CUDA2("thomas_backward");
   }
 }
 
@@ -432,7 +432,7 @@ void tridMultiDimBatchSolveMPI_allgather(
    REAL *send_buf, REAL *receive_buf,
 #endif
     int sys_n) {
-  BEGIN_PROFILING("host-overhead");
+  BEGIN_PROFILING2("host-overhead");
   // length of reduced system
   const int reduced_len_l   = 2;
   const int reduced_len_g = reduced_len_l * params.num_mpi_procs[solvedim];
@@ -447,17 +447,17 @@ void tridMultiDimBatchSolveMPI_allgather(
   dim3 dimGrid_x(dimgridx, dimgridy);
   dim3 dimBlock_x(blockdimx, blockdimy);
   const size_t comm_buf_size = 2 * 3 * sys_n;
-  END_PROFILING("host-overhead");
+  END_PROFILING2("host-overhead");
   
   // Do modified thomas forward pass
-  BEGIN_PROFILING_CUDA("thomas_forward");
+  BEGIN_PROFILING_CUDA2("thomas_forward");
   forward_batched(dimGrid_x, dimBlock_x, a, a_pads, b, b_pads, c, c_pads, d,
                   d_pads, aa, cc, dd, boundaries, dims, ndim, solvedim, 0,
                   sys_n);
   cudaSafeCall(cudaDeviceSynchronize());
-  END_PROFILING_CUDA("thomas_forward");
+  END_PROFILING_CUDA2("thomas_forward");
 
-BEGIN_PROFILING("mpi_communication");
+BEGIN_PROFILING2("mpi_communication");
 #ifdef TRID_CUDA_AWARE_MPI
   // Gather the reduced system to all nodes (using CUDA aware MPI)
   MPI_Allgather(boundaries, comm_buf_size, MPI_DATATYPE(REAL),
@@ -475,19 +475,19 @@ BEGIN_PROFILING("mpi_communication");
   cudaMemcpy(recv_buf, receive_buf, reduced_len_g * 3 * sys_n * sizeof(REAL),
              cudaMemcpyHostToDevice);
 #endif
-  END_PROFILING("mpi_communication");
+  END_PROFILING2("mpi_communication");
 
   // Solve the reduced system
-  BEGIN_PROFILING_CUDA("pcr_on_reduced");
+  BEGIN_PROFILING_CUDA2("pcr_on_reduced");
   pcr_on_reduced_batched<REAL>(recv_buf, boundaries, sys_n,
                                params.mpi_coords[solvedim], reduced_len_g);
-  END_PROFILING_CUDA("pcr_on_reduced");
+  END_PROFILING_CUDA2("pcr_on_reduced");
   // Do the backward pass to solve for remaining unknowns
-  BEGIN_PROFILING_CUDA("thomas_backward");
+  BEGIN_PROFILING_CUDA2("thomas_backward");
   backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd,
                               d_pads, boundaries, d, u, u_pads, dims, ndim,
                               solvedim, 0, sys_n);
-  END_PROFILING_CUDA("thomas_backward");
+  END_PROFILING_CUDA2("thomas_backward");
 }
 
 template <typename REAL, int INC>
@@ -498,7 +498,7 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
                                REAL *u, const int *u_pads, int ndim,
                                int solvedim, const int *dims) {
   // PROFILE_FUNCTION();
-  // BEGIN_PROFILING("memalloc");
+  // BEGIN_PROFILING2("memalloc");
   // TODO paddings!!
   assert(solvedim < ndim);
   assert((
@@ -550,7 +550,7 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   MPI_Barrier(MPI_COMM_WORLD);
   BEGIN_PROFILING("tridMultiDimBatchSolveMPI");
 #endif
-  // END_PROFILING("memalloc");
+  // END_PROFILING2("memalloc");
   switch (params.strategy) {
   case MpiSolverParams::GATHER_SCATTER:
     assert(false && "GATHER_SCATTER is not implemented for CUDA");
@@ -585,14 +585,14 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   default: assert(false && "Unknown communication strategy");
   }
 #if PROFILING
-  BEGIN_PROFILING("barrier");
+  BEGIN_PROFILING2("barrier");
   cudaSafeCall(cudaPeekAtLastError());
   cudaSafeCall(cudaDeviceSynchronize());
   MPI_Barrier(params.communicators[solvedim]);
-  END_PROFILING("barrier");
+  END_PROFILING2("barrier");
   END_PROFILING("tridMultiDimBatchSolveMPI");
 #endif
-  // BEGIN_PROFILING("memfree");
+  // BEGIN_PROFILING2("memfree");
   // Free memory used in solve
   cudaSafeCall(cudaFree(aa));
   cudaSafeCall(cudaFree(cc));
@@ -603,7 +603,7 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   cudaSafeCall(cudaFreeHost(send_buf));
   cudaSafeCall(cudaFreeHost(receive_buf));
 #endif
-  // END_PROFILING("memfree");
+  // END_PROFILING2("memfree");
 }
 
 template <typename REAL, int INC>
