@@ -136,7 +136,8 @@ __global__ void pcr_on_reduced_kernel(REAL *input, REAL *results,
 //
 template <typename REAL>
 void pcr_on_reduced_batched(REAL *receive_buf, REAL *results, int sys_n,
-                               int mpi_coord, int reducedSysLen) {
+                            int mpi_coord, int reducedSysLen,
+                            cudaStream_t stream = nullptr) {
   // Calculate number of PCR iterations required
   int P = (int)ceil(log2((REAL)reducedSysLen));
   // Calculate number of CUDA threads required, keeping reduced systems within
@@ -145,7 +146,7 @@ void pcr_on_reduced_batched(REAL *receive_buf, REAL *results, int sys_n,
   int numBlocks  = (int)ceil((REAL)(sys_n * reducedSysLen) / (REAL)numThreads);
 
   // Call PCR kernel
-  pcr_on_reduced_kernel<REAL><<<numBlocks, numThreads>>>(
+  pcr_on_reduced_kernel<REAL><<<numBlocks, numThreads, 0, stream>>>(
       receive_buf, results, mpi_coord, reducedSysLen, P, sys_n);
 }
 
