@@ -41,6 +41,7 @@
 
 #include <assert.h>
 #include <sm_35_intrinsics.h>
+#include <generics/generics/ldg.h>
 #include <generics/generics/shfl.h>
 #include <generics/generics/ldg.h>
 #include "cuda_shfl.h"

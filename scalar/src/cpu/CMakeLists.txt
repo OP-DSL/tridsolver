@@ -1,57 +1,75 @@
-cmake_minimum_required(VERSION 2.8.8)
+cmake_minimum_required(VERSION 3.9)
 
 if (USE_PROFILING)
   add_library(profiling SHARED ./timing.cpp)
-target_include_directories(
-  profiling
-  PRIVATE ${PROJECT_SOURCE_DIR}/include ./
-)
-target_compile_options(profiling PRIVATE -fPIC)
-if (BUILD_FOR_MPI)
-  target_compile_definitions(profiling PRIVATE -DUSE_MPI)
-endif (BUILD_FOR_MPI)
+  target_include_directories(profiling PUBLIC ${PROJECT_SOURCE_DIR}/include)
+  set_property(TARGET profiling PROPERTY POSITION_INDEPENDENT_CODE ON)
+  if (BUILD_FOR_MPI)
+    target_compile_definitions(profiling PRIVATE -DUSE_MPI)
+  endif (BUILD_FOR_MPI)
   target_compile_definitions(profiling PUBLIC -DPROFILING=1)
 endif (USE_PROFILING)
 
 if (BUILD_FOR_CPU)
-	add_library(tridcpu_sp OBJECT ./trid_cpu.cpp ./trid_mpi_cpu.cpp)
-	add_library(tridcpu_dp OBJECT ./trid_cpu.cpp ./trid_mpi_cpu.cpp)
-  add_library(tridcpu    SHARED $<TARGET_OBJECTS:tridcpu_sp> $<TARGET_OBJECTS:tridcpu_dp>)
-#	add_library(tridcpu    SHARED $<TARGET_OBJECTS:tridcpu_dp>)
+  set(CPP_SOURCES ./trid_cpu.cpp)
+  if (BUILD_FOR_MPI)
+    set(CPP_SOURCES ${CPP_SOURCES} ./trid_mpi_cpu.cpp)
+  endif (BUILD_FOR_MPI)
 
-	target_include_directories(tridcpu_sp PRIVATE ${PROJECT_SOURCE_DIR}/include ./ PRIVATE ../ )
-	target_include_directories(tridcpu_dp PRIVATE ${PROJECT_SOURCE_DIR}/include ./ PRIVATE ../ )
+  add_library(tridcpu_sp OBJECT ${CPP_SOURCES})
+  add_library(tridcpu_dp OBJECT ${CPP_SOURCES})
+  add_library(tridcpu SHARED $<TARGET_OBJECTS:tridcpu_sp> $<TARGET_OBJECTS:tridcpu_dp>)
+
+  target_include_directories(
+    tridcpu_sp
+    PRIVATE ./
+    PRIVATE ../)
+  target_include_directories(
+    tridcpu_dp
+    PRIVATE ./
+    PRIVATE ../)
+
+  find_package(OpenMP REQUIRED)
+  if (OpenMP_CXX_FOUND)
+    target_link_libraries(tridcpu_sp PRIVATE OpenMP::OpenMP_CXX)
+    target_link_libraries(tridcpu_dp PRIVATE OpenMP::OpenMP_CXX)
+  else ()
+    # TODO checking
+  endif ()
+
+  target_link_libraries(tridcpu_sp PRIVATE trid_common_options)
+  target_link_libraries(tridcpu_dp PRIVATE trid_common_options)
+
+  if (BUILD_FOR_MPI)
+    target_link_libraries(tridcpu_sp PUBLIC MPI::MPI_CXX)
+    target_link_libraries(tridcpu_dp PUBLIC MPI::MPI_CXX)
+    target_link_libraries(tridcpu PUBLIC MPI::MPI_CXX)
+  endif (BUILD_FOR_MPI)
+
   if (USE_PROFILING)
-    target_link_libraries(tridcpu_sp profiling)
-    target_link_libraries(tridcpu_dp profiling)
-    target_link_libraries(tridcpu profiling)
+    target_link_libraries(tridcpu_sp PUBLIC profiling)
+    target_link_libraries(tridcpu_dp PUBLIC profiling)
+    target_link_libraries(tridcpu PUBLIC profiling)
   endif (USE_PROFILING)
 
-	#/opt/intel/composer_xe_2015.3.187/bin/intel64/icpc -O3 -xAVX -ipo -restrict -parallel -fopenmp -qopt-report=2 -qopt-report-phase=vec -qopt-report-phase=par -offload-attribute-target=mic -mkl -offload-option,mic,ld,"-L/opt/intel/composer_xe_2015.3.187/mkl/lib/mic -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -L/opt/intel/composer_xe_2015.3.187/compiler/lib/mic -limf -lintlc -lsvml -lirng -liomp5 -loffload -lcilkrts" -DFPPREC=0  -DN_MAX=1024  -I./include -I./libtrid  -D__OFFLOAD__ src/adi_cpu.cpp -L./libtrid/lib -limf -lintlc -lsvml -lirng  -o adi_phi_offload
+  set_property(TARGET tridcpu_sp tridcpu_dp PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-	#set_property(TARGET tridcpu_sp PROPERTY POSITION_INDEPENDENT_CODE ON)
-	#set_property(TARGET tridcpu_dp PROPERTY POSITION_INDEPENDENT_CODE ON)
+  target_compile_definitions(tridcpu_sp PRIVATE -DFPPREC=0)
+  target_compile_definitions(tridcpu_dp PRIVATE -DFPPREC=1)
 
-	#set_target_properties(tridcpu_sp PROPERTIES COMPILE_FLAGS "-fPIC -DFPPREC=0")
-	#set_target_properties(tridcpu_dp PROPERTIES COMPILE_FLAGS "-fPIC -DFPPREC=1")
-	
-	target_compile_options(tridcpu_sp PRIVATE -fPIC) 
-	target_compile_options(tridcpu_dp PRIVATE -fPIC)
-	
-	target_compile_definitions(tridcpu_sp PRIVATE -DFPPREC=0)
-	target_compile_definitions(tridcpu_dp PRIVATE -DFPPREC=1)
-
-	install(TARGETS tridcpu
-		LIBRARY DESTINATION ${CMAKE_BINARY_DIR}/lib
-		ARCHIVE DESTINATION ${CMAKE_BINARY_DIR}/lib)
-	install(FILES ${PROJECT_SOURCE_DIR}/include/trid_cpu.h 
-		            ${PROJECT_SOURCE_DIR}/include/trid_common.h 
-		            ${PROJECT_SOURCE_DIR}/include/trid_util.h
-		            ${PROJECT_SOURCE_DIR}/include/trid_simd.h
-		            ${PROJECT_SOURCE_DIR}/include/trid_mpi_cpu.h
-                ${PROJECT_SOURCE_DIR}/src/cpu/trid_mpi_cpu.hpp
-                ${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
-		      DESTINATION ${CMAKE_BINARY_DIR}/include)
+  install(
+    TARGETS tridcpu
+    LIBRARY DESTINATION ${CMAKE_BINARY_DIR}/lib
+    ARCHIVE DESTINATION ${CMAKE_BINARY_DIR}/lib)
+  install(
+    FILES ${PROJECT_SOURCE_DIR}/include/trid_cpu.h
+          ${PROJECT_SOURCE_DIR}/include/trid_common.h
+          ${PROJECT_SOURCE_DIR}/include/trid_util.h
+          ${PROJECT_SOURCE_DIR}/include/trid_simd.h
+          ${PROJECT_SOURCE_DIR}/include/trid_mpi_cpu.h
+          ${PROJECT_SOURCE_DIR}/src/cpu/trid_mpi_cpu.hpp
+          ${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
+    DESTINATION ${CMAKE_BINARY_DIR}/include)
 endif (BUILD_FOR_CPU)
 
 if (BUILD_FOR_MIC AND INTEL_CC)
@@ -104,5 +122,3 @@ if (BUILD_FOR_MIC AND INTEL_CC)
 					${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
 		DESTINATION ${CMAKE_BINARY_DIR}/include)
 endif (BUILD_FOR_MIC AND INTEL_CC)
-
-
