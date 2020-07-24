@@ -39,9 +39,8 @@
 
 #include "trid_mpi_cuda.hpp"
 
-#include "trid_linear_mpi_reg8_double2.hpp"
-#include "trid_linear_mpi_reg16_float4.hpp"
 #include "trid_linear_mpi.hpp"
+#include "trid_linear_mpi_reg.hpp"
 #include "trid_strided_multidim_mpi.hpp"
 #include "trid_cuda_mpi_pcr.hpp"
 
@@ -70,97 +69,13 @@ const MPI_Datatype mpi_datatype =
     (std::is_same<REAL, double>::value ? MPI_DOUBLE : MPI_FLOAT)
 #endif
 
-//
-// Kernel launch wrapper for forward
-//
-template <typename REAL>
-void trid_linear_forward_reg(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *a,
-                             const REAL *b, const REAL *c, const REAL *d,
-                             REAL *aa, REAL *cc, REAL *dd, REAL *boundaries,
-                             int sys_size, int sys_pads, int sys_n,
-                             cudaStream_t stream);
-
-template <>
-void trid_linear_forward_reg<double>(dim3 dimGrid_x, dim3 dimBlock_x,
-                                     const double *a, const double *b,
-                                     const double *c, const double *d,
-                                     double *aa, double *cc, double *dd,
-                                     double *boundaries, int sys_size,
-                                     int sys_pads, int sys_n,
-                                     cudaStream_t stream) {
-  trid_linear_forward_double<<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      a, b, c, d, aa, cc, dd, boundaries, sys_size, sys_pads, sys_n);
-}
-template <>
-void trid_linear_forward_reg<float>(dim3 dimGrid_x, dim3 dimBlock_x,
-                                    const float *a, const float *b,
-                                    const float *c, const float *d, float *aa,
-                                    float *cc, float *dd, float *boundaries,
-                                    int sys_size, int sys_pads, int sys_n,
-                                    cudaStream_t stream) {
-  trid_linear_forward_float<<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      a, b, c, d, aa, cc, dd, boundaries, sys_size, sys_pads, sys_n);
-}
-
-//
-// Kernel launch wrapper for backward
-//
-template <typename REAL, int INC>
-void trid_linear_backward_reg(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
-                              const REAL *cc, const REAL *dd, REAL *d, REAL *u,
-                              const REAL *boundaries, int sys_size,
-                              int sys_pads, int sys_n, cudaStream_t stream);
-
-template <>
-void trid_linear_backward_reg<double, 0>(dim3 dimGrid_x, dim3 dimBlock_x,
-                                         const double *aa, const double *cc,
-                                         const double *dd, double *d, double *u,
-                                         const double *boundaries, int sys_size,
-                                         int sys_pads, int sys_n,
-                                         cudaStream_t stream) {
-  trid_linear_backward_double<0><<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n);
-}
-template <>
-void trid_linear_backward_reg<double, 1>(dim3 dimGrid_x, dim3 dimBlock_x,
-                                         const double *aa, const double *cc,
-                                         const double *dd, double *d, double *u,
-                                         const double *boundaries, int sys_size,
-                                         int sys_pads, int sys_n,
-                                         cudaStream_t stream) {
-  trid_linear_backward_double<1><<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n);
-}
-
-template <>
-void trid_linear_backward_reg<float, 0>(dim3 dimGrid_x, dim3 dimBlock_x,
-                                        const float *aa, const float *cc,
-                                        const float *dd, float *d, float *u,
-                                        const float *boundaries, int sys_size,
-                                        int sys_pads, int sys_n,
-                                        cudaStream_t stream) {
-  trid_linear_backward_float<0><<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n);
-}
-
-template <>
-void trid_linear_backward_reg<float, 1>(dim3 dimGrid_x, dim3 dimBlock_x,
-                                        const float *aa, const float *cc,
-                                        const float *dd, float *d, float *u,
-                                        const float *boundaries, int sys_size,
-                                        int sys_pads, int sys_n,
-                                        cudaStream_t stream) {
-  trid_linear_backward_float<1><<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n);
-}
-
 template <typename REAL>
 inline void forward_batched(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *a,
                             const int *a_pads, const REAL *b, const int *b_pads,
                             const REAL *c, const int *c_pads, const REAL *d,
                             const int *d_pads, REAL *aa, REAL *cc, REAL *dd,
-                            REAL *boundaries, const int *dims, int ndim,
-                            int solvedim, int start_sys, int bsize,
+                            REAL *boundaries, REAL *send_buf_h, const int *dims,
+                            int ndim, int solvedim, int start_sys, int bsize,
                             cudaStream_t stream = nullptr) {
   if (solvedim == 0) {
     const int batch_offset = start_sys * a_pads[solvedim]; // TODO pads
@@ -179,6 +94,12 @@ inline void forward_batched(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *a,
         a, pads, b, pads, c, pads, d, pads, aa, cc, dd, boundaries, ndim,
         solvedim, bsize, dims, start_sys);
   }
+#ifndef TRID_CUDA_AWARE_MPI
+  size_t comm_buf_size   = 3 * 2 * bsize;
+  size_t comm_buf_offset = 3 * 2 * start_sys;
+  cudaMemcpyAsync(send_buf_h + comm_buf_offset, boundaries + comm_buf_offset,
+                  sizeof(REAL) * comm_buf_size, cudaMemcpyDeviceToHost, stream);
+#endif
 }
 
 template <typename REAL, int INC>
@@ -207,141 +128,6 @@ inline void backward_batched(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
             aa, pads, cc, pads, dd, d, pads, u, pads, boundaries, ndim,
             solvedim, bsize, dims, start_sys);
   }
-}
-
-template <typename REAL, int INC>
-inline void tridMultiDimBatchSolveMPI_interleaved(
-    const MpiSolverParams &params, const REAL *a, const int *a_pads,
-    const REAL *b, const int *b_pads, const REAL *c, const int *c_pads, REAL *d,
-    const int *d_pads, REAL *u, const int *u_pads, int ndim, int solvedim,
-    const int *dims, REAL *aa, REAL *cc, REAL *dd, REAL *boundaries,
-    REAL *recv_buf,
-#ifndef TRID_CUDA_AWARE_MPI
-   REAL *send_buf, REAL *receive_buf,
-#endif
-    int sys_n) {
-  BEGIN_PROFILING2("host-overhead");
-  // length of reduced system
-  const int reduced_len_l = 2;
-  const int reduced_len_g = reduced_len_l * params.num_mpi_procs[solvedim];
-
-  const int batch_size  = std::min(params.mpi_batch_size, sys_n);
-  const int num_batches = 1 + (sys_n - 1) / batch_size;
-  // Calculate required number of CUDA threads and blocksS
-  int blockdimx = 128;
-  int blockdimy = 1;
-  int dimgrid   = 1 + (batch_size - 1) / blockdimx; // can go up to 65535
-  int dimgridx  = dimgrid % 65536; // can go up to max 65535 on Fermi
-  int dimgridy  = 1 + dimgrid / 65536;
-
-  dim3 dimGrid_x(dimgridx, dimgridy);
-  dim3 dimBlock_x(blockdimx, blockdimy);
-  std::vector<MPI_Request> requests(num_batches);
-  std::vector<cudaStream_t> streams(num_batches);
-  END_PROFILING2("host-overhead");
-  for (int bidx = 0; bidx < num_batches; ++bidx) {
-    int batch_start = bidx * batch_size;
-    int bsize = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
-    size_t comm_buf_size        = 3 * reduced_len_l * bsize;
-    size_t comm_buf_offset      = 3 * reduced_len_l * batch_start;
-    cudaStreamCreate(&streams[bidx]);
-    // Do modified thomas forward pass
-    // For the bidx-th batch
-    BEGIN_PROFILING_CUDA2("thomas_forward");
-    forward_batched(dimGrid_x, dimBlock_x, a, a_pads, b, b_pads, c, c_pads, d,
-                    d_pads, aa, cc, dd, boundaries, dims, ndim, solvedim,
-                    batch_start, bsize, streams[bidx]);
-#ifndef TRID_CUDA_AWARE_MPI
-    cudaMemcpyAsync(send_buf + comm_buf_offset, boundaries + comm_buf_offset,
-                    sizeof(REAL) * comm_buf_size, cudaMemcpyDeviceToHost,
-                    streams[bidx]);
-#endif
-    END_PROFILING_CUDA2("thomas_forward");
-    // wait for the previous MPI transaction to finish
-    if (bidx != 0) {
-    BEGIN_PROFILING2("mpi_wait");
-      MPI_Status status;
-      MPI_Wait(&requests[bidx-1], &status);
-#ifndef TRID_CUDA_AWARE_MPI
-      int bsize                   = batch_size;
-      int p_batch_start           = (bidx - 1) * batch_size;
-      size_t recv_comm_buf_offset = 3 * reduced_len_g * p_batch_start;
-      // copy the results of the reduced systems to the boundaries array
-      cudaMemcpyAsync(recv_buf + recv_comm_buf_offset,
-                      receive_buf + recv_comm_buf_offset,
-                      reduced_len_g * 3 * bsize * sizeof(REAL),
-                      cudaMemcpyHostToDevice, streams[bidx - 1]);
-#endif
-    END_PROFILING2("mpi_wait");
-    }
-    BEGIN_PROFILING2("MPI_Iallgather");
-    // Send boundaries of the current batch
-    size_t recv_comm_buf_offset = 3 * reduced_len_g * batch_start;
-    cudaStreamSynchronize(streams[bidx]);
-#ifdef TRID_CUDA_AWARE_MPI
-    // Gather the reduced system to all nodes (using CUDA aware MPI)
-    MPI_Iallgather(boundaries + comm_buf_offset, comm_buf_size,
-                   MPI_DATATYPE(REAL), recv_buf + recv_comm_buf_offset,
-                   comm_buf_size, MPI_DATATYPE(REAL),
-                   params.communicators[solvedim], &requests[bidx]);
-#else
-    // Communicate boundary results
-    MPI_Iallgather(send_buf + comm_buf_offset, comm_buf_size,
-                   MPI_DATATYPE(REAL), receive_buf + recv_comm_buf_offset,
-                   comm_buf_size, MPI_DATATYPE(REAL),
-                   params.communicators[solvedim], &requests[bidx]);
-#endif
-    END_PROFILING2("MPI_Iallgather");
-    // Finish the previous batch
-    if (bidx != 0) {
-      BEGIN_PROFILING_CUDA2("pcr_on_reduced");
-      int batch_start      = (bidx - 1) * batch_size;
-      int bsize            = batch_size;
-      int buf_offset       = 3 * reduced_len_g * batch_start;
-      int bound_buf_offset = 2 * batch_start;
-      pcr_on_reduced_batched<REAL>(
-          recv_buf + buf_offset, boundaries + bound_buf_offset, bsize,
-          params.mpi_coords[solvedim], reduced_len_g, streams[bidx - 1]);
-      END_PROFILING_CUDA2("pcr_on_reduced");
-      // Perform the backward run of the modified thomas algorithm
-      BEGIN_PROFILING_CUDA2("thomas_backward");
-      backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads,
-                                  dd, d_pads, boundaries, d, u, u_pads, dims,
-                                  ndim, solvedim, batch_start, bsize,
-                                  streams[bidx - 1]);
-      END_PROFILING_CUDA2("thomas_backward");
-    }
-  } // batches
-  BEGIN_PROFILING2("mpi_wait");
-  // Need to finish last batch: receive message, do reduced and backward
-  // wait for the last MPI transaction to finish
-  MPI_Status status;
-  MPI_Wait(&requests[num_batches-1], &status);
-  int batch_start             = (num_batches - 1) * batch_size;
-  int bsize                   = sys_n - batch_start;
-  size_t recv_comm_buf_offset = 3 * reduced_len_g * batch_start;
-#ifndef TRID_CUDA_AWARE_MPI
-  // copy the results of the reduced systems to the boundaries array
-  cudaMemcpyAsync(recv_buf + recv_comm_buf_offset,
-                  receive_buf + recv_comm_buf_offset,
-                  reduced_len_g * 3 * bsize * sizeof(REAL),
-                  cudaMemcpyHostToDevice, streams[num_batches - 1]);
-#endif
-  END_PROFILING2("mpi_wait");
-  BEGIN_PROFILING_CUDA2("pcr_on_reduced");
-  // Solve the reduced system
-  int bound_buf_offset = 2 * batch_start;
-  pcr_on_reduced_batched<REAL>(
-      recv_buf + recv_comm_buf_offset, boundaries + bound_buf_offset, bsize,
-      params.mpi_coords[solvedim], reduced_len_g, streams[num_batches - 1]);
-  END_PROFILING_CUDA2("pcr_on_reduced");
-  // Perform the backward run of the modified thomas algorithm
-  BEGIN_PROFILING_CUDA2("thomas_backward");
-  backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd,
-                              d_pads, boundaries, d, u, u_pads, dims, ndim,
-                              solvedim, batch_start, bsize,
-                              streams[num_batches - 1]);
-  END_PROFILING_CUDA2("thomas_backward");
 }
 
 template <typename REAL, int INC>
@@ -380,16 +166,97 @@ void reduced_and_backward(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
 }
 
 template <typename REAL, int INC>
+inline void tridMultiDimBatchSolveMPI_interleaved(
+    const MpiSolverParams &params, const REAL *a, const int *a_pads,
+    const REAL *b, const int *b_pads, const REAL *c, const int *c_pads, REAL *d,
+    const int *d_pads, REAL *u, const int *u_pads, int ndim, int solvedim,
+    const int *dims, REAL *aa, REAL *cc, REAL *dd, REAL *boundaries,
+    REAL *recv_buf, int sys_n, REAL *send_buf_h = nullptr,
+    REAL *recv_buf_h = nullptr) {
+  BEGIN_PROFILING2("host-overhead");
+  // length of reduced system
+  const int reduced_len_l = 2;
+  const int reduced_len_g = reduced_len_l * params.num_mpi_procs[solvedim];
+
+  const int batch_size  = std::min(params.mpi_batch_size, sys_n);
+  const int num_batches = 1 + (sys_n - 1) / batch_size;
+  // Calculate required number of CUDA threads and blocksS
+  int blockdimx = 128;
+  int blockdimy = 1;
+  int dimgrid   = 1 + (batch_size - 1) / blockdimx; // can go up to 65535
+  int dimgridx  = dimgrid % 65536; // can go up to max 65535 on Fermi
+  int dimgridy  = 1 + dimgrid / 65536;
+
+  dim3 dimGrid_x(dimgridx, dimgridy);
+  dim3 dimBlock_x(blockdimx, blockdimy);
+  std::vector<MPI_Request> requests(num_batches);
+  std::vector<cudaStream_t> streams(num_batches);
+  END_PROFILING2("host-overhead");
+  for (int bidx = 0; bidx < num_batches; ++bidx) {
+    int batch_start = bidx * batch_size;
+    int bsize = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
+    size_t comm_buf_size   = 3 * reduced_len_l * bsize;
+    size_t comm_buf_offset = 3 * reduced_len_l * batch_start;
+    cudaStreamCreate(&streams[bidx]);
+    // Do modified thomas forward pass
+    // For the bidx-th batch
+    BEGIN_PROFILING_CUDA2("thomas_forward");
+    forward_batched(dimGrid_x, dimBlock_x, a, a_pads, b, b_pads, c, c_pads, d,
+                    d_pads, aa, cc, dd, boundaries, send_buf_h, dims, ndim,
+                    solvedim, batch_start, bsize, streams[bidx]);
+    END_PROFILING_CUDA2("thomas_forward");
+    // wait for the previous MPI transaction to finish
+    if (bidx != 0) {
+      BEGIN_PROFILING2("mpi_wait");
+      MPI_Status status;
+      MPI_Wait(&requests[bidx - 1], &status);
+      // Finish the previous batch
+      reduced_and_backward<REAL, INC>(
+          dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd, d_pads, boundaries,
+          d, u, u_pads, recv_buf_h, recv_buf, dims, ndim, solvedim,
+          params.mpi_coords[solvedim], bidx - 1, batch_size, num_batches,
+          reduced_len_g, sys_n, streams[bidx - 1]);
+      END_PROFILING2("mpi_wait");
+    }
+    BEGIN_PROFILING2("MPI_Iallgather");
+    // Send boundaries of the current batch
+    size_t recv_comm_buf_offset = 3 * reduced_len_g * batch_start;
+    cudaStreamSynchronize(streams[bidx]);
+#ifdef TRID_CUDA_AWARE_MPI
+    // Gather the reduced system to all nodes (using CUDA aware MPI)
+    MPI_Iallgather(boundaries + comm_buf_offset, comm_buf_size,
+                   MPI_DATATYPE(REAL), recv_buf + recv_comm_buf_offset,
+                   comm_buf_size, MPI_DATATYPE(REAL),
+                   params.communicators[solvedim], &requests[bidx]);
+#else
+    // Communicate boundary results
+    MPI_Iallgather(send_buf_h + comm_buf_offset, comm_buf_size,
+                   MPI_DATATYPE(REAL), recv_buf_h + recv_comm_buf_offset,
+                   comm_buf_size, MPI_DATATYPE(REAL),
+                   params.communicators[solvedim], &requests[bidx]);
+#endif
+    END_PROFILING2("MPI_Iallgather");
+  } // batches
+  BEGIN_PROFILING2("mpi_wait");
+  // Need to finish last batch: receive message, do reduced and backward
+  // wait for the last MPI transaction to finish
+  MPI_Status status;
+  MPI_Wait(&requests[num_batches - 1], &status);
+  reduced_and_backward<REAL, INC>(
+      dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd, d_pads, boundaries, d,
+      u, u_pads, recv_buf_h, recv_buf, dims, ndim, solvedim,
+      params.mpi_coords[solvedim], num_batches - 1, batch_size, num_batches,
+      reduced_len_g, sys_n, streams[num_batches - 1]);
+}
+
+template <typename REAL, int INC>
 inline void tridMultiDimBatchSolveMPI_simple(
     const MpiSolverParams &params, const REAL *a, const int *a_pads,
     const REAL *b, const int *b_pads, const REAL *c, const int *c_pads, REAL *d,
     const int *d_pads, REAL *u, const int *u_pads, int ndim, int solvedim,
     const int *dims, REAL *aa, REAL *cc, REAL *dd, REAL *boundaries,
-    REAL *recv_buf,
-#ifndef TRID_CUDA_AWARE_MPI
-   REAL *send_buf, REAL *receive_buf,
-#endif
-    int sys_n) {
+    REAL *recv_buf, int sys_n, REAL *send_buf_h = nullptr,
+    REAL *recv_buf_h = nullptr) {
   BEGIN_PROFILING2("host-overhead");
 
   // length of reduced system
@@ -418,16 +285,9 @@ inline void tridMultiDimBatchSolveMPI_simple(
     // For the bidx-th batch
     BEGIN_PROFILING_CUDA2("thomas_forward");
     forward_batched(dimGrid_x, dimBlock_x, a, a_pads, b, b_pads, c, c_pads, d,
-                    d_pads, aa, cc, dd, boundaries, dims, ndim, solvedim,
+                    d_pads, aa, cc, dd, boundaries, send_buf_h, dims, ndim, solvedim,
                     batch_start, bsize, streams[bidx]);
     END_PROFILING_CUDA2("thomas_forward");
-#ifndef TRID_CUDA_AWARE_MPI
-    size_t comm_buf_size   = 3 * reduced_len_l * bsize;
-    size_t comm_buf_offset = 3 * reduced_len_l * batch_start;
-    cudaMemcpyAsync(send_buf + comm_buf_offset, boundaries + comm_buf_offset,
-                    sizeof(REAL) * comm_buf_size, cudaMemcpyDeviceToHost,
-                    streams[bidx]);
-#endif
   } // batches
   int ready_batches = 0;
   cudaStreamSynchronize(streams[0]);
@@ -441,14 +301,9 @@ inline void tridMultiDimBatchSolveMPI_simple(
       MPI_Testany(bidx, requests.data(), &finished, &found_finished, &status);
       if(found_finished && finished != MPI_UNDEFINED) {
         ready_batches++;
-#ifdef TRID_CUDA_AWARE_MPI
-#define HOST_BUFFER nullptr
-#else
-#define HOST_BUFFER receive_buf
-#endif
         reduced_and_backward<REAL, INC>(
             dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd, d_pads,
-            boundaries, d, u, u_pads, HOST_BUFFER, recv_buf, dims, ndim,
+            boundaries, d, u, u_pads, recv_buf_h, recv_buf, dims, ndim,
             solvedim, params.mpi_coords[solvedim], finished, batch_size,
             num_batches, reduced_len_g, sys_n, streams[finished]);
       }
@@ -466,8 +321,8 @@ inline void tridMultiDimBatchSolveMPI_simple(
                    params.communicators[solvedim], &requests[bidx]);
 #else
     // Communicate boundary results
-      MPI_Iallgather(send_buf + comm_buf_offset, comm_buf_size,
-                     MPI_DATATYPE(REAL), receive_buf + recv_comm_buf_offset,
+      MPI_Iallgather(send_buf_h + comm_buf_offset, comm_buf_size,
+                     MPI_DATATYPE(REAL), recv_buf_h + recv_comm_buf_offset,
                      comm_buf_size, MPI_DATATYPE(REAL),
                      params.communicators[solvedim], &requests[bidx]);
 #endif
@@ -484,11 +339,10 @@ inline void tridMultiDimBatchSolveMPI_simple(
     END_PROFILING2("mpi_wait");
     reduced_and_backward<REAL, INC>(
         dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd, d_pads, boundaries,
-        d, u, u_pads, HOST_BUFFER, recv_buf, dims, ndim, solvedim,
+        d, u, u_pads, recv_buf_h, recv_buf, dims, ndim, solvedim,
         params.mpi_coords[solvedim], bidx, batch_size, num_batches,
         reduced_len_g, sys_n, streams[bidx]);
   }
-#undef HOST_BUFFER
 }
 
 template <typename REAL, int INC>
@@ -497,52 +351,47 @@ void tridMultiDimBatchSolveMPI_allgather(
     const REAL *b, const int *b_pads, const REAL *c, const int *c_pads, REAL *d,
     const int *d_pads, REAL *u, const int *u_pads, int ndim, int solvedim,
     const int *dims, REAL *aa, REAL *cc, REAL *dd, REAL *boundaries,
-    REAL *recv_buf,
-#ifndef TRID_CUDA_AWARE_MPI
-   REAL *send_buf, REAL *receive_buf,
-#endif
-    int sys_n) {
+    REAL *recv_buf, int sys_n, REAL *send_buf_h = nullptr,
+    REAL *recv_buf_h = nullptr) {
   BEGIN_PROFILING2("host-overhead");
   // length of reduced system
-  const int reduced_len_l   = 2;
+  const int reduced_len_l = 2;
   const int reduced_len_g = reduced_len_l * params.num_mpi_procs[solvedim];
 
   // Calculate required number of CUDA threads and blocksS
   int blockdimx = 128;
   int blockdimy = 1;
-  int dimgrid = 1 + (sys_n - 1) / blockdimx; // can go up to 65535
-  int dimgridx = dimgrid % 65536;            // can go up to max 65535 on Fermi
-  int dimgridy = 1 + dimgrid / 65536;
+  int dimgrid   = 1 + (sys_n - 1) / blockdimx; // can go up to 65535
+  int dimgridx  = dimgrid % 65536; // can go up to max 65535 on Fermi
+  int dimgridy  = 1 + dimgrid / 65536;
 
   dim3 dimGrid_x(dimgridx, dimgridy);
   dim3 dimBlock_x(blockdimx, blockdimy);
   const size_t comm_buf_size = 2 * 3 * sys_n;
   END_PROFILING2("host-overhead");
-  
+
   // Do modified thomas forward pass
   BEGIN_PROFILING_CUDA2("thomas_forward");
   forward_batched(dimGrid_x, dimBlock_x, a, a_pads, b, b_pads, c, c_pads, d,
-                  d_pads, aa, cc, dd, boundaries, dims, ndim, solvedim, 0,
-                  sys_n);
+                  d_pads, aa, cc, dd, boundaries, send_buf_h, dims, ndim,
+                  solvedim, 0, sys_n);
   cudaSafeCall(cudaDeviceSynchronize());
   END_PROFILING_CUDA2("thomas_forward");
 
-BEGIN_PROFILING2("mpi_communication");
+  BEGIN_PROFILING2("mpi_communication");
 #ifdef TRID_CUDA_AWARE_MPI
   // Gather the reduced system to all nodes (using CUDA aware MPI)
-  MPI_Allgather(boundaries, comm_buf_size, MPI_DATATYPE(REAL),
-                recv_buf, comm_buf_size, MPI_DATATYPE(REAL),
+  MPI_Allgather(boundaries, comm_buf_size, MPI_DATATYPE(REAL), recv_buf,
+                comm_buf_size, MPI_DATATYPE(REAL),
                 params.communicators[solvedim]);
 #else
-  cudaMemcpy(send_buf, boundaries, sizeof(REAL) * comm_buf_size,
-             cudaMemcpyDeviceToHost);
   // Communicate boundary results
-  MPI_Allgather(send_buf, comm_buf_size, MPI_DATATYPE(REAL), receive_buf,
+  MPI_Allgather(send_buf_h, comm_buf_size, MPI_DATATYPE(REAL), recv_buf_h,
                 comm_buf_size, MPI_DATATYPE(REAL),
                 params.communicators[solvedim]);
   // copy the results of the reduced systems to the beginning of the boundaries
   // array
-  cudaMemcpy(recv_buf, receive_buf, reduced_len_g * 3 * sys_n * sizeof(REAL),
+  cudaMemcpy(recv_buf, recv_buf_h, reduced_len_g * 3 * sys_n * sizeof(REAL),
              cudaMemcpyHostToDevice);
 #endif
   END_PROFILING2("mpi_communication");
@@ -567,8 +416,6 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
                                const int *c_pads, REAL *d, const int *d_pads,
                                REAL *u, const int *u_pads, int ndim,
                                int solvedim, const int *dims) {
-  // PROFILE_FUNCTION();
-  // BEGIN_PROFILING2("memalloc");
   // TODO paddings!!
   assert(solvedim < ndim);
   assert((
@@ -605,11 +452,11 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   // Allocate receive buffer for MPI communication of reduced system
   const size_t reduced_len_g = 2 * params.num_mpi_procs[solvedim];
   REAL *mpi_buf;
-  cudaSafeCall( cudaMalloc(&mpi_buf, reduced_len_g * 3 * sys_n * sizeof(REAL)) );
+  cudaSafeCall(cudaMalloc(&mpi_buf, reduced_len_g * 3 * sys_n * sizeof(REAL)));
+  REAL *send_buf = nullptr, *receive_buf= nullptr;
 #ifndef TRID_CUDA_AWARE_MPI
   const size_t comm_buf_size = 2 * 3 * sys_n;
   // MPI buffers on host              
-  REAL *send_buf, *receive_buf;
   cudaSafeCall(cudaMallocHost(&send_buf, comm_buf_size * sizeof(REAL)));
   cudaSafeCall(cudaMallocHost(&receive_buf, comm_buf_size *
                                                 params.num_mpi_procs[solvedim] *
@@ -620,7 +467,6 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   MPI_Barrier(MPI_COMM_WORLD);
   BEGIN_PROFILING("tridMultiDimBatchSolveMPI");
 #endif
-  // END_PROFILING2("memalloc");
   switch (params.strategy) {
   case MpiSolverParams::GATHER_SCATTER:
     assert(false && "GATHER_SCATTER is not implemented for CUDA");
@@ -628,29 +474,20 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   case MpiSolverParams::ALLGATHER:
     tridMultiDimBatchSolveMPI_allgather<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
-        solvedim, dims, aa, cc, dd, boundaries, mpi_buf,
-#ifndef TRID_CUDA_AWARE_MPI
-        send_buf, receive_buf,
-#endif
-        sys_n);
+        solvedim, dims, aa, cc, dd, boundaries, mpi_buf, sys_n, send_buf,
+        receive_buf);
     break;
   case MpiSolverParams::LATENCY_HIDING_INTERLEAVED:
     tridMultiDimBatchSolveMPI_interleaved<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
-        solvedim, dims, aa, cc, dd, boundaries, mpi_buf,
-#ifndef TRID_CUDA_AWARE_MPI
-        send_buf, receive_buf,
-#endif
-        sys_n);
+        solvedim, dims, aa, cc, dd, boundaries, mpi_buf, sys_n, send_buf,
+        receive_buf);
     break;
   case MpiSolverParams::LATENCY_HIDING_TWO_STEP:
     tridMultiDimBatchSolveMPI_simple<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
-        solvedim, dims, aa, cc, dd, boundaries, mpi_buf,
-#ifndef TRID_CUDA_AWARE_MPI
-        send_buf, receive_buf,
-#endif
-        sys_n);
+        solvedim, dims, aa, cc, dd, boundaries, mpi_buf, sys_n, send_buf,
+        receive_buf);
     break;
   default: assert(false && "Unknown communication strategy");
   }
@@ -662,7 +499,6 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   END_PROFILING2("barrier");
   END_PROFILING("tridMultiDimBatchSolveMPI");
 #endif
-  // BEGIN_PROFILING2("memfree");
   // Free memory used in solve
   cudaSafeCall(cudaFree(aa));
   cudaSafeCall(cudaFree(cc));
@@ -673,7 +509,6 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   cudaSafeCall(cudaFreeHost(send_buf));
   cudaSafeCall(cudaFreeHost(receive_buf));
 #endif
-  // END_PROFILING2("memfree");
 }
 
 template <typename REAL, int INC>
