@@ -210,13 +210,13 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
       BEGIN_PROFILING2("mpi_wait");
       MPI_Status status;
       MPI_Wait(&requests[bidx - 1], &status);
+      END_PROFILING2("mpi_wait");
       // Finish the previous batch
       reduced_and_backward<REAL, INC>(
           dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd, d_pads, boundaries,
           d, u, u_pads, recv_buf_h, recv_buf, dims, ndim, solvedim,
           params.mpi_coords[solvedim], bidx - 1, batch_size, num_batches,
           reduced_len_g, sys_n, streams[bidx - 1]);
-      END_PROFILING2("mpi_wait");
     }
     BEGIN_PROFILING2("MPI_Iallgather");
     // Send boundaries of the current batch
@@ -242,6 +242,7 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
   // wait for the last MPI transaction to finish
   MPI_Status status;
   MPI_Wait(&requests[num_batches - 1], &status);
+  END_PROFILING2("mpi_wait");
   reduced_and_backward<REAL, INC>(
       dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd, d_pads, boundaries, d,
       u, u_pads, recv_buf_h, recv_buf, dims, ndim, solvedim,
@@ -290,11 +291,10 @@ inline void tridMultiDimBatchSolveMPI_simple(
     END_PROFILING_CUDA2("thomas_forward");
   } // batches
   int ready_batches = 0;
-  cudaStreamSynchronize(streams[0]);
   for (int bidx = 0; bidx < num_batches; ++bidx) {
     int batch_start = bidx * batch_size;
     int bsize = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
-    while(cudaStreamQuery(streams[bidx]) != cudaSuccess) {
+    while(cudaStreamQuery(streams[bidx]) != cudaSuccess && ready_batches != bidx) {
       int finished, found_finished;
       MPI_Status status;
       // up until bidx all streams communicating
@@ -307,6 +307,9 @@ inline void tridMultiDimBatchSolveMPI_simple(
             solvedim, params.mpi_coords[solvedim], finished, batch_size,
             num_batches, reduced_len_g, sys_n, streams[finished]);
       }
+    }
+    if(ready_batches == bidx) {
+      cudaStreamSynchronize(streams[bidx]);
     }
     BEGIN_PROFILING2("MPI_Iallgather");
     // Send boundaries of the current batch
@@ -391,8 +394,9 @@ void tridMultiDimBatchSolveMPI_allgather(
                 params.communicators[solvedim]);
   // copy the results of the reduced systems to the beginning of the boundaries
   // array
-  cudaMemcpy(recv_buf, recv_buf_h, reduced_len_g * 3 * sys_n * sizeof(REAL),
-             cudaMemcpyHostToDevice);
+  cudaMemcpyAsync(recv_buf, recv_buf_h,
+                  reduced_len_g * 3 * sys_n * sizeof(REAL),
+                  cudaMemcpyHostToDevice);
 #endif
   END_PROFILING2("mpi_communication");
 
