@@ -39,8 +39,8 @@ public:
 
   static void startTimer(const std::string &_name);
   static void stopTimer(const std::string &_name);
-  static void startTimerCUDA(const std::string &_name);
-  static void stopTimerCUDA(const std::string &_name);
+  static void startTimerCUDA(const std::string &_name, cudaStream_t stream);
+  static void stopTimerCUDA(const std::string &_name, cudaStream_t stream);
   static void pushRange(const std::string &_name);
   static void popRange();
   static void markStart(const std::string &_name);
@@ -51,8 +51,8 @@ public:
 #  define BEGIN_PROFILING(name) Timing::startTimer(name)
 #  define END_PROFILING(name)   Timing::stopTimer(name)
 
-#  define BEGIN_PROFILING_CUDA(name) Timing::startTimerCUDA(name)
-#  define END_PROFILING_CUDA(name)   Timing::stopTimerCUDA(name)
+#  define BEGIN_PROFILING_CUDA(name,stream) Timing::startTimerCUDA(name,stream)
+#  define END_PROFILING_CUDA(name,stream)   Timing::stopTimerCUDA(name,stream)
 
 #  define PROFILE_SCOPE(name) Timing timer##__LINE__(name)
 #  define PROFILE_FUNCTION()  PROFILE_SCOPE(__FUNCTION__)
@@ -60,25 +60,25 @@ public:
 #  if PROFILING > 1
 #    define BEGIN_PROFILING2(name)      BEGIN_PROFILING(name)
 #    define END_PROFILING2(name)        END_PROFILING(name)
-#    define BEGIN_PROFILING_CUDA2(name) BEGIN_PROFILING_CUDA(name)
-#    define END_PROFILING_CUDA2(name)   END_PROFILING_CUDA(name)
+#    define BEGIN_PROFILING_CUDA2(name,stream) BEGIN_PROFILING_CUDA(name,stream)
+#    define END_PROFILING_CUDA2(name,stream)   END_PROFILING_CUDA(name,stream)
 #  else
 #    define BEGIN_PROFILING2(name)      Timing::pushRange(name)
 #    define END_PROFILING2(name)        Timing::popRange()
-#    define BEGIN_PROFILING_CUDA2(name) Timing::markStart(name)
-#    define END_PROFILING_CUDA2(name)
+#    define BEGIN_PROFILING_CUDA2(name,stream) Timing::markStart(name)
+#    define END_PROFILING_CUDA2(name,stream)
 #  endif
 #else
 #  define BEGIN_PROFILING(name)
 #  define END_PROFILING(name)
 
-#  define BEGIN_PROFILING_CUDA(name)
-#  define END_PROFILING_CUDA(name)
+#  define BEGIN_PROFILING_CUDA(name,stream)
+#  define END_PROFILING_CUDA(name,stream)
 
 #  define BEGIN_PROFILING2(name)
 #  define END_PROFILING2(name)
-#  define BEGIN_PROFILING_CUDA2(name)
-#  define END_PROFILING_CUDA2(name)
+#  define BEGIN_PROFILING_CUDA2(name,stream)
+#  define END_PROFILING_CUDA2(name,stream)
 
 #  define PROFILE_SCOPE(name)
 #  define PROFILE_FUNCTION()

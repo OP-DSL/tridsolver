@@ -48,14 +48,14 @@ void Timing::stopTimer(const std::string &_name) {
   popRange();
 }
 
-void Timing::startTimerCUDA(const std::string &_name) {
+void Timing::startTimerCUDA(const std::string &_name, cudaStream_t stream) {
   markStart(_name);
   if (loops.size() == 0) counter = 0;
   int parent           = stack.size() == 0 ? -1 : stack.back();
   std::string fullname = _name + "(" + std::to_string(parent) + ")";
   cudaEvent_t start;
   cudaSafeCall(cudaEventCreate(&start));
-  cudaSafeCall(cudaEventRecord(start));
+  cudaSafeCall(cudaEventRecord(start,stream));
   int index;
   if (loops.find(fullname) != loops.end()) {
     loops[fullname].event_pairs.push_back(start);
@@ -73,13 +73,13 @@ void Timing::startTimerCUDA(const std::string &_name) {
   stack.push_back(index);
 }
 
-void Timing::stopTimerCUDA(const std::string &_name) {
+void Timing::stopTimerCUDA(const std::string &_name, cudaStream_t stream) {
   stack.pop_back();
   int parent           = stack.empty() ? -1 : stack.back();
   std::string fullname = _name + "(" + std::to_string(parent) + ")";
   cudaEvent_t stop;
   cudaSafeCall(cudaEventCreate(&stop));
-  cudaSafeCall(cudaEventRecord(stop));
+  cudaSafeCall(cudaEventRecord(stop,stream));
   loops[fullname].event_pairs.push_back(stop);
 }
 
