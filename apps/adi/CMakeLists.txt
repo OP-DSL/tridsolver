@@ -127,7 +127,7 @@ if (BUILD_FOR_GPU)
   set(CUDA_NVCC_FLAGS_DEBUG   "-g -G -O0 -ftz=false -fmad=false")
   set(CUDA_NVCC_FLAGS_RELEASE "-O3")
 
-  set(CUDA_LIBRARIES ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcudart.so)
+  set(CUDA_LIBRARIES ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcudart.so ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcublas.so)
   cuda_include_directories(${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include)
   cuda_add_executable(adi_cuda src/adi_cuda.cu src/preproc.cu)
   target_link_libraries(adi_cuda -L${LIBTRID_PATH}/lib -ltridcuda)

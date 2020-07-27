@@ -195,7 +195,7 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
   
   // Setup up which GPU this MPI process is using
   // Currently set for 4 GPUs per node, with 1 MPI process per GPU
-  devid = rank % 4;
+  //devid = rank % 4;
   cudaSafeCall( cudaSetDevice(devid) );
   cutilDeviceInit(argc, argv);
   cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
@@ -209,7 +209,7 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
   MPI_Cart_coords(app.comm, my_cart_rank, 3, app.coords);
 
   // Create MPI handle used by tridiagonal solver
-  app.params = new MpiSolverParams(app.comm, 3, app.pdims);
+  app.params = new MpiSolverParams(app.comm, 3, app.pdims, 32, MpiSolverParams::ALLGATHER);
   
   // Calculate local problem size for this MPI process
   for(int i = 0; i < 3; i++) {
@@ -320,8 +320,6 @@ int main(int argc, char* argv[]) {
   // Declare and reset elapsed time counters
   double timer           = 0.0;
   double timer1          = 0.0;
-  double timer2          = 0.0;
-  double elapsed         = 0.0;
   double elapsed_total   = 0.0;
   double elapsed_preproc = 0.0;
   double elapsed_trid_x  = 0.0;
@@ -350,9 +348,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.size, app.size_g);
+    tridSmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.size);
 #else
-    tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.size, app.size_g);
+    tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.size);
 #endif
     
     timing_end(&timer, &elapsed_trid_x);
@@ -362,9 +360,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.size, app.size_g);
+    tridSmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.size);
 #else
-    tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.size, app.size_g);
+    tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.size);
 #endif
     timing_end(&timer, &elapsed_trid_y);
 
@@ -373,9 +371,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatchIncMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.size, app.size_g);
+    tridSmtsvStridedBatchIncMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.size);
 #else
-    tridDmtsvStridedBatchIncMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.size, app.size_g);
+    tridDmtsvStridedBatchIncMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.size);
 #endif
     timing_end(&timer, &elapsed_trid_z);
   }

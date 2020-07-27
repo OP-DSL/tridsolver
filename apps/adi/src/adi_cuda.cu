@@ -81,7 +81,7 @@ inline void timing_end(int prof, double *timer, double *elapsed_accumulate, std:
     cudaSafeCall( cudaDeviceSynchronize() );
     elapsed = elapsed_time(timer);
     *elapsed_accumulate += elapsed;
-    printf("\n elapsed %s (sec): %1.10f (s) \n", str.c_str() ,elapsed);
+    //printf("\n elapsed %s (sec): %1.10f (s) \n", str.c_str() ,elapsed);
   }
 }
 
@@ -340,9 +340,6 @@ int main(int argc, char* argv[]) {
   printf("\nCopy u to host: %f (s) \n", elapsed);
 
   rms("end h_u", h_u, nx, ny, nz, dims[0]);
-
-  int ldim=nx;
-  //#include "print_array.c"
 
   // Release GPU and CPU memory
   cudaSafeCall(cudaFree(d_u) );

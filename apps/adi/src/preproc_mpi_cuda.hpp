@@ -155,7 +155,7 @@ __global__ void preproc_mpi_cuda_kernel(REAL lambda, REAL *a, REAL *b, REAL *c, 
 //
 template<typename REAL>
 inline void preproc_mpi_cuda(preproc_handle<REAL> &pre_handle, app_handle &app) {
-  int   i, j, k, ind;
+  int   i, j, k;
   
   const MPI_Datatype real_datatype =
       std::is_same<REAL, double>::value ? MPI_DOUBLE : MPI_FLOAT;
