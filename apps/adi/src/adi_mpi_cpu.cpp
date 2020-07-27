@@ -200,7 +200,7 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
   MPI_Cart_coords(app.comm, my_cart_rank, 3, app.coords);
 
   // Create MPI handle used by tridiagonal solver
-  app.params = new MpiSolverParams(app.comm, 3, app.pdims);
+  app.params = new MpiSolverParams(app.comm, 3, app.pdims, 32, MpiSolverParams::GATHER_SCATTER);
 
   // Calculate local problem size for this MPI process
   for(int i = 0; i < 3; i++) {
@@ -332,9 +332,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.pads, app.size_g);
+    tridSmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.pads);
 #else
-    tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.pads, app.size_g);
+    tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.pads);
 #endif
     timing_end(&timer, &elapsed_trid_x);
 
@@ -343,9 +343,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.pads, app.size_g);
+    tridSmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.pads);
 #else
-    tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.pads, app.size_g);
+    tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.pads);
 #endif
     timing_end(&timer, &elapsed_trid_y);
 
@@ -354,9 +354,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatchIncMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.pads, app.size_g);
+    tridSmtsvStridedBatchIncMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.pads);
 #else
-    tridDmtsvStridedBatchIncMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.pads, app.size_g);
+    tridDmtsvStridedBatchIncMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.pads);
 #endif
     timing_end(&timer, &elapsed_trid_z);
   }
