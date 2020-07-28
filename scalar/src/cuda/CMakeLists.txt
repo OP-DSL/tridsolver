@@ -40,7 +40,9 @@ if (BUILD_FOR_GPU)
     # PROFILE disables macros with the suffix 2 to achieve lower overhead to use with profiler
 
     # DETAILED enables all macros and performs deatailed time measures, but has bigger overhead
-    set(PROFILING_LEVEL "DETAILED" CACHE STRING "Level of details for profiling")
+    set(PROFILING_LEVEL
+        "DETAILED"
+        CACHE STRING "Level of details for profiling")
     set_property(CACHE PROFILING_LEVEL PROPERTY STRINGS PROFILE DETAILED)
     cuda_add_library(profiling_cuda SHARED ./cuda_timing.cu)
     target_compile_options(profiling_cuda PRIVATE -fPIC)

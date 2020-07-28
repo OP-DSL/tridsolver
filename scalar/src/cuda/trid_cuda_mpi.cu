@@ -219,10 +219,10 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
           params.mpi_coords[solvedim], bidx - 1, batch_size, num_batches,
           reduced_len_g, sys_n, streams[bidx - 1]);
     }
+    cudaStreamSynchronize(streams[bidx]);
     BEGIN_PROFILING2("MPI_Iallgather");
     // Send boundaries of the current batch
     size_t recv_comm_buf_offset = 3 * reduced_len_g * batch_start;
-    cudaStreamSynchronize(streams[bidx]);
 #ifdef TRID_CUDA_AWARE_MPI
     // Gather the reduced system to all nodes (using CUDA aware MPI)
     MPI_Iallgather(boundaries + comm_buf_offset, comm_buf_size,
