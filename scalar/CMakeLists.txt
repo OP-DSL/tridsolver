@@ -6,7 +6,7 @@ option(BUILD_FOR_MIC "Build library for MIC architecture." OFF)
 option(BUILD_FOR_GPU "Build library for GPU architecture." OFF)
 option(BUILD_FOR_MPI "Build library for MPI combnied with the above architectures." OFF)
 option(USE_PROFILING "Build timing library for to measure timings." OFF)
-
+set(CMAKE_BUILD_TYPE "Release")
 if (INTEL_CC)
   option(PRODUCE_OPT_REPORT "Print intel optimisation reports" OFF)
   # Detect/find Intel compilers
@@ -35,7 +35,7 @@ project("libtrid")
 
 if (INTEL_CC)
   # Set compiler flags/options for Intel compiler
-  set(FLAGS_INTEL_DEFAULT "-O3 -xHost -m64 -parallel -qopenmp -qno-offload")
+  set(FLAGS_INTEL_DEFAULT "-O3 -xHost -m64 -parallel -qopenmp -qno-offload -g")
   if (PRODUCE_OPT_REPORT)
     set(FLAGS_INTEL_DEFAULT "${FLAGS_INTEL_DEFAULT} -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout")
   endif (PRODUCE_OPT_REPORT)
@@ -46,7 +46,7 @@ if (INTEL_CC)
   # cmake-format: on
 else (INTEL_CC)
   # Set compiler flags/options for GCC compiler
-  set(FLAGS_GCC_DEFAULT "-march=native -fopenmp") # -march=core-avx2
+  set(FLAGS_GCC_DEFAULT "-march=native -fopenmp -g") # -march=core-avx2
   set(FLAGS_GCC_DEBUG "-O0")
   set(FLAGS_GCC_RELEASE "-flto -fstrict-aliasing -finline-functions") # -ffast-math -fargument-noalias -fargument-
                                                                       # noalias-global

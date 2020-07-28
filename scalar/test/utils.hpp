@@ -9,6 +9,7 @@
 #include <random>
 #include <string>
 #include <vector>
+#include <omp.h>
 
 constexpr double ABS_TOLERANCE       = 1e-11;
 constexpr double REL_TOLERANCE       = 1e-11;
@@ -247,22 +248,27 @@ RandomMesh<Float, Align>::RandomMesh(const std::vector<int> dims,
 
   size_t num_elements =
       std::accumulate(_dims.begin(), _dims.end(), 1, std::multiplies<int>());
-  // Load arrays
-#pragma omp parallel for
-  for (int i = 0; i < 4; ++i) {
-    switch (i) {
-    case 0:
-      fill_array([&]() { return -1 + 0.1 * dist[i](mt[i]); }, num_elements, _a);
-      break;
-    case 1:
-      fill_array([&]() { return 2 + dist[i](mt[i]); }, num_elements, _b);
-      break;
-    case 2:
-      fill_array([&]() { return -1 + 0.1 * dist[i](mt[i]); }, num_elements, _c);
-      break;
-    default: fill_array([&]() { return dist[i](mt[i]); }, num_elements, _d);
-    }
-  }
+  _a.resize(num_elements);
+  _b.resize(num_elements);
+  _c.resize(num_elements);
+  _d.resize(num_elements);
+#pragma omp parallel
+{
+  std::mt19937 gen(omp_get_thread_num());
+  std::uniform_real_distribution<Float> dist;
+  #pragma omp for
+  for (size_t i = 0; i < num_elements; i++)
+	_a[i] = -1+0.1*dist(gen);
+  #pragma omp for
+  for (size_t i = 0; i < num_elements; i++)
+	_b[i] = 2+dist(gen);
+  #pragma omp for
+  for (size_t i = 0; i < num_elements; i++)
+	_c[i] = -1+0.1*dist(gen);
+  #pragma omp for
+  for (size_t i = 0; i < num_elements; i++)
+	_d[i] = dist(gen);
+}
 }
 
 template <typename Float, unsigned Align>
