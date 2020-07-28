@@ -6,7 +6,13 @@ option(BUILD_FOR_MIC "Build library for MIC architecture." OFF)
 option(BUILD_FOR_GPU "Build library for GPU architecture." OFF)
 option(BUILD_FOR_MPI "Build library for MPI combnied with the above architectures." OFF)
 option(USE_PROFILING "Build timing library for to measure timings." OFF)
-set(CMAKE_BUILD_TYPE "Release")
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE "Release" CACHE STRING
+      "Choose the type of build, options are: Debug Release
+RelWithDebInfo MinSizeRel."
+      FORCE)
+endif(NOT CMAKE_BUILD_TYPE)
+
 if (INTEL_CC)
   option(PRODUCE_OPT_REPORT "Print intel optimisation reports" OFF)
   # Detect/find Intel compilers
