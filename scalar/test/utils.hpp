@@ -98,11 +98,6 @@ public:
   const AlignedArray<Float, Align> &b() const { return _b; }
   const AlignedArray<Float, Align> &c() const { return _c; }
   const AlignedArray<Float, Align> &d() const { return _d; }
-
-private:
-  template <typename RandGenerator>
-  void fill_array(RandGenerator &&dist, size_t num_elements,
-                  AlignedArray<Float, Align> &array);
 };
 /**********************************************************************
  *                          Implementations                           *
@@ -242,9 +237,6 @@ RandomMesh<Float, Align>::RandomMesh(const std::vector<int> dims,
                                      size_t solvedim)
     : _solve_dim(solvedim), _dims(dims), _a{}, _b{}, _c{}, _d{} {
   assert(_solve_dim < _dims.size() && "solve dim greater than number of dims");
-  std::mt19937 mt[] = {std::mt19937(1), std::mt19937(2), std::mt19937(3),
-                       std::mt19937(4)};
-  std::uniform_real_distribution<Float> dist[4];
 
   size_t num_elements =
       std::accumulate(_dims.begin(), _dims.end(), 1, std::multiplies<int>());
@@ -253,34 +245,22 @@ RandomMesh<Float, Align>::RandomMesh(const std::vector<int> dims,
   _c.resize(num_elements);
   _d.resize(num_elements);
 #pragma omp parallel
-{
-  std::mt19937 gen(omp_get_thread_num());
-  std::uniform_real_distribution<Float> dist;
-  #pragma omp for
-  for (size_t i = 0; i < num_elements; i++)
-	_a[i] = -1+0.1*dist(gen);
-  #pragma omp for
-  for (size_t i = 0; i < num_elements; i++)
-	_b[i] = 2+dist(gen);
-  #pragma omp for
-  for (size_t i = 0; i < num_elements; i++)
-	_c[i] = -1+0.1*dist(gen);
-  #pragma omp for
-  for (size_t i = 0; i < num_elements; i++)
-	_d[i] = dist(gen);
-}
-}
-
-template <typename Float, unsigned Align>
-template <typename RandGenerator>
-void RandomMesh<Float, Align>::fill_array(RandGenerator &&dist,
-                                          size_t num_elements,
-                                          AlignedArray<Float, Align> &array) {
-  array.allocate(num_elements);
-  for (size_t i = 0; i < num_elements; ++i) {
-    array.push_back(dist());
+  {
+    std::mt19937 gen(omp_get_thread_num());
+    std::uniform_real_distribution<Float> dist;
+#pragma omp for
+    for (size_t i = 0; i < num_elements; i++)
+      _a[i] = -1 + 0.1 * dist(gen);
+#pragma omp for
+    for (size_t i = 0; i < num_elements; i++)
+      _b[i] = 2 + dist(gen);
+#pragma omp for
+    for (size_t i = 0; i < num_elements; i++)
+      _c[i] = -1 + 0.1 * dist(gen);
+#pragma omp for
+    for (size_t i = 0; i < num_elements; i++)
+      _d[i] = dist(gen);
   }
 }
-
 
 #endif /* end of include guard: __UTILS_HPP */
