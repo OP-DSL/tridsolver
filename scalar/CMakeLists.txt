@@ -38,6 +38,8 @@ if (INTEL_CC)
 endif (INTEL_CC)
 
 project("libtrid")
+list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+message(${PROJECT_SOURCE_DIR}/cmake)
 
 if (INTEL_CC)
   # Set compiler flags/options for Intel compiler

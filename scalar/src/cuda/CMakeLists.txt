@@ -80,9 +80,17 @@ if (BUILD_FOR_GPU)
 
   if (BUILD_FOR_MPI)
     option(USE_CUDA_AWARE_MPI "Build library with CUDA-aware MPI" OFF)
+    option(USE_NCCL "Build library with NCCL for MPI comms" OFF)
     find_package(MPI REQUIRED)
     find_package(OpenMP REQUIRED)
-    cuda_include_directories(SYSTEM ${MPI_INCLUDE_PATH})
+    # ---[ NCCL
+    if (USE_NCCL)
+      find_package(NCCL)
+      if (NCCL_FOUND)
+        add_definitions(-DTRID_NCCL)
+        include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
+      endif ()
+    endif ()
 
     cuda_add_library(
       tridcuda_mpi

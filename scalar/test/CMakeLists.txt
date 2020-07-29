@@ -79,6 +79,14 @@ if (BUILD_TESTING)
 
     if (BUILD_FOR_MPI)
       include(FindCUDA)
+      option(USE_NCCL "Build library with NCCL for MPI comms" OFF)
+      if (USE_NCCL)
+        find_package(NCCL)
+	if (NCCL_FOUND)
+	  add_definitions(-DTRID_NCCL)
+          include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
+	endif ()
+      endif ()
       set(MPI_TEST_NUM_PROC
           "2"
           CACHE STRING "The number of processes to launch in MPI tests.")
@@ -91,7 +99,7 @@ if (BUILD_TESTING)
         cuda_mpi_tests
         Catch
         tridcuda_mpi
-        ${MPI_CXX_LIBRARIES})
+        ${MPI_CXX_LIBRARIES} ${NCCL_LIBRARY})
       target_include_directories(cuda_mpi_tests PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
       add_test(
         NAME catch_cuda_mpi_test
@@ -111,7 +119,7 @@ if (BUILD_TESTING)
           cuda_mpi_perf_test
           tridcuda_mpi
           profiling_cuda
-          ${MPI_CXX_LIBRARIES})
+          ${MPI_CXX_LIBRARIES} ${NCCL_LIBRARY})
       endif (USE_PROFILING)
     endif (BUILD_FOR_MPI)
   endif (BUILD_FOR_GPU)

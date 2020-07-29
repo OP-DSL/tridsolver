@@ -30,6 +30,18 @@
 #include <algorithm>
 #include <mpi.h>
 #include <vector>
+#ifdef TRID_NCCL
+#include <stdio.h>
+#include "nccl.h"
+#define NCCLCHECK(cmd) do {                         \
+  ncclResult_t r = cmd;                             \
+  if (r!= ncclSuccess) {                            \
+    printf("Failed, NCCL error %s:%d '%s'\n",       \
+        __FILE__,__LINE__,ncclGetErrorString(r));   \
+    exit(EXIT_FAILURE);                             \
+  }                                                 \
+} while(0)
+#endif
 
 struct MpiSolverParams {
   // MPI communication strategies
@@ -50,6 +62,9 @@ struct MpiSolverParams {
   // communicator that includes every node calculating the same set of equations
   // as the current node for each dimension.
   std::vector<MPI_Comm> communicators;
+#ifdef TRID_NCCL
+  std::vector<ncclComm_t> ncclComms;
+#endif
 
   // The number of MPI processes in each dimension. It is `num_dims` large. It
   // won't be owned.
@@ -76,6 +91,9 @@ struct MpiSolverParams {
     MPI_Comm_rank(cartesian_communicator, &cart_rank);
     MPI_Cart_coords(cartesian_communicator, cart_rank, num_dims,
                     this->mpi_coords.data());
+#ifdef TRID_NCCL
+    ncclComms.resize(num_dims);
+#endif
     for (int equation_dim = 0; equation_dim < num_dims; ++equation_dim) {
       std::vector<int> neighbours = {cart_rank};
       int mpi_coord               = this->mpi_coords[equation_dim];
@@ -104,6 +122,19 @@ struct MpiSolverParams {
                      &neighbours_group);
       MPI_Comm_create(cartesian_communicator, neighbours_group,
                       &this->communicators[equation_dim]);
+#ifdef TRID_NCCL
+      int this_rank, this_size;
+      MPI_Comm_rank(this->communicators[equation_dim], &this_rank);
+      MPI_Comm_size(this->communicators[equation_dim], &this_size);
+      ncclUniqueId id;
+      if (this_rank == 0) {
+        NCCLCHECK(ncclGetUniqueId(&id));
+      }
+      MPI_Bcast((void *) &id, sizeof(id), MPI_BYTE, 0,
+                       this->communicators[equation_dim]);
+      NCCLCHECK(ncclCommInitRank(&this->ncclComms[equation_dim],
+				 neighbours.size(), id, this_rank));
+#endif
     }
   }
 };
