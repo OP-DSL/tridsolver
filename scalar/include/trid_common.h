@@ -30,37 +30,49 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014 
- 
-#ifndef __TRID_COMMON_H
-#define __TRID_COMMON_H
+// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk,
+// 2013-2014
+
+#ifndef TRID_COMMON_H__
+#define TRID_COMMON_H__
 
 #if FPPREC == 0
 #  define FP float
 #  define F  f
 #elif FPPREC == 1
 #  define FP double
-#  define F 
+#  define F
 #else
 #  error "Macro definition FPPREC unrecognized for CUDA"
 #endif
 
-#define WARP_SIZE 32
-#define ALIGN 32               // 32 byte alignment is required
-#define ALIGN_FLOAT  (ALIGN/4) // 32 byte/ 4bytes/float = 8
-//#define ALIGN_DOUBLE (ALIGN/2) // 32 byte/ 8bytes/float = 4
-#define ALIGN_DOUBLE (ALIGN/8) // 32 byte/ 8bytes/float = 4
-#define MAXDIM 8 // Maximal dimension that can be used in the library. Defines static arrays
+#define WARP_SIZE    32
+#define ALIGN        32          // 32 byte alignment is required
+#define ALIGN_FLOAT  (ALIGN / 4) // 32 byte/ 4bytes/float = 8
+#define ALIGN_DOUBLE (ALIGN / 8) // 32 byte/ 8bytes/float = 4
+// FIXME actual MAXDIM seems to be lower (3) in trid_cpu.cpp
+// Maximal dimension that can be used in the library. Defines static arrays
+#define MAXDIM          3
 #define CUDA_ALIGN_BYTE 32 // 32 byte alignment is used on CUDA-enabled GPUs
 
-//#define WARP_SIZE 32
-//#define ALIGN 32               // 32 byte alignment is required
-//#define ALIGN_FLOAT  (ALIGN/4) // 32 byte/ 4bytes/float = 8
-////#define ALIGN_DOUBLE (ALIGN/2) // 32 byte/ 8bytes/float = 4
-//#define ALIGN_DOUBLE (ALIGN/8) // 32 byte/ 8bytes/float = 4
-//
-//#define MAXDIM 8 // Maximal dimension that can be used in the library. Defines static arrays
-//
-//#define CUDA_ALIGN_BYTE 32 // 32 byte alignment is used on CUDA-enabled GPUs
+#ifdef __cplusplus
+#  define EXTERN_C extern "C"
+#else
+#  define EXTERN_C
+#endif
+
+/* This is just a copy of CUSPARSE enums */
+typedef enum {
+  TRID_STATUS_SUCCESS                   = 0,
+  TRID_STATUS_NOT_INITIALIZED           = 1,
+  TRID_STATUS_ALLOC_FAILED              = 2,
+  TRID_STATUS_INVALID_VALUE             = 3,
+  TRID_STATUS_ARCH_MISMATCH             = 4,
+  TRID_STATUS_MAPPING_ERROR             = 5,
+  TRID_STATUS_EXECUTION_FAILED          = 6,
+  TRID_STATUS_INTERNAL_ERROR            = 7,
+  TRID_STATUS_MATRIX_TYPE_NOT_SUPPORTED = 8,
+  TRID_STATUS_ZERO_PIVOT                = 9
+} tridStatus_t;
 
 #endif

@@ -35,7 +35,7 @@
 
 // CUDA 5.5 did not have certain definitions of the __shfl() intrinsic
 #if CUDA_VERSION == 5500
-  __forceinline__ __device__ double __shfl_up(double x, uint s) {
+  __forceinline__ __device__ double trid_shfl_up(double x, uint s) {
     int lo, hi;
     asm volatile( "mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(x) );
     lo = __shfl_up(lo,s);
@@ -44,7 +44,7 @@
     return x;
   }
   
-  __forceinline__ __device__ double __shfl_down(double x, uint s) {
+  __forceinline__ __device__ double trid_shfl_down(double x, uint s) {
     int lo, hi;
     asm volatile( "mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(x) );
     lo = __shfl_down(lo,s);
@@ -53,7 +53,7 @@
     return x;
   }
   
-  __forceinline__ __device__ double __shfl_xor(double x, int s) {
+  __forceinline__ __device__ double trid_shfl_xor(double x, int s) {
     int lo, hi;
     asm volatile( "mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(x) );
     lo = __shfl_xor(lo,s);
@@ -61,6 +61,20 @@
     asm volatile( "mov.b64 %0, {%1,%2};" : "=d"(x) : "r"(lo), "r"(hi) );
     return x;
   }
+#elif __CUDACC_VER_MAJOR__ >= 9
+  /* Regular __shfl()-type functions have been deprecated.  Use Sync versions */
+/* Against the advice of NVIDIA's blog: https://devblogs.nvidia.com/using-cuda-warp-level-primitives/ */
+#define FULL_MASK 0xffffffff
+
+#define trid_shfl(var, srcLane) __shfl_sync(FULL_MASK, (var), (srcLane))
+#define trid_shfl_up(val, offset) __shfl_up_sync(FULL_MASK, (val), (offset))
+#define trid_shfl_down(val, offset) __shfl_down_sync(FULL_MASK, (val), (offset))
+#define trid_shfl_xor(val, offset) __shfl_xor_sync(FULL_MASK, (val), (offset))
+#else
+#define trid_shfl(var, srcLane) __shfl((var), (srcLane))
+#define trid_shfl_up(val, offset) __shfl_up((val), (offset))
+#define trid_shfl_down(val, offset) __shfl_down((val), (offset))
+#define trid_shfl_xor(val, offset) __shfl_xor((val), (offset))
 #endif
 
 #endif

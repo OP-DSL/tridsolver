@@ -3,18 +3,22 @@ cmake_minimum_required(VERSION 2.8.8)
 option(INTEL_CC "Use the Intel compiler." ON) 
 option(BUILD_FOR_CPU "Build library for CPU architecture." OFF) 
 option(BUILD_FOR_MIC "Build library for MIC architecture." OFF) 
-option(BUILD_FOR_GPU "Build library for GPU architecture." OFF) 
+option(BUILD_FOR_GPU "Build library for GPU architecture." OFF)
+option(BUILD_FOR_MPI "Build library for MPI combnied with the above architectures." OFF)
+set(LIBTRID_PATH $ENV{TRIDSOLVER_INSTALL_PATH}
+  CACHE STRING "Tridsolver (scalar) installation directory")
 
 if (INTEL_CC) 
   # Detect/find Intel compilers
-  find_program(CMAKE_C_COMPILER NAMES   icc) 
-  find_program(CMAKE_CXX_COMPILER NAMES icpc) 
+  find_program(CMAKE_C_COMPILER NAMES   mpicc) 
+  find_program(CMAKE_CXX_COMPILER NAMES mpicxx) 
   find_program(CMAKE_AR NAMES           xiar) 
   find_program(CMAKE_LINKER NAMES       xild) 
 
   set(INTEL_PATH $ENV{INTEL_PATH} CACHE FILEPATH "Intel compiler suite path")
   #set(CMAKE_C_COMPILER   ${INTEL_PATH}/bin/intel64/icc  CACHE FILEPATH "Intel compiler is prefered")
   #set(CMAKE_CXX_COMPILER ${INTEL_PATH}/bin/intel64/icpc CACHE FILEPATH "Intel compiler is prefered")
+  set(MPI_PATH $ENV{MPI_INSTALL_PATH} CACHE FILEPATH "MPI library path")
 
   if (CMAKE_C_COMPILER MATCHES CMAKE_C_COMPILER-NOTFOUND OR 
       CMAKE_CXX_COMPILER MATCHES CMAKE_CXX_COMPILER-NOTFOUND OR 
@@ -28,10 +32,10 @@ project("adi")
 
 if (INTEL_CC) 
   # Set compiler flags/options for Intel compiler
-  #set(FLAGS_INTEL_DEFAULT "-xCORE_AVX2 -parallel -openmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par -opt-report-phase=offload")
-  set(FLAGS_INTEL_DEFAULT "-xAVX -m64 -parallel -openmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par") #-xCORE_AVX2 
-  set(FLAGS_INTEL_DEBUG   "-g -O0")
-  set(FLAGS_INTEL_RELEASE "-O3 -ip -restrict") #-fp-model fast 
+  set(FLAGS_INTEL_DEFAULT "-O3 -xMIC-AVX512 -xHost -m64 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout")
+  #set(FLAGS_INTEL_DEFAULT "-xAVX -m64 -parallel -openmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par") #-xCORE_AVX2 
+  set(FLAGS_INTEL_DEBUG   "-O3 -xMIC-AVX512 -xHost -m64 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout -g")
+  set(FLAGS_INTEL_RELEASE "-O3 -xMIC-AVX512 -xHost -m64 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout") #-fp-model fast 
 
   set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS}       ${FLAGS_INTEL_DEFAULT}")
   set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_INTEL_DEBUG}  ")
@@ -58,8 +62,6 @@ endif (INTEL_CC)
 
 #set(CMAKE_GENERATOR_TOOLSET "Intel C++ Compiler XE 15.0" CACHE STRING "Platform Toolset" FORCE)
 
-set(LIBTRID_PATH "/home/endre/repos/tridsolver/scalar/build")
-
 set(N_MAX 1024 CACHE STRING "Maximum length of the internal buffer for storing intermediate c and d vectors of the Thomas algorithm") 
 add_definitions(-DN_MAX=${N_MAX}) 
 
@@ -75,11 +77,16 @@ if (BUILD_FOR_CPU)
   target_link_libraries(adi_cpu PRIVATE -L${LIBTRID_PATH}/lib -ltridcpu -L${INTEL_PATH}/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
 
   #/opt/intel/composer_xe_2015.3.187/bin/intel64/icc -O3 -xAVX -ip -restrict -parallel -fopenmp -openmp-report2 -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par  -DFPPREC=0  -DN_MAX=1024  -I./include -I./libtrid  -I./include -I./libtrid -I/opt/intel/composer_xe_2015.3.187/mkl/include   -D__LAPACKE__ src/adi_cpu.cpp -L/opt/intel/composer_xe_2015.3.187/mkl/lib/intel64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -L/opt/intel/composer_xe_2015.3.187/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts -o adi_mkl
+
   add_executable(adi_mkl src/adi_cpu.cpp)
   target_compile_definitions(adi_mkl PRIVATE -D__MKL__)
-  target_compile_options(adi_mkl PRIVATE -xAVX -parallel -openmp -no-offload)
+  target_compile_options(adi_mkl PRIVATE -xAVX -parallel -qopenmp -no-offload)
   target_include_directories(adi_mkl PRIVATE ${INTEL_PATH}/mkl/include ${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include)
   target_link_libraries(adi_mkl -L${LIBTRID_PATH}/lib -ltridcpu -L${INTEL_PATH}/mkl/lib/intel64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -L${INTEL_PATH}/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
+
+  add_executable(adi_mpi_cpu src/adi_mpi_cpu.cpp)
+  target_include_directories(adi_mpi_cpu PRIVATE ${INTEL_PATH}/mkl/include ${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include ${MPI_PATH}/include)
+  target_link_libraries(adi_mpi_cpu PRIVATE -L${LIBTRID_PATH}/lib -ltridcpu -L${INTEL_PATH}/compiler/lib/intel64 -L${MPI_PATH}/lib -lmpi -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
 
 endif (BUILD_FOR_CPU)
 
@@ -87,11 +94,11 @@ if (BUILD_FOR_MIC)
   add_executable(adi_mic_offload src/adi_cpu.cpp)
   target_link_libraries(adi_mic_offload ${LIBTRID_PATH}/lib/libtridmic_offload.so)
   target_include_directories(adi_mic_offload PRIVATE ../libtrid/include)
-  target_compile_options(adi_mic_offload PRIVATE -xAVX -parallel -openmp -opt-report-phase=offload -offload-attribute-target=mic -mkl -offload-option,mic,ld,"-L${INTEL_PATH}/mkl/lib/mic -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -L${INTEL_PATH}/compiler/lib/mic -limf -lintlc -lsvml -lirng -liomp5 -loffload -lcilkrts" -I./include -I./libtrid  -D__OFFLOAD__ -L./libtrid/lib -limf -lintlc -lsvml -lirng)
+  target_compile_options(adi_mic_offload PRIVATE -xAVX -parallel -qopenmp -opt-report-phase=offload -offload-attribute-target=mic -mkl -offload-option,mic,ld,"-L${INTEL_PATH}/mkl/lib/mic -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -L${INTEL_PATH}/compiler/lib/mic -limf -lintlc -lsvml -lirng -liomp5 -loffload -lcilkrts" -I./include -I./libtrid  -D__OFFLOAD__ -L./libtrid/lib -limf -lintlc -lsvml -lirng)
 
   add_executable(adi_mic_offload_mkl src/adi_cpu.cpp)
   target_compile_definitions(adi_mic_offload_mkl PRIVATE -D__MKL__)
-  target_compile_options(adi_mic_offload_mkl PRIVATE -xAVX -parallel -openmp -offload)
+  target_compile_options(adi_mic_offload_mkl PRIVATE -xAVX -parallel -qopenmp -offload)
   target_include_directories(adi_mic_offload_mkl PRIVATE -I/opt/intel/composer_xe_2015.3.187/mkl/include)
   target_link_libraries(adi_mic_offload_mkl ${LIBTRID_PATH}/lib/libtridcpu.so -L${INTEL_PATH}/mkl/lib/intel64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -L${INTEL_PATH}/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
 
@@ -99,14 +106,14 @@ if (BUILD_FOR_MIC)
 
   add_executable(adi_mic_native src/adi_cpu.cpp)
   #target_compile_definitions(adi_mic_native PRIVATE -D__MKL__)
-  target_compile_options(adi_mic_native PRIVATE -mmic -parallel -openmp )
+  target_compile_options(adi_mic_native PRIVATE -mmic -parallel -qopenmp )
   #target_include_directories(adi_mic_native PRIVATE -I${INTEL_PATH}/mkl/include)
   target_link_libraries(adi_mic_native ${LIBTRID_PATH}/lib/libtridmic_native.so)
 
 
   add_executable(adi_mic_native_mkl src/adi_cpu.cpp)
   target_compile_definitions(adi_mic_native_mkl PRIVATE -D__MKL__)
-  target_compile_options(adi_mic_native_mkl PRIVATE -mmic -parallel -openmp )
+  target_compile_options(adi_mic_native_mkl PRIVATE -mmic -parallel -qopenmp )
   target_include_directories(adi_mic_native_mkl PRIVATE -I${INTEL_PATH}/mkl/include)
   target_link_libraries(adi_mic_native_mkl ${LIBTRID_PATH}/lib/libtridmic_native.so -L./libtrid/lib -limf -lintlc -lsvml -lirng) #-L$(INTEL_PATH)/mkl/lib/mic -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_rt -liomp5 -lpthread -lm -lgfortran)
 endif (BUILD_FOR_MIC)
@@ -116,14 +123,23 @@ if (BUILD_FOR_GPU)
   #find_package(CUDA)
 
   set(CUDA_PROPAGATE_HOST_FLAGS OFF)
-  set(CUDA_NVCC_FLAGS         "-arch sm_35 --ptxas-options=-v -Xptxas -dlcm=cg")
+  set(CUDA_NVCC_FLAGS         "-arch sm_35 --ptxas-options=-v -Xptxas -dlcm=cg -std=c++11")
   set(CUDA_NVCC_FLAGS_DEBUG   "-g -G -O0 -ftz=false -fmad=false")
   set(CUDA_NVCC_FLAGS_RELEASE "-O3")
 
   set(CUDA_LIBRARIES ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcudart.so)
   cuda_include_directories(${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include)
   cuda_add_executable(adi_cuda src/adi_cuda.cu src/preproc.cu)
+  cuda_add_cublas_to_target(adi_cuda)
   target_link_libraries(adi_cuda -L${LIBTRID_PATH}/lib -ltridcuda)
+  
+  find_package(MPI REQUIRED)
+  find_package(OpenMP REQUIRED)
+  cuda_include_directories(SYSTEM ${MPI_INCLUDE_PATH})
+  cuda_add_executable(adi_mpi_cuda src/adi_mpi_cuda.cu)
+  #cuda_include_directories(${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include SYSTEM ${MPI_INCLUDE_PATH})
+  cuda_add_cublas_to_target(adi_mpi_cuda)
+  target_link_libraries(adi_mpi_cuda -L${LIBTRID_PATH}/lib -ltridcuda -ltridcuda_mpi ${MPI_C_LIBRARIES})
 endif (BUILD_FOR_GPU)
 
 

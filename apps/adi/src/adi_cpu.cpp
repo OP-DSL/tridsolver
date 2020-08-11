@@ -30,8 +30,8 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014 
- 
+// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -41,9 +41,9 @@
 #include "trid_cpu.h"
 
 #include "omp.h"
-#include "offload.h"
+//#include "offload.h"
 
-#ifdef __MKL__ 
+#ifdef __MKL__
   #include "mkl.h"
 #endif
 
@@ -56,7 +56,7 @@
 
   __attribute__((target(mic)))
   inline void timing_end(int prof, double *timer, double *elapsed_accumulate, char *str);
-#endif 
+#endif
 
 #define ROUND_DOWN(N,step) (((N)/(step))*step)
 
@@ -84,12 +84,28 @@ inline void timing_end(int prof, double *timer, double *elapsed_accumulate, char
   if(prof==1) {
     elapsed = elapsed_time(timer);
     *elapsed_accumulate += elapsed;
-    printf("\n elapsed %s (sec): %1.10f (s) \n", str,elapsed);
+    //printf("\n elapsed %s (sec): %1.10f (s) \n", str,elapsed);
   }
 }
 
+void rms(char* name, FP* array, int nx_pad, int nx, int ny, int nz) {
+  //Sum the square of values in app.h_u
+  double sum = 0.0;
+  for(int k=0; k<nz; k++) {
+    for(int j=0; j<ny; j++) {
+      for(int i=0; i<nx; i++) {
+        int ind = k*nx_pad*ny + j*nx_pad + i;
+        //sum += array[ind]*array[ind];
+        sum += array[ind];
+      }
+    }
+  }
+
+  printf("%s sum = %lg\n", name, sum);
+}
+
 extern char *optarg;
-extern int  optind, opterr, optopt; 
+extern int  optind, opterr, optopt;
 static struct option options[] = {
   {"nx",   required_argument, 0,  0   },
   {"ny",   required_argument, 0,  0   },
@@ -109,7 +125,7 @@ void print_help() {
   exit(0);
 }
 
-int main(int argc, char* argv[]) { 
+int main(int argc, char* argv[]) {
   double timer, timer2, elapsed, elapsed_total, elapsed_preproc, elapsed_trid_x, elapsed_trid_y, elapsed_trid_z;
 
   int i, j, k, ind, it;
@@ -117,10 +133,10 @@ int main(int argc, char* argv[]) {
 
   // 'h_' prefix - CPU (host) memory space
   FP  *__restrict__ h_u, *__restrict__ h_tmp, *__restrict__ h_du,
-      *__restrict__ h_ax, *__restrict__ h_bx, *__restrict__ h_cx, 
+      *__restrict__ h_ax, *__restrict__ h_bx, *__restrict__ h_cx,
       *__restrict__ h_ay, *__restrict__ h_by, *__restrict__ h_cy,
-      *__restrict__ h_az, *__restrict__ h_bz, *__restrict__ h_cz, 
-      *__restrict__ tmp, 
+      *__restrict__ h_az, *__restrict__ h_bz, *__restrict__ h_cz,
+      *__restrict__ tmp,
       err, lambda=1.0f; // lam = dt/dx^2
 
   // Set defaults options
@@ -128,13 +144,13 @@ int main(int argc, char* argv[]) {
   ny   = 256;
   nz   = 256;
   iter = 10;
-  opt  = 0; 
-  prof = 1; 
+  opt  = 0;
+  prof = 1;
 
   // Process arguments
   int opt_index = 0;
   while( getopt_long_only(argc, argv, "", options, &opt_index) != -1) {
-    if(strcmp((char*)options[opt_index].name,"nx"  ) == 0) nx   = atoi(optarg); 
+    if(strcmp((char*)options[opt_index].name,"nx"  ) == 0) nx   = atoi(optarg);
     if(strcmp((char*)options[opt_index].name,"ny"  ) == 0) ny   = atoi(optarg);
     if(strcmp((char*)options[opt_index].name,"nz"  ) == 0) nz   = atoi(optarg);
     if(strcmp((char*)options[opt_index].name,"iter") == 0) iter = atoi(optarg);
@@ -180,289 +196,89 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  // Warm up computation: result stored in h_tmp which is not used later
-  #ifdef __OFFLOAD__
-    #pragma offload target(mic:0) inout(h_u,h_tmp,h_du,h_ax,h_bx,h_cx,h_ay,h_by,h_cy,h_az,h_bz,h_cz:length(nx_pad*ny*nz)) inout(elapsed_total, elapsed_preproc, elapsed_trid_x, elapsed_trid_y, elapsed_trid_z) //signal(&s1)
-    preproc<FP>(lambda, h_tmp, h_du, h_ax, h_bx, h_cx, h_ay, h_by, h_cy, h_az, h_bz, h_cz, nx, nx_pad, ny, nz);
-  #endif
 
   // reset elapsed time counters
   elapsed_total   = 0.0;
-  elapsed_preproc = 0.0;  
+  elapsed_preproc = 0.0;
   elapsed_trid_x  = 0.0;
   elapsed_trid_y  = 0.0;
   elapsed_trid_z  = 0.0;
 
 
-  //int s1=0;
-  #ifdef __OFFLOAD__
-    #pragma offload_transfer target(mic:0) in(h_u,h_du,h_ax,h_bx,h_cx,h_ay,h_by,h_cy,h_az,h_bz,h_cz:length(nx_pad*ny*nz) alloc_if(1) free_if(0)) 
-    #pragma offload_transfer target(mic:0) in(elapsed_total, elapsed_preproc, elapsed_trid_x, elapsed_trid_y, elapsed_trid_z: alloc_if(1) free_if(0))
-    #pragma offload_transfer target(mic:0) in(nx,nx_pad,ny,nz,i,j,k: alloc_if(1) free_if(0))
-    #pragma offload          target(mic:0) nocopy(h_u,h_du,h_ax,h_bx,h_cx,h_ay,h_by,h_cy,h_az,h_bz,h_cz:length(nx_pad*ny*nz) alloc_if(0) free_if(0)) 
-    //#pragma offload target(mic:0) inout(h_u,h_du,h_ax,h_bx,h_cx,h_ay,h_by,h_cy,h_az,h_bz,h_cz:length(nx_pad*ny*nz)) inout(elapsed_total, elapsed_preproc, elapsed_trid_x, elapsed_trid_y, elapsed_trid_z) //signal(&s1)
-  #endif
-  {
-  //printf("Running on MIC target = %d \n", _Offload_get_device_number() );
   elapsed_time(&timer2);
   for(it = 0; it<iter; it++) {
+
     //
     // calculate r.h.s. and set tri-diagonal coefficients
     //
     timing_start(prof, &timer);
       preproc<FP>(lambda, h_u, h_du, h_ax, h_bx, h_cx, h_ay, h_by, h_cy, h_az, h_bz, h_cz, nx, nx_pad, ny, nz);
-      //preproc_simd(lambda, u, du, ax, bx, cx, ay, by, cy, az, bz, cz, nx, ny, nz);
     timing_end(prof, &timer, &elapsed_preproc, "preproc");
-
+    
     //
     // perform tri-diagonal solves in x-direction
     //
     timing_start(prof, &timer);
 
-    #ifdef VALID
-      for(k=0; k<nz; k++) {
-        for(j=0; j<ny; j++) {
-          ind = k*nx_pad*ny + j*nx_pad;
-          trid_scalar(&h_ax[ind], &h_bx[ind], &h_cx[ind], &h_du[ind], &h_u[ind], nx, 1);
-        }
-      }
-    #else
-    #ifdef __MKL__
-      #pragma omp parallel for private(k,j,ind) collapse(2) 
-      for(k=0; k<nz; k++) {
-        for(j=0; j<ny; j++) {
-          ind = k*nx_pad*ny + j*nx_pad;
-          // Set MKL variables
-                MKL_INT info = 0;
-          const MKL_INT n    = nx; // PADDING?
-          const MKL_INT nrhs = 1;
-                FP*     dl   = &h_ax[ind+1]; // first element in the lower diagonal is here
-                FP*     d    = &h_bx[ind];   // first element in the diagonal is here
-                FP*     du   = &h_cx[ind];   // first element in the upper diagonal is here
-                FP*     b    = &h_du[ind];
-          const MKL_INT ldb  = n;
-          #if FPPREC == 0
-            sdtsvb(&n, &nrhs, dl, d, du, b, &ldb, &info);                          // Without pivoting
-            //info = LAPACKE_sgtsv_work(matrix_order, n, nrhs, dl, d, du, b, ldb); // With pivoting
-            //info = LAPACKE_sgtsv(matrix_order, n, nrhs, dl, d, du, b, ldb);      // With pivoting and sanity check, eg. NaN 
-          #elif FPPREC == 1
-            ddtsvb(&n, &nrhs, dl, d, du, b, &ldb, &info);
-            //info = LAPACKE_dgtsv_work(matrix_order, n, nrhs, dl, d, du, b, ldb);
-            //info = LAPACKE_dgtsv(matrix_order, n, nrhs, dl, d, du, b, ldb);
-          #endif
+    // Tridiagonal solver option arguemnt's setup
+    int ndim = 3;  // Number of dimensions of the (hyper)cubic data structure.
+    int dims[3];   // Array containing the sizes of each ndim dimensions. size(dims) == ndim <=MAXDIM
+    int pads[3];   // Padded sizes along each ndim number of dimensions
+    dims[0] = nx;
+    dims[1] = ny;
+    dims[2] = nz;
+    pads[0] = dims[0];
+    pads[1] = dims[1];
+    pads[2] = dims[2];
 
-          if(info!=0) {
-            printf("MKL info = %d \n",info);
-            exit(0);
-          }
-        }
-      }
-    #else
-      // Tridiagonal solver option arguemnt's setup
-      int ndim = 3;  // Number of dimensions of the (hyper)cubic data structure.
-      int dims[3];   // Array containing the sizes of each ndim dimensions. size(dims) == ndim <=MAXDIM
-      int pads[3];   // Padded sizes along each ndim number of dimensions
-      dims[0] = nx;
-      dims[1] = ny;
-      dims[2] = nz;
-      pads[0] = dims[0];
-      pads[1] = dims[1];
-      pads[2] = dims[2];
-
-      //initTridMultiDimBatchSolve(ndim, dims, pads);
-
-      int solvedim = 0;   // user chosen dimension for which the solution is performed
-      #if FPPREC == 0
-        tridSmtsvStridedBatch(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
-      #elif FPPREC == 1
-        tridDmtsvStridedBatch(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
-      #endif
-
-      //  #pragma omp parallel for private(k,j,ind) collapse(2) //schedule(guided) //private(j2) //private(j,c2,d2) //collapse(2)
-      //  for(k=0; k<nz; k++) {
-      //    //for(j=0; j<ny; j++) {
-      //    //  ind = k*nx_pad*ny + j*nx_pad;
-      //    //  trid_scalar(&h_ax[ind], &h_bx[ind], &h_cx[ind], &h_du[ind], &h_u[ind], nx, 1);
-      //    //}
-      //    //for(j=0; j<ny; j+=SIMD_VEC) {
-      //    for(j=0; j<ROUND_DOWN(ny,SIMD_VEC); j+=SIMD_VEC) {
-      //      ind = k*nx_pad*ny + j*nx_pad;
-      //      #if FPPREC == 0
-      //        trid_x_transposeS(&h_ax[ind], &h_bx[ind], &h_cx[ind], &h_du[ind], &h_u[ind], nx, nx_pad, 1);
-      //      #elif FPPREC == 1
-      //        trid_x_transposeD(&h_ax[ind], &h_bx[ind], &h_cx[ind], &h_du[ind], &h_u[ind], nx, nx_pad, 1);
-      //      #endif
-      //    }
-      ////      #else
-      ////        for(j=0; j<ny; j+=SIMD_VEC) {
-      ////          ind = k*nx*ny + j*nx;
-      ////          trid_gather(&h_ax[ind], &h_bx[ind], &h_cx[ind], &h_du[ind], &h_u[ind], nx, 1);
-      ////        }
-      ////      #endif
-      //  }
-      //  if(ROUND_DOWN(ny,SIMD_VEC) < ny) { // If there is leftover, fork threads an compute it
-      //    #pragma omp parallel for collapse(2) private(k,j,ind)
-      //    for(k=0; k<nz; k++) {
-      //      for(j=ROUND_DOWN(nx,SIMD_VEC); j<nx; j++) {
-      //        ind = k*nx_pad*ny + j*nx_pad;
-      //        #if FPPREC == 0
-      //          trid_scalarS(&h_ax[ind], &h_bx[ind], &h_cx[ind], &h_du[ind], &h_u[ind], nx, 1);
-      //        #elif FPPREC == 1
-      //          trid_scalarD(&h_ax[ind], &h_bx[ind], &h_cx[ind], &h_du[ind], &h_u[ind], nx, 1);
-      //        #endif
-      //      }
-      //    }
-      //  }
+    int solvedim = 0;   // user chosen dimension for which the solution is performed
+    #if FPPREC == 0
+      tridSmtsvStridedBatch(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
+    #elif FPPREC == 1
+      tridDmtsvStridedBatch(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
     #endif
-    #endif
-      timing_end(prof, &timer, &elapsed_trid_x, "trid_x");
+
+    timing_end(prof, &timer, &elapsed_trid_x, "trid_x");
     
     //
     // perform tri-diagonal solves in y-direction
     //
     timing_start(prof, &timer);
-    #ifdef VALID
-      for(k=0; k<nz; k++) {
-        for(i=0; i<nx; i++) {
-          ind = k*nx_pad*ny + i;
-          #if FPPREC == 0
-            trid_scalarS(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad);
-          #elif FPPREC == 1
-            trid_scalarD(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad);
-          #endif
-        }
-      }
-    #else
-      #pragma omp parallel for collapse(2) private(k,i,ind) //schedule(guided)
-      for(k=0; k<nz; k++) {
-        //for(i=0; i<nx; i++) {
-        //  ind = k*nx*ny + i;
-        //  trid_scalar_vec<FP>(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad);
-        for(i=0; i<ROUND_DOWN(nx,SIMD_VEC); i+=SIMD_VEC) {
-          ind = k*nx_pad*ny + i;
-          #ifdef __MIC__
-            //printf("&h_ay[ind] = %ld;  &((F32vec16*)&(h_ay[ind]))[0] = %ld \n", &h_ay[ind], &((F32vec16*)&(h_ay[ind]))[0]);
-            //trid_scalar_vec<FP,VECTOR,0>(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad/SIMD_VEC);
-            #if FPPREC == 0
-              trid_scalar_vecS(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad/SIMD_VEC);
-            #elif FPPREC == 1
-              trid_scalar_vecD(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad/SIMD_VEC);
-            #endif
-            //if( ((long)(__m512*)&(h_by[0])) % 64 != 0 ) printf("NOT ALIGNED\n");
-            //printf("SIMD_WIDTH = %d \n",SIMD_WIDTH);
-          #else 
-            //trid_scalar_vec<FP,VECTOR,0>(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad/SIMD_VEC);
-            #if FPPREC == 0
-              trid_scalar_vecS(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad/SIMD_VEC);
-            #elif FPPREC == 1
-              trid_scalar_vecD(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad/SIMD_VEC);
-            #endif
-            //trid_y_cpu(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad/SIMD_VEC);
-          #endif
-        //trid_y_cpu(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad/SIMD_VEC);
-        }
-      }
-      if(ROUND_DOWN(nx,SIMD_VEC) < nx) { // If there is leftover, fork threads an compute it
-        #pragma omp parallel for collapse(2) private(k,i,ind)
-        for(k=0; k<nz; k++) {
-          for(i=ROUND_DOWN(nx,SIMD_VEC); i<nx; i++) {
-            ind = k*nx_pad*ny + i;
-            #if FPPREC == 0
-              trid_scalarS(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad);
-            #elif FPPREC == 1
-              trid_scalarD(&h_ay[ind], &h_by[ind], &h_cy[ind], &h_du[ind], &h_u[ind], ny, nx_pad);
-            #endif
-          }
-        }
-      }
+
+    solvedim = 1;   // user chosen dimension for which the solution is performed
+    #if FPPREC == 0
+      tridSmtsvStridedBatch(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
+    #elif FPPREC == 1
+      tridDmtsvStridedBatch(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
     #endif
+    
     timing_end(prof, &timer, &elapsed_trid_y, "trid_y");
-  
+
     //
     // perform tridiagonal solves in z-direction
     //
     timing_start(prof, &timer);
 
-    #ifdef VALID
-      for(j=0; j<ny; j++) {
-        for(i=0; i<nx; i++) {
-          ind = j*nx_pad + i;
-          #if FPPREC == 0
-            trid_scalarS(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, nx_pad*ny);
-          #elif FPPREC == 1
-            trid_scalarD(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, nx_pad*ny);
-          #endif
-          for(k=0; k<nz; k++) {
-            h_u[ind + k*nx_pad*ny] += h_du[ind + k*nx_pad*ny];
-          }
-        }
-      }
-    #else
-      #pragma omp parallel for collapse(2) private(j,i,k,ind) schedule(static,1) // Interleaved scheduling for better data locality and thus lower TLB miss rate
-      for(j=0; j<ny; j++) {
-        for(i=0; i<ROUND_DOWN(nx,SIMD_VEC); i+=SIMD_VEC) {
-          ind = j*nx_pad + i;
-          #ifdef __MIC__
-            //trid_scalar_vec<FP,VECTOR,1>(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, (nx_pad/SIMD_VEC)*ny);
-            #if FPPREC == 0
-              trid_scalar_vecSInc(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, (nx_pad/SIMD_VEC)*ny);
-            #elif FPPREC == 1
-              trid_scalar_vecDInc(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, (nx_pad/SIMD_VEC)*ny);
-            #endif
-          #else
-            //trid_scalar_vec<FP,VECTOR,1>(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, (nx_pad/SIMD_VEC)*ny);
-            #if FPPREC == 0
-              trid_scalar_vecSInc(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, (nx_pad/SIMD_VEC)*ny);
-            #elif FPPREC == 1
-              trid_scalar_vecDInc(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, (nx_pad/SIMD_VEC)*ny);
-            #endif
-            //trid_z_cpu(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, (nx_pad/SIMD_VEC)*ny);
-          #endif
-
-          //for(i=0; i<nx; i++) {
-          //  ind = j*nx_pad + i;
-          //  trid_scalar(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, nx_pad*ny);
-          //  for(k=0; k<nz; k++) {
-          //    h_u[ind + k*nx_pad*ny] += h_du[ind + k*nx_pad*ny];
-          //  }
-        }
-      }
-      if(ROUND_DOWN(nx,SIMD_VEC) < nx) { // If there is leftover, fork threads an compute it
-        #pragma omp parallel for collapse(2) private(j,i,k,ind) schedule(static,1)
-        for(j=0; j<ny; j++) {
-          for(i=ROUND_DOWN(nx,SIMD_VEC); i<nx; i++) {
-            ind = j*nx_pad + i;
-            #if FPPREC == 0
-              trid_scalarS(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, nx_pad*ny);
-            #elif FPPREC == 1
-              trid_scalarD(&h_az[ind], &h_bz[ind], &h_cz[ind], &h_du[ind], &h_u[ind], nz, nx_pad*ny);
-            #endif
-            for(k=0; k<nz; k++) {
-              h_u[ind + k*nx_pad*ny] += h_du[ind + k*nx_pad*ny];
-            }
-          }
-        }
-      }
-
+    solvedim = 2;   // user chosen dimension for which the solution is performed
+    #if FPPREC == 0
+      tridSmtsvStridedBatchInc(h_az, h_bz, h_cz, h_du, h_u, ndim, solvedim, dims, pads);
+    #elif FPPREC == 1
+      tridDmtsvStridedBatchInc(h_az, h_bz, h_cz, h_du, h_u, ndim, solvedim, dims, pads);
     #endif
+
     timing_end(prof, &timer, &elapsed_trid_z, "trid_z");
   }
+  
+  rms("end h_u",h_u, nx_pad, nx, ny, nz);
+  rms("end du", h_du, nx_pad, nx, ny, nz);
+  
   elapsed = elapsed_time(&timer2);
   elapsed_total = elapsed;
   printf("\nADI total execution time for %d iterations (sec): %f (s) \n", iter, elapsed);
   fflush(0);
-}
 
-  #ifdef __OFFLOAD__
-    #pragma offload_transfer target(mic:0) out(h_u,h_du,h_ax,h_bx,h_cx,h_ay,h_by,h_cy,h_az,h_bz,h_cz:length(nx_pad*ny*nz) alloc_if(0) free_if(1)) 
-    #pragma offload_transfer target(mic:0) out(elapsed_total, elapsed_preproc, elapsed_trid_x, elapsed_trid_y, elapsed_trid_z: alloc_if(0) free_if(1)) //:length(1) free_if(1)) 
-  #endif
-
-  //tmp = h_du;
-  //h_du = h_u;
-  //h_u = tmp;
   int ldim=nx_pad;
-  #include "print_array.c"
+  //#include "print_array.c"
 
   _mm_free(h_u);
   _mm_free(h_du);
@@ -477,9 +293,9 @@ int main(int argc, char* argv[]) {
   _mm_free(h_cz);
 
   printf("Done.\n");
-  
+
   // Print execution times
-  if(prof == 0) { 
+  if(prof == 0) {
     printf("Avg(per iter) \n[total]\n");
     printf("%f\n", elapsed_total/iter);
   }
@@ -492,6 +308,6 @@ int main(int argc, char* argv[]) {
       (elapsed_trid_y/iter)/(nx*ny*nz),
       (elapsed_trid_z/iter)/(nx*ny*nz));
   }
-
   exit(0);
+
 }

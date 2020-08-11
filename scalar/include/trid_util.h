@@ -30,7 +30,8 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014 
+// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk,
+// 2013-2014
 
 //
 // linux timing routine
@@ -43,8 +44,8 @@ inline double elapsed_time(double *et) {
 
   double old_time = *et;
 
-  gettimeofday( &t, (struct timezone *)0 );
-  *et = t.tv_sec + t.tv_usec*1.0e-6;
+  gettimeofday(&t, (struct timezone *)0);
+  *et = t.tv_sec + t.tv_usec * 1.0e-6;
 
   return *et - old_time;
 }

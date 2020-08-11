@@ -30,49 +30,81 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014 
+// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk,
+// 2013-2014
 
-#ifndef __TRID_CPU_H
-#define __TRID_CPU_H
+#ifndef TRID_CPU_H__
+#define TRID_CPU_H__
+#include "trid_common.h"
 
-//#include "trid_common.h"
-
-/* This is just a copy of CUSPARSE enums */
-typedef enum{
-    TRID_STATUS_SUCCESS=0,
-    TRID_STATUS_NOT_INITIALIZED=1,
-    TRID_STATUS_ALLOC_FAILED=2,
-    TRID_STATUS_INVALID_VALUE=3,
-    TRID_STATUS_ARCH_MISMATCH=4,
-    TRID_STATUS_MAPPING_ERROR=5,
-    TRID_STATUS_EXECUTION_FAILED=6,
-    TRID_STATUS_INTERNAL_ERROR=7,
-    TRID_STATUS_MATRIX_TYPE_NOT_SUPPORTED=8,
-    TRID_STATUS_ZERO_PIVOT=9
-} tridStatus_t;
-
-//void initTridMultiDimBatchSolve(int ndim, int *dims, int *pads);
-
-//in place of a handle and customizations
-//int* get_opts();
-
-//tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b, const float *c, float *d, float* u, int ndim, int solvedim, int *dims, int *pads, int *opts, int sync);
-//tridStatus_t tridDmtsvStridedBatch(const double *a, const double *b, const double *c, double *d, double* u, int ndim, int solvedim, int *dims, int *pads, int *opts, int sync);
 //
-//tridStatus_t tridSmtsvStridedBatchInc(const float *a, const float *b, const float *c, float *d, float* u, int ndim, int solvedim, int *dims, int *pads, int *opts, int sync);
-//tridStatus_t tridDmtsvStridedBatchInc(const double *a, const double *b, const double *c, double *d, double* u, int ndim, int solvedim, int *dims, int *pads, int *opts, int sync);
+// Solve a batch of linear equation systems along a specified axis.
+//
+// `a`, `b`, `c`, `d` are the parameters of the systems. These must be arrays
+// with shape `dims`, the number of dimensions is `ndims`. These are padded
+// along each axis with pads of size `pads`.
+//
+// Solution will be along the axis `solvedim`, i.e. values along that axis will
+// form a system of equations to be solved. Separate systems will be solved
+// independently. The result is written to `d`.
+//
+// `u` is unused.
+EXTERN_C
+tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b,
+                                   const float *c, float *d, float *u, int ndim,
+                                   int solvedim, int *dims, int *pads);
+EXTERN_C
+tridStatus_t tridDmtsvStridedBatch(const double *a, const double *b,
+                                   const double *c, double *d, double *u,
+                                   int ndim, int solvedim, int *dims,
+                                   int *pads);
 
-tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b, const float *c, float *d, float* u, int ndim, int solvedim, int *dims, int *pads);
-void trid_scalarS(float* a, float* b, float* c, float* d, float* u, int N, int stride);
-//void trid_x_transposeS(float*  a, float*  b, float*  c, float*  d, float*  u, int sys_size, int sys_pad, int stride);
-void trid_x_transposeS(float* a, float* b, float* c, float* d, float* u, int sys_size, int sys_pad, int stride);
-void trid_scalar_vecS(float* a, float* b, float* c, float* d, float* u, int N, int stride);
-void trid_scalar_vecSInc(float* a, float* b, float* c, float* d, float* u, int N, int stride);
+//
+// Solve a batch of linear equation systems along a specified axis.
+//
+// `a`, `b`, `c`, `d` are the parameters of the systems, `u` is the array to be
+// incremented with the results. These must be arrays with shape `dims`, the
+// number of dimensions is `ndims`. These are padded along each axis with pads
+// of size `pads`.
+//
+// Solution will be along the axis `solvedim`, i.e. values along that axis will
+// form a system of equations to be solved. Separate systems will be solved
+// independently. `u` is incremented with the results.
+EXTERN_C
+tridStatus_t tridSmtsvStridedBatchInc(const float *a, const float *b,
+                                      const float *c, float *d, float *u,
+                                      int ndim, int solvedim, int *dims,
+                                      int *pads);
+EXTERN_C
+tridStatus_t tridDmtsvStridedBatchInc(const double *a, const double *b,
+                                      const double *c, double *d, double *u,
+                                      int ndim, int solvedim, int *dims,
+                                      int *pads);
 
-tridStatus_t tridDmtsvStridedBatch(const double *a, const double *b, const double *c, double *d, double* u, int ndim, int solvedim, int *dims, int *pads);
-void trid_scalarD(double* a, double* b, double* c, double* d, double* u, int N, int stride);
-void trid_x_transposeD(double* a, double* b, double* c, double* d, double* u, int sys_size, int sys_pad, int stride);
-void trid_scalar_vecD(double* a, double* b, double* c, double* d, double* u, int N, int stride);
-void trid_scalar_vecDInc(double* a, double* b, double* c, double* d, double* u, int N, int stride);
+EXTERN_C
+void trid_scalarS(const float *a, const float *b, const float *c, float *d,
+                  float *u, int N, int stride);
+EXTERN_C
+void trid_x_transposeS(const float *a, const float *b, const float *c, float *d,
+                       float *u, int sys_size, int sys_pad, int stride);
+EXTERN_C
+void trid_scalar_vecS(const float *a, const float *b, const float *c, float *d,
+                      float *u, int N, int stride);
+EXTERN_C
+void trid_scalar_vecSInc(const float *a, const float *b, const float *c,
+                         float *d, float *u, int N, int stride);
+EXTERN_C
+void trid_scalarD(const double *a, const double *b, const double *c, double *d,
+                  double *u, int N, int stride);
+EXTERN_C
+void trid_x_transposeD(const double *a, const double *b, const double *c,
+                       double *d, double *u, int sys_size, int sys_pad,
+                       int stride);
+EXTERN_C
+void trid_scalar_vecD(const double *a, const double *b, const double *c,
+                      double *d, double *u, int N, int stride);
+EXTERN_C
+void trid_scalar_vecDInc(const double *a, const double *b, const double *c,
+                         double *d, double *u, int N, int stride);
 
 #endif

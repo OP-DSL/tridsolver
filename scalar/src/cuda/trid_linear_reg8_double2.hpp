@@ -37,7 +37,7 @@
 
 #include <assert.h>
 #include <sm_35_intrinsics.h>
-//#include <generics/shfl.h>
+#include <generics/generics/shfl.h>
 #include "cuda_shfl.h"
 //#include "adi_cuda.h"
 //#include "trid_params.h"
@@ -51,6 +51,10 @@
 #define VEC 8 
 // ga - global array
 // la - local array
+
+#ifndef FULL_MASK
+#define FULL_MASK 0xffffffff
+#endif
 
 //typedef union __align__(16) {
 typedef union {
@@ -74,15 +78,15 @@ inline __device__ void transpose4x4xor(double8* la) {
     tmp2 = (*la).vec[3];
   }
 
-  tmp1.x = __shfl_xor(tmp1.x,1);
-  tmp1.y = __shfl_xor(tmp1.y,1);
-  //tmp1.z = __shfl_xor(tmp1.z,1);
-  //tmp1.w = __shfl_xor(tmp1.w,1);
+  tmp1.x = trid_shfl_xor(tmp1.x,1);
+  tmp1.y = trid_shfl_xor(tmp1.y,1);
+  //tmp1.z = trid_shfl_xor(tmp1.z,1);
+  //tmp1.w = trid_shfl_xor(tmp1.w,1);
 
-  tmp2.x = __shfl_xor(tmp2.x,1);
-  tmp2.y = __shfl_xor(tmp2.y,1);
-  //tmp2.z = __shfl_xor(tmp2.z,1);
-  //tmp2.w = __shfl_xor(tmp2.w,1);
+  tmp2.x = trid_shfl_xor(tmp2.x,1);
+  tmp2.y = trid_shfl_xor(tmp2.y,1);
+  //tmp2.z = trid_shfl_xor(tmp2.z,1);
+  //tmp2.w = trid_shfl_xor(tmp2.w,1);
 
   if (threadIdx.x&1) {
     (*la).vec[0] = tmp1;
@@ -101,15 +105,15 @@ inline __device__ void transpose4x4xor(double8* la) {
     tmp2 = (*la).vec[3];
   }
 
-  tmp1.x = __shfl_xor(tmp1.x,2);
-  tmp1.y = __shfl_xor(tmp1.y,2);
-  //tmp1.z = __shfl_xor(tmp1.z,2);
-  //tmp1.w = __shfl_xor(tmp1.w,2);
+  tmp1.x = trid_shfl_xor(tmp1.x,2);
+  tmp1.y = trid_shfl_xor(tmp1.y,2);
+  //tmp1.z = trid_shfl_xor(tmp1.z,2);
+  //tmp1.w = trid_shfl_xor(tmp1.w,2);
 
-  tmp2.x = __shfl_xor(tmp2.x,2);
-  tmp2.y = __shfl_xor(tmp2.y,2);
-  //tmp2.z = __shfl_xor(tmp2.z,2);
-  //tmp2.w = __shfl_xor(tmp2.w,2);
+  tmp2.x = trid_shfl_xor(tmp2.x,2);
+  tmp2.y = trid_shfl_xor(tmp2.y,2);
+  //tmp2.z = trid_shfl_xor(tmp2.z,2);
+  //tmp2.w = trid_shfl_xor(tmp2.w,2);
 
   if (threadIdx.x&2) {
     (*la).vec[0] = tmp1;
