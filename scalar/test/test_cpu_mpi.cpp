@@ -103,6 +103,7 @@ void test_solver_from_file(const std::string &file_name) {
 
   // Create rectangular grid
   std::vector<int> mpi_dims(mesh.dims().size()), periods(mesh.dims().size(), 0);
+  mpi_dims[mesh.solve_dim()] = num_proc;
   MPI_Dims_create(num_proc, mesh.dims().size(), mpi_dims.data());
 
   // Create communicator for grid
