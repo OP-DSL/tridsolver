@@ -273,6 +273,14 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
       u, u_pads, recv_buf_h, recv_buf, dims, ndim, solvedim,
       params.mpi_coords[solvedim], num_batches - 1, batch_size, num_batches,
       reduced_len_g, sys_n, streams[num_batches - 1]);
+  BEGIN_PROFILING2("host-overhead");
+#ifdef TRID_NCCL
+  for (int bidx = 0; bidx < num_batches; ++bidx)
+    cudaSafeCall(cudaEventDestroy(events[bidx]));
+#endif
+  for (int bidx = 0; bidx < num_batches; ++bidx)
+    cudaStreamDestroy(streams[bidx]);
+  END_PROFILING2("host-overhead");
 }
 
 template <typename REAL, int INC>
@@ -385,6 +393,10 @@ inline void tridMultiDimBatchSolveMPI_simple(
         params.mpi_coords[solvedim], bidx, batch_size, num_batches,
         reduced_len_g, sys_n, streams[bidx]);
   }
+  BEGIN_PROFILING2("host-overhead");
+  for (int bidx = 0; bidx < num_batches; ++bidx)
+    cudaStreamDestroy(streams[bidx]);
+  END_PROFILING2("host-overhead");
 }
 
 template <typename REAL, int INC>
