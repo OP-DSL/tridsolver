@@ -49,10 +49,11 @@
 #include "cuda_timing.h"
 
 #include <cassert>
+#include <cmath>
 #include <functional>
+#include <initializer_list>
 #include <numeric>
 #include <type_traits>
-#include <cmath>
 
 #include <iostream>
 
@@ -68,6 +69,30 @@ const MPI_Datatype mpi_datatype =
 #  define MPI_DATATYPE(REAL)                                                   \
     (std::is_same<REAL, double>::value ? MPI_DOUBLE : MPI_FLOAT)
 #endif
+
+template <bool ON_DEVICE, typename REAL>
+inline void alloc(REAL **arr, int size) {
+  if (*arr) {
+    if (ON_DEVICE)
+      cudaFree(*arr);
+    else
+      cudaFreeHost(*arr);
+  }
+  if (ON_DEVICE)
+    cudaSafeCall(cudaMalloc(arr, size));
+  else
+    cudaSafeCall(cudaMallocHost(arr, size));
+}
+
+template <bool ON_DEVICE = true, typename... REAL>
+inline void alloc_if_bigger(int &curr_size, int required_size,
+                            REAL **... arrays) {
+  if (curr_size < required_size) {
+    (void)std::initializer_list<int>{
+        (alloc<ON_DEVICE>(arrays, required_size), 0)...};
+    curr_size = required_size;
+  }
+}
 
 template <typename REAL>
 inline void forward_batched(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *a,
@@ -503,24 +528,30 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
 
   // Allocate memory used during the solve
   const int local_helper_size = outer_size * eq_stride * local_eq_size;
-  REAL *aa, *cc, *dd, *boundaries;
-  cudaSafeCall(cudaMalloc(&aa, local_helper_size * sizeof(REAL)));
-  cudaSafeCall(cudaMalloc(&cc, local_helper_size * sizeof(REAL)));
-  cudaSafeCall(cudaMalloc(&dd, local_helper_size * sizeof(REAL)));
-  cudaSafeCall(cudaMalloc(&boundaries, sys_n * 3 * loc_red_len * sizeof(REAL)));
+  static int alloc_size = 0, boundaries_alloc_size = 0;
+  static REAL *aa = nullptr, *cc = nullptr, *dd = nullptr,
+              *boundaries = nullptr;
+  alloc_if_bigger(alloc_size, local_helper_size * sizeof(REAL), &aa, &cc, &dd);
+  alloc_if_bigger(boundaries_alloc_size, sys_n * 3 * loc_red_len * sizeof(REAL),
+                  &boundaries);
 
   // Allocate receive buffer for MPI communication of reduced system
   const size_t reduced_len_g = 2 * params.num_mpi_procs[solvedim];
-  REAL *mpi_buf;
-  cudaSafeCall(cudaMalloc(&mpi_buf, reduced_len_g * 3 * sys_n * sizeof(REAL)));
-  REAL *send_buf = nullptr, *receive_buf= nullptr;
-#ifndef TRID_CUDA_AWARE_MPI
-  const size_t comm_buf_size = 2 * 3 * sys_n;
-  // MPI buffers on host              
-  cudaSafeCall(cudaMallocHost(&send_buf, comm_buf_size * sizeof(REAL)));
-  cudaSafeCall(cudaMallocHost(&receive_buf, comm_buf_size *
-                                                params.num_mpi_procs[solvedim] *
-                                                sizeof(REAL)));
+  static int mpi_buf_size    = 0;
+  static REAL *mpi_buf       = nullptr;
+  alloc_if_bigger(mpi_buf_size, reduced_len_g * 3 * sys_n * sizeof(REAL),
+                  &mpi_buf);
+  static REAL *send_buf = nullptr, *receive_buf = nullptr;
+#if !(defined(TRID_CUDA_AWARE_MPI) || defined(TRID_NCCL))
+  static int send_buf_size = 0, receive_buf_size = 0;
+  const size_t comm_buf_size = loc_red_len * 3 * sys_n;
+  // MPI buffers on host
+  alloc_if_bigger<false>(send_buf_size, comm_buf_size * sizeof(REAL),
+                         &send_buf);
+  alloc_if_bigger<false>(receive_buf_size,
+                         comm_buf_size * params.num_mpi_procs[solvedim] *
+                             sizeof(REAL),
+                         &receive_buf);
 #endif
 #ifdef TRID_NCCL
 //Dry-run, first call of this is quite expensive
@@ -567,16 +598,6 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   MPI_Barrier(params.communicators[solvedim]);
   END_PROFILING2("barrier");
   END_PROFILING("tridMultiDimBatchSolveMPI");
-#endif
-  // Free memory used in solve
-  cudaSafeCall(cudaFree(aa));
-  cudaSafeCall(cudaFree(cc));
-  cudaSafeCall(cudaFree(dd));
-  cudaSafeCall(cudaFree(boundaries));
-  cudaSafeCall(cudaFree(mpi_buf));
-#ifndef TRID_CUDA_AWARE_MPI
-  cudaSafeCall(cudaFreeHost(send_buf));
-  cudaSafeCall(cudaFreeHost(receive_buf));
 #endif
 }
 
