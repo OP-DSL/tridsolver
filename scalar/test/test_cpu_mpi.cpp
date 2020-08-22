@@ -120,6 +120,9 @@ void test_solver_from_file(const std::string &file_name) {
   std::vector<int> domain_offsets(mesh.dims().size());
   // The strides in the mesh for each dimension.
   std::vector<int> global_strides(mesh.dims().size());
+  // The halo padding of the data
+  std::vector<int> pads_m(mesh.dims().size());
+  std::vector<int> pads_p(mesh.dims().size());
   int domain_size = 1;
   for (size_t i = 0; i < local_sizes.size(); ++i) {
     const int global_dim = mesh.dims()[i];
@@ -129,6 +132,8 @@ void test_solver_from_file(const std::string &file_name) {
                          : global_dim / mpi_dims[i];
     global_strides[i] = i == 0 ? 1 : global_strides[i - 1] * mesh.dims()[i - 1];
     domain_size *= local_sizes[i];
+    pads_m[i] = 0;
+    pads_p[i] = 0;
   }
 
   // Simulate distributed environment: only load our data
@@ -148,7 +153,7 @@ void test_solver_from_file(const std::string &file_name) {
   // Solve the equations
   tridStridedBatchWrapper<Float>(params, a.data(), b.data(), c.data(), d.data(),
                                  nullptr, mesh.dims().size(), mesh.solve_dim(),
-                                 local_sizes.data(), local_sizes.data());
+                                 local_sizes.data(), pads_m.data(), pads_p.data());
 
   // Check result
   require_allclose(u, d, domain_size, 1);
