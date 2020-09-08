@@ -50,14 +50,14 @@ tridStatus_t tridDmtsvStridedBatchMPI(const MpiSolverParams &params,
                                       const double *a, const double *b,
                                       const double *c, double *d, double *u,
                                       int ndim, int solvedim, const int *dims,
-                                      const int *pads_m, const int *pads_p);
+                                      const int *pads);
 
 EXTERN_C
 tridStatus_t tridSmtsvStridedBatchMPI(const MpiSolverParams &params,
                                       const float *a, const float *b,
                                       const float *c, float *d, float *u,
                                       int ndim, int solvedim, const int *dims,
-                                      const int *pads_m, const int *pads_p);
+                                      const int *pads);
 
 // Solve a batch of tridiagonal systems along a specified axis ('solvedim').
 // 'a', 'b', 'c', 'd' are the parameters of the tridiagonal systems which must
@@ -71,13 +71,13 @@ tridStatus_t tridDmtsvStridedBatchIncMPI(const MpiSolverParams &params,
                                          const double *a, const double *b,
                                          const double *c, double *d, double *u,
                                          int ndim, int solvedim,
-                                         const int *dims, const int *pads_m, const int *pads_p);
+                                         const int *dims, const int *pads);
 
 EXTERN_C
 tridStatus_t tridSmtsvStridedBatchIncMPI(const MpiSolverParams &params,
                                          const float *a, const float *b,
                                          const float *c, float *d, float *u,
                                          int ndim, int solvedim,
-                                         const int *dims, const int *pads_m, const int *pads_p);
+                                         const int *dims, const int *pads);
 
 #endif
