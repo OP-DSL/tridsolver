@@ -64,37 +64,6 @@ const MPI_Datatype mpi_datatype =
 #define MPI_DATATYPE(REAL) (std::is_same<REAL, double>::value ? MPI_DOUBLE : MPI_FLOAT)
 #endif
 
-/*template <typename REAL>
-inline void copy_boundaries_strided(const REAL *aa, const REAL *cc,
-                                    const REAL *dd, REAL *sndbuf,
-                                    const int *dims, const int *pads,
-                                    int solvedim, int start_sys, int end_sys) {
-  int result_stride = dims[solvedim] - 1;
-  for (int i = 0; i < solvedim; ++i) {
-    result_stride *= pads[i];
-  }
-  int start_pad = pads[0];
-  if (solvedim == 1) start_pad *= pads[1];
-
-#pragma omp parallel for
-  for (int id = start_sys; id < end_sys; id++) {
-    int start;
-    if (solvedim != 0) {
-      start = (id / dims[0]) * start_pad + (id % dims[0]);
-    } else {
-      start = id * pads[0];
-    }
-    int end             = start + result_stride;
-    int buf_ind         = id * 6;
-    sndbuf[buf_ind]     = aa[start];
-    sndbuf[buf_ind + 1] = aa[end];
-    sndbuf[buf_ind + 2] = cc[start];
-    sndbuf[buf_ind + 3] = cc[end];
-    sndbuf[buf_ind + 4] = dd[start];
-    sndbuf[buf_ind + 5] = dd[end];
-  }
-}*/
-
 // Version that accounts for positive and negative padding
 template <typename REAL>
 inline void copy_boundaries_strided(const REAL *aa, const REAL *cc,
@@ -360,8 +329,8 @@ template <typename REAL>
 inline void solve_reduced_batched(const MpiSolverParams &params,
                                   const REAL *rcvbuf, REAL *aa_r, REAL *cc_r,
                                   REAL *dd_r, REAL *dd, const int *dims,
-                                  const int *pads, int solvedim, int sys_len_r,
-                                  int start_sys, int end_sys) {
+                                  const int *pads, int ndim, int solvedim,
+                                  int sys_len_r, int start_sys, int end_sys) {
   int n_sys = end_sys - start_sys;
   int result_stride = dims[solvedim] - 1;
   for (int i = 0; i < solvedim; ++i) {
@@ -396,9 +365,10 @@ inline void solve_reduced_batched(const MpiSolverParams &params,
     int g_id = id + start_sys;
     if (solvedim != 0) {
       start = (g_id / dims[0]) * start_pad + (g_id % dims[0]);
+    } else if(ndim > 1) {
+      start = (g_id / dims[1]) * pads[1] * pads[0] + (g_id % dims[1]) * pads[0];
     } else {
-      //start = g_id * pads[0];
-      start = (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
+      start = g_id * pads[0];
     }
     dd[start]                 = dd_r[id * sys_len_r + p * 2];
     dd[start + result_stride] = dd_r[id * sys_len_r + p * 2 + 1];
@@ -408,8 +378,8 @@ inline void solve_reduced_batched(const MpiSolverParams &params,
 template <typename REAL>
 inline void solve_reduced(const MpiSolverParams &params, const REAL *rcvbuf,
                           REAL *aa_r, REAL *cc_r, REAL *dd_r, REAL *dd,
-                          const int *dims, const int *pads, int solvedim,
-                          int sys_len_r, int n_sys) {
+                          const int *dims, const int *pads, int ndim,
+                          int solvedim, int sys_len_r, int n_sys) {
   int result_stride = dims[solvedim] - 1;
   for (int i = 0; i < solvedim; ++i) {
     result_stride *= pads[i];
@@ -440,9 +410,10 @@ inline void solve_reduced(const MpiSolverParams &params, const REAL *rcvbuf,
     int start;
     if (solvedim != 0) {
       start = (id / dims[0]) * start_pad + (id % dims[0]);
-    } else {
-      //start = id * pads[0];
+    } else if (ndim > 1) {
       start = (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
+    } else {
+      start = id * pads[0];
     }
     dd[start]                 = dd_r[id * sys_len_r + p * 2];
     dd[start + result_stride] = dd_r[id * sys_len_r + p * 2 + 1];
@@ -687,7 +658,7 @@ inline void tridMultiDimBatchSolve_simple(
     BEGIN_PROFILING("pcr_on_reduced");
     // Solve reduced systems on each node
     solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads,
-                          solvedim, sys_len_r, batch_start,
+                          ndim, solvedim, sys_len_r, batch_start,
                           batch_start + bsize);
     END_PROFILING("pcr_on_reduced");
     // Perform the backward run of the modified thomas algorithm
@@ -737,7 +708,7 @@ inline void tridMultiDimBatchSolve_LH(
       BEGIN_PROFILING("pcr_on_reduced");
       // Solve reduced systems on each node
       solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads,
-                            solvedim, sys_len_r, batch_start,
+                            ndim, solvedim, sys_len_r, batch_start,
                             batch_start + bsize);
       END_PROFILING("pcr_on_reduced");
       BEGIN_PROFILING("backward");
@@ -757,7 +728,7 @@ inline void tridMultiDimBatchSolve_LH(
   BEGIN_PROFILING("pcr_on_reduced");
   // Solve reduced systems on each node
   solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads,
-                        solvedim, sys_len_r, batch_start, batch_start + bsize);
+                        ndim, solvedim, sys_len_r, batch_start, batch_start + bsize);
   END_PROFILING("pcr_on_reduced");
   BEGIN_PROFILING("backward");
   backward_batched<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim,
@@ -784,8 +755,8 @@ inline void tridMultiDimBatchSolve_allgather(
   END_PROFILING("mpi_communication");
   BEGIN_PROFILING("pcr_on_reduced");
   // Solve reduced systems on each node
-  solve_reduced(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads, solvedim,
-                sys_len_r, n_sys);
+  solve_reduced(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads, ndim,
+                solvedim, sys_len_r, n_sys);
   END_PROFILING("pcr_on_reduced");
   BEGIN_PROFILING("backward");
   backward<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim, n_sys);
