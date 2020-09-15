@@ -129,7 +129,7 @@ inline __device__ void load_array_reg8_double2(const double* __restrict__ ga, do
 // Same as load_array_reg8() with the following exception: if sys_pads would cause unaligned access the index is rounded down to the its floor value to prevent missaligned access.
 // ga - global array
 // la - local array
-inline __device__ void load_array_reg8_double2_unaligned(double const* __restrict__ ga, double8* la, int n, int tid, int sys_pads, int sys_length) {
+inline __device__ void load_array_reg8_double2_unaligned(double const* __restrict__ ga, double8* la, int n, int tid, int sys_pads, int sys_length, int offset) {
   // Global memory index of an element
   int gind;
   // Array indexing can be decided in compile time -> arrays will stay in registers
@@ -143,7 +143,8 @@ inline __device__ void load_array_reg8_double2_unaligned(double const* __restric
   int gind_floor;
   int i;
   for(i=0; i<4; i++) {
-    gind_floor   = (gind/ALIGN_DOUBLE)*ALIGN_DOUBLE + tcol*2; // Round index to floor
+    //gind_floor   = (gind/ALIGN_DOUBLE)*ALIGN_DOUBLE + tcol*2; // Round index to floor
+    gind_floor   = gind - ((gind + offset) % ALIGN_DOUBLE) + tcol*2; // Round index to floor
     (*la).vec[i] = __ldg( ((double2*)&ga[gind_floor]) );    // Get aligned data
     gind        += sys_pads;                         // Stride to the next system
   }
@@ -178,7 +179,7 @@ inline __device__ void store_array_reg8_double2(double* __restrict__ ga, double8
 // Same as store_array_reg8() with the following exception: if stride would cause unaligned access the index is rounded down to the its floor value to prevent missaligned access.
 // ga - global array
 // la - local array
-inline __device__ void store_array_reg8_double2_unaligned(double* __restrict__ ga, double8* __restrict__ la, int n, int tid, int sys_pads, int sys_length) {
+inline __device__ void store_array_reg8_double2_unaligned(double* __restrict__ ga, double8* __restrict__ la, int n, int tid, int sys_pads, int sys_length, int offset) {
   // Global memory index of an element
   int gind;
   // Array indexing can be decided in compile time -> arrays will stay in registers
@@ -194,7 +195,8 @@ inline __device__ void store_array_reg8_double2_unaligned(double* __restrict__ g
   int gind_floor;
   int i;
   for(i=0; i<4; i++) {
-    gind_floor = (gind/ALIGN_DOUBLE)*ALIGN_DOUBLE + tcol*2; // Round index to floor
+    //gind_floor = (gind/ALIGN_DOUBLE)*ALIGN_DOUBLE + tcol*2; // Round index to floor
+    gind_floor = gind - ((gind + offset) % ALIGN_DOUBLE) + tcol*2; // Round index to floor
     *((double2*)&ga[gind_floor]) = (*la).vec[i];  // Put aligned data
     gind += sys_pads;                              // Stride to the next system
   }
@@ -207,7 +209,7 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
                     const double *__restrict__ c, const double *__restrict__ d,
                     double *__restrict__ aa, double *__restrict__ cc,
                     double *__restrict__ dd, double *__restrict__ boundaries,
-                    int sys_size, int sys_pads, int sys_n) {
+                    int sys_size, int sys_pads, int sys_n, const int offset) {
   // Thread ID in global scope - every thread solves one system
   const int tid = threadIdx.x + threadIdx.y * blockDim.x +
                   blockIdx.x * blockDim.y * blockDim.x +
@@ -224,7 +226,7 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
   // A thread is active only if it works on valid memory
   const int active_thread   = optimized_solve || boundary_solve;
   // Check if aligned memory
-  const int aligned         = (sys_pads % ALIGN_DOUBLE) == 0;
+  const int aligned         = (sys_pads % ALIGN_DOUBLE) == 0 && (offset % ALIGN_DOUBLE) == 0;
 
   int n = 0;
   // Start index for this tridiagonal system
@@ -373,7 +375,8 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
         boundaries[i + 5] = dd[ind + sys_size - 1];
       } else {
         // Memory is unaligned
-        int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE;
+        //int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE;
+        int ind_floor = ind - ((ind + offset) % ALIGN_DOUBLE);
         int sys_off   = ind - ind_floor;
 
         // Handle start of unaligned memory
@@ -403,10 +406,10 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
         int n = VEC;
         // Back to normal
         for(; n < sys_size - VEC; n += VEC) {
-          load_array_reg8_double2_unaligned(a,&l_a,n, tid, sys_pads, sys_size);
-          load_array_reg8_double2_unaligned(b,&l_b,n, tid, sys_pads, sys_size);
-          load_array_reg8_double2_unaligned(c,&l_c,n, tid, sys_pads, sys_size);
-          load_array_reg8_double2_unaligned(d,&l_d,n, tid, sys_pads, sys_size);
+          load_array_reg8_double2_unaligned(a,&l_a,n, tid, sys_pads, sys_size, offset);
+          load_array_reg8_double2_unaligned(b,&l_b,n, tid, sys_pads, sys_size, offset);
+          load_array_reg8_double2_unaligned(c,&l_c,n, tid, sys_pads, sys_size, offset);
+          load_array_reg8_double2_unaligned(d,&l_d,n, tid, sys_pads, sys_size, offset);
           #pragma unroll 16
           for(int i=0; i<VEC; i++) {
             bb = 1.0 / (l_b.f[i] - l_a.f[i] * c2);
@@ -417,9 +420,9 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
             l_aa.f[i] = a2;
             l_cc.f[i] = c2;
           }
-          store_array_reg8_double2_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size);
-          store_array_reg8_double2_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size);
-          store_array_reg8_double2_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
+          store_array_reg8_double2_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size, offset);
+          store_array_reg8_double2_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size, offset);
+          store_array_reg8_double2_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size, offset);
         }
 
         // Handle end of unaligned memory
@@ -456,9 +459,9 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
 
         // Back to normal
         for(; n > 0; n -= VEC) {
-          load_array_reg8_double2_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
-          load_array_reg8_double2_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size);
-          load_array_reg8_double2_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size);
+          load_array_reg8_double2_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size, offset);
+          load_array_reg8_double2_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size, offset);
+          load_array_reg8_double2_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size, offset);
 
           for(int i = VEC - 1; i >= 0; i--) {
             d2 = l_dd.f[i] - l_cc.f[i] * d2;
@@ -469,9 +472,9 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
             l_aa.f[i] = a2;
           }
 
-          store_array_reg8_double2_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size);
-          store_array_reg8_double2_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size);
-          store_array_reg8_double2_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
+          store_array_reg8_double2_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size, offset);
+          store_array_reg8_double2_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size, offset);
+          store_array_reg8_double2_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size, offset);
         }
 
         for(int i = n + VEC - 1; i > sys_off; i--) {
@@ -549,7 +552,7 @@ __global__ void
 trid_linear_backward_double(const double *__restrict__ aa, const double *__restrict__ cc,
                      const double *__restrict__ dd, double *__restrict__ d,
                      double *__restrict__ u, const double *__restrict__ boundaries,
-                     int sys_size, int sys_pads, int sys_n) {
+                     int sys_size, int sys_pads, int sys_n, const int offset) {
   // Thread ID in global scope - every thread solves one system
   const int tid = threadIdx.x + threadIdx.y * blockDim.x +
                   blockIdx.x * blockDim.y * blockDim.x +
@@ -566,7 +569,7 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
   // A thread is active only if it works on valid memory
   const int active_thread   = optimized_solve || boundary_solve;
   // Check if aligned memory
-  const int aligned         = (sys_pads % ALIGN_DOUBLE) == 0;
+  const int aligned         = (sys_pads % ALIGN_DOUBLE) == 0 && (offset % ALIGN_DOUBLE) == 0;
 
   int n = 0;
   // Start index for this tridiagonal system
@@ -652,7 +655,8 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
       } else {
         // Unaligned memory
         if(INC) {
-          int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE;
+          //int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE;
+          int ind_floor = ind - ((ind + offset) % ALIGN_DOUBLE);
           int sys_off   = ind - ind_floor;
 
           // Handle start of unaligned memory
@@ -670,15 +674,15 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
           n = VEC;
           // Back to normal
           for(; n < sys_size - VEC; n += VEC) {
-            load_array_reg8_double2_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
-            load_array_reg8_double2_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size);
-            load_array_reg8_double2_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size);
-            load_array_reg8_double2_unaligned(u,&l_u,n, tid, sys_pads, sys_size);
+            load_array_reg8_double2_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size, offset);
+            load_array_reg8_double2_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size, offset);
+            load_array_reg8_double2_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size, offset);
+            load_array_reg8_double2_unaligned(u,&l_u,n, tid, sys_pads, sys_size, offset);
             #pragma unroll 16
             for(int i=0; i<VEC; i++) {
               l_u.f[i] += l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
             }
-            store_array_reg8_double2_unaligned(u,&l_u,n, tid, sys_pads, sys_size);
+            store_array_reg8_double2_unaligned(u,&l_u,n, tid, sys_pads, sys_size, offset);
           }
 
           // Handle end of unaligned memory
@@ -689,7 +693,8 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
 
           u[ind + sys_size - 1] += ddn;
         } else {
-          int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE;
+          //int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE;
+          int ind_floor = ind - ((ind + offset) % ALIGN_DOUBLE);
           int sys_off   = ind - ind_floor;
 
           // Handle start of unaligned memory
@@ -707,15 +712,15 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
           n = VEC;
           // Back to normal
           for(; n < sys_size - VEC; n += VEC) {
-            load_array_reg8_double2_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
-            load_array_reg8_double2_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size);
-            load_array_reg8_double2_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size);
-            load_array_reg8_double2_unaligned(d,&l_d,n, tid, sys_pads, sys_size);
+            load_array_reg8_double2_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size, offset);
+            load_array_reg8_double2_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size, offset);
+            load_array_reg8_double2_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size, offset);
+            load_array_reg8_double2_unaligned(d,&l_d,n, tid, sys_pads, sys_size, offset);
             #pragma unroll 16
             for(int i=0; i<VEC; i++) {
               l_d.f[i] = l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
             }
-            store_array_reg8_double2_unaligned(d,&l_d,n, tid, sys_pads, sys_size);
+            store_array_reg8_double2_unaligned(d,&l_d,n, tid, sys_pads, sys_size, offset);
           }
 
           // Handle end of unaligned memory

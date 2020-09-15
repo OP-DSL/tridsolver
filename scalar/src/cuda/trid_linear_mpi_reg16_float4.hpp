@@ -213,7 +213,7 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
                     const float *__restrict__ c, const float *__restrict__ d,
                     float *__restrict__ aa, float *__restrict__ cc,
                     float *__restrict__ dd, float *__restrict__ boundaries,
-                    int sys_size, int sys_pads, int sys_n) {
+                    int sys_size, int sys_pads, int sys_n, const int offset) {
   // Thread ID in global scope - every thread solves one system
   const int tid = threadIdx.x + threadIdx.y * blockDim.x +
                   blockIdx.x * blockDim.y * blockDim.x +
@@ -556,7 +556,7 @@ __global__ void
 trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict__ cc,
                      const float *__restrict__ dd, float *__restrict__ d,
                      float *__restrict__ u, const float *__restrict__ boundaries,
-                     int sys_size, int sys_pads, int sys_n) {
+                     int sys_size, int sys_pads, int sys_n, const int offset) {
   // Thread ID in global scope - every thread solves one system
   const int tid = threadIdx.x + threadIdx.y * blockDim.x +
                   blockIdx.x * blockDim.y * blockDim.x +
