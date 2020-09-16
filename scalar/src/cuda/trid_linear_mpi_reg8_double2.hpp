@@ -145,7 +145,7 @@ inline __device__ void load_array_reg8_double2_unaligned(double const* __restric
   for(i=0; i<4; i++) {
     //gind_floor   = (gind/ALIGN_DOUBLE)*ALIGN_DOUBLE + tcol*2; // Round index to floor
     //gind_floor   = gind - ((gind + offset) % ALIGN_DOUBLE) + tcol*2; // Round index to floor
-    gind_floor   = ((gind + offset)/ALIGN_DOUBLE)*ALIGN_DOUBLE - offset + tcol*2; // Round index to floor
+    gind_floor   = (gind/ALIGN_DOUBLE)*ALIGN_DOUBLE - (offset % ALIGN_DOUBLE) + tcol*2; // Round index to floor
     (*la).vec[i] = __ldg( ((double2*)&ga[gind_floor]) );    // Get aligned data
     gind        += sys_pads;                         // Stride to the next system
   }
@@ -198,7 +198,7 @@ inline __device__ void store_array_reg8_double2_unaligned(double* __restrict__ g
   for(i=0; i<4; i++) {
     //gind_floor = (gind/ALIGN_DOUBLE)*ALIGN_DOUBLE + tcol*2; // Round index to floor
     //gind_floor = gind - ((gind + offset) % ALIGN_DOUBLE) + tcol*2; // Round index to floor
-    gind_floor = ((gind + offset)/ALIGN_DOUBLE)*ALIGN_DOUBLE - offset + tcol*2; // Round index to floor
+    gind_floor = (gind/ALIGN_DOUBLE)*ALIGN_DOUBLE - (offset % ALIGN_DOUBLE) + tcol*2; // Round index to floor
     *((double2*)&ga[gind_floor]) = (*la).vec[i];  // Put aligned data
     gind += sys_pads;                              // Stride to the next system
   }
@@ -379,7 +379,7 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
         // Memory is unaligned
         //int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE;
         //int ind_floor = ind - ((ind + offset) % ALIGN_DOUBLE);
-        int ind_floor = ((ind + offset)/ALIGN_DOUBLE)*ALIGN_DOUBLE - offset;
+        int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE - (offset % ALIGN_DOUBLE);
         int sys_off   = ind - ind_floor;
 
         // Handle start of unaligned memory
@@ -660,7 +660,7 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
         if(INC) {
           //int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE;
           //int ind_floor = ind - ((ind + offset) % ALIGN_DOUBLE);
-          int ind_floor = ((ind + offset)/ALIGN_DOUBLE)*ALIGN_DOUBLE - offset;
+          int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE - (offset % ALIGN_DOUBLE);
           int sys_off   = ind - ind_floor;
 
           // Handle start of unaligned memory
@@ -699,7 +699,7 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
         } else {
           //int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE;
           //int ind_floor = ind - ((ind + offset) % ALIGN_DOUBLE);
-          int ind_floor = ((ind + offset)/ALIGN_DOUBLE)*ALIGN_DOUBLE - offset;
+          int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE - (offset % ALIGN_DOUBLE);
           int sys_off   = ind - ind_floor;
 
           // Handle start of unaligned memory
