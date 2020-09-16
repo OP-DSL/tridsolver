@@ -48,8 +48,8 @@ template <typename REAL>
 void trid_linear_forward_reg(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *a,
                              const REAL *b, const REAL *c, const REAL *d,
                              REAL *aa, REAL *cc, REAL *dd, REAL *boundaries,
-                             int sys_size, int sys_pads, int sys_n,
-                             const int offset, cudaStream_t stream);
+                             int sys_size, int sys_pads, int sys_n, int y_size,
+                             int y_pads, const int offset, cudaStream_t stream);
 
 template <>
 void trid_linear_forward_reg<double>(dim3 dimGrid_x, dim3 dimBlock_x,
@@ -57,10 +57,12 @@ void trid_linear_forward_reg<double>(dim3 dimGrid_x, dim3 dimBlock_x,
                                      const double *c, const double *d,
                                      double *aa, double *cc, double *dd,
                                      double *boundaries, int sys_size,
-                                     int sys_pads, int sys_n,
-                                     const int offset, cudaStream_t stream) {
+                                     int sys_pads, int sys_n, int y_size,
+                                     int y_pads, const int offset,
+                                     cudaStream_t stream) {
   trid_linear_forward_double<<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      a, b, c, d, aa, cc, dd, boundaries, sys_size, sys_pads, sys_n, offset);
+      a, b, c, d, aa, cc, dd, boundaries, sys_size, sys_pads, sys_n, y_size,
+      y_pads, offset);
 }
 template <>
 void trid_linear_forward_reg<float>(dim3 dimGrid_x, dim3 dimBlock_x,
@@ -68,9 +70,11 @@ void trid_linear_forward_reg<float>(dim3 dimGrid_x, dim3 dimBlock_x,
                                     const float *c, const float *d, float *aa,
                                     float *cc, float *dd, float *boundaries,
                                     int sys_size, int sys_pads, int sys_n,
-                                    const int offset, cudaStream_t stream) {
+                                    int y_size, int y_pads, const int offset,
+                                    cudaStream_t stream) {
   trid_linear_forward_float<<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      a, b, c, d, aa, cc, dd, boundaries, sys_size, sys_pads, sys_n, offset);
+      a, b, c, d, aa, cc, dd, boundaries, sys_size, sys_pads, sys_n, y_size,
+      y_pads, offset);
 }
 
 //
@@ -80,27 +84,32 @@ template <typename REAL, int INC>
 void trid_linear_backward_reg(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
                               const REAL *cc, const REAL *dd, REAL *d, REAL *u,
                               const REAL *boundaries, int sys_size, int sys_pads,
-                              int sys_n, const int offset, cudaStream_t stream);
+                              int sys_n, int y_size, int y_pads,
+                              const int offset, cudaStream_t stream);
 
 template <>
 void trid_linear_backward_reg<double, 0>(dim3 dimGrid_x, dim3 dimBlock_x,
                                          const double *aa, const double *cc,
                                          const double *dd, double *d, double *u,
                                          const double *boundaries, int sys_size,
-                                         int sys_pads, int sys_n, const int offset,
+                                         int sys_pads, int sys_n, int y_size,
+                                         int y_pads, const int offset,
                                          cudaStream_t stream) {
   trid_linear_backward_double<0><<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset);
+      aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, y_size, y_pads,
+      offset);
 }
 template <>
 void trid_linear_backward_reg<double, 1>(dim3 dimGrid_x, dim3 dimBlock_x,
                                          const double *aa, const double *cc,
                                          const double *dd, double *d, double *u,
                                          const double *boundaries, int sys_size,
-                                         int sys_pads, int sys_n, const int offset,
+                                         int sys_pads, int sys_n, int y_size,
+                                         int y_pads, const int offset,
                                          cudaStream_t stream) {
   trid_linear_backward_double<1><<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset);
+      aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, y_size, y_pads,
+      offset);
 }
 
 template <>
@@ -108,10 +117,12 @@ void trid_linear_backward_reg<float, 0>(dim3 dimGrid_x, dim3 dimBlock_x,
                                         const float *aa, const float *cc,
                                         const float *dd, float *d, float *u,
                                         const float *boundaries, int sys_size,
-                                        int sys_pads, int sys_n, const int offset,
+                                        int sys_pads, int sys_n, int y_size,
+                                        int y_pads, const int offset,
                                         cudaStream_t stream) {
   trid_linear_backward_float<0><<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset);
+      aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, y_size, y_pads,
+      offset);
 }
 
 template <>
@@ -119,10 +130,12 @@ void trid_linear_backward_reg<float, 1>(dim3 dimGrid_x, dim3 dimBlock_x,
                                         const float *aa, const float *cc,
                                         const float *dd, float *d, float *u,
                                         const float *boundaries, int sys_size,
-                                        int sys_pads, int sys_n, const int offset,
+                                        int sys_pads, int sys_n, int y_size,
+                                        int y_pads, const int offset,
                                         cudaStream_t stream) {
   trid_linear_backward_float<1><<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset);
+      aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, y_size, y_pads,
+      offset);
 }
 
 

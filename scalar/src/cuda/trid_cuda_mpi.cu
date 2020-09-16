@@ -108,7 +108,7 @@ inline void forward_batched(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *a,
         dimGrid_x, dimBlock_x, a + batch_offset, b + batch_offset,
         c + batch_offset, d + batch_offset, aa + batch_offset,
         cc + batch_offset, dd + batch_offset, boundaries + start_sys * 3 * 2,
-        dims[solvedim], a_pads[solvedim], bsize, offset, stream);
+        dims[solvedim], a_pads[solvedim], bsize, dims[1], a_pads[1], offset, stream);
   } else {
     DIM_V pads, dims; // TODO
     for (int i = 0; i < ndim; ++i) {
@@ -141,7 +141,7 @@ inline void backward_batched(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
         dimGrid_x, dimBlock_x, aa + batch_offset, cc + batch_offset,
         dd + batch_offset, d + batch_offset, u + batch_offset,
         boundaries + start_sys * 2, dims[solvedim], a_pads[solvedim], bsize,
-        offset, stream);
+        dims[1], a_pads[1], offset, stream);
   } else {
     DIM_V pads, dims; // TODO
     for (int i = 0; i < ndim; ++i) {

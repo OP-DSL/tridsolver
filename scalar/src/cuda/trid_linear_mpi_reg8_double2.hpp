@@ -211,7 +211,8 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
                     const double *__restrict__ c, const double *__restrict__ d,
                     double *__restrict__ aa, double *__restrict__ cc,
                     double *__restrict__ dd, double *__restrict__ boundaries,
-                    int sys_size, int sys_pads, int sys_n, const int offset) {
+                    int sys_size, int sys_pads, int sys_n, int y_size,
+                    int y_pads, const int offset) {
   // Thread ID in global scope - every thread solves one system
   const int tid = threadIdx.x + threadIdx.y * blockDim.x +
                   blockIdx.x * blockDim.y * blockDim.x +
@@ -232,7 +233,8 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
 
   int n = 0;
   // Start index for this tridiagonal system
-  int ind = sys_pads * tid;
+  //int ind = sys_pads * tid;
+  int ind = (tid / y_size) * y_pads * sys_pads + (tid % y_size) * sys_pads;
 
   // Local arrays used in the register shuffle
   double8 l_a, l_b, l_c, l_d, l_aa, l_cc, l_dd;
@@ -555,7 +557,8 @@ __global__ void
 trid_linear_backward_double(const double *__restrict__ aa, const double *__restrict__ cc,
                      const double *__restrict__ dd, double *__restrict__ d,
                      double *__restrict__ u, const double *__restrict__ boundaries,
-                     int sys_size, int sys_pads, int sys_n, const int offset) {
+                     int sys_size, int sys_pads, int sys_n, int y_size,
+                     int y_pads, const int offset) {
   // Thread ID in global scope - every thread solves one system
   const int tid = threadIdx.x + threadIdx.y * blockDim.x +
                   blockIdx.x * blockDim.y * blockDim.x +
@@ -576,7 +579,8 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
 
   int n = 0;
   // Start index for this tridiagonal system
-  int ind = sys_pads * tid;
+  //int ind = sys_pads * tid;
+  int ind = (tid / y_size) * y_pads * sys_pads + (tid % y_size) * sys_pads;
 
   // Local arrays used in register shuffle
   double8 l_aa, l_cc, l_dd, l_d, l_u;
