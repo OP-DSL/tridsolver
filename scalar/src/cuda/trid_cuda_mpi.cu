@@ -134,12 +134,9 @@ inline void forward_batched(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *a,
                             int ndim, int solvedim, int start_sys, int bsize,
                             const int offset, cudaStream_t stream = nullptr) {
   if (solvedim == 0) {
-    const int batch_offset = start_sys * a_pads[solvedim]; // TODO pads
-    trid_linear_forward_reg(
-        dimGrid_x, dimBlock_x, a + batch_offset, b + batch_offset,
-        c + batch_offset, d + batch_offset, aa + batch_offset,
-        cc + batch_offset, dd + batch_offset, boundaries + start_sys * 3 * 2,
-        dims[solvedim], a_pads[solvedim], bsize, dims[1], a_pads[1], offset, stream);
+    trid_linear_forward_reg(dimGrid_x, dimBlock_x, a, b, c, d, aa, cc, dd,
+                            boundaries, dims[solvedim], a_pads[solvedim],
+                            dims[1], a_pads[1], start_sys, bsize, offset, stream);
   } else {
     DIM_V pads, dims; // TODO
     for (int i = 0; i < ndim; ++i) {
@@ -167,12 +164,9 @@ inline void backward_batched(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
                              int ndim, int solvedim, int start_sys, int bsize,
                              const int offset, cudaStream_t stream = nullptr) {
   if (solvedim == 0) {
-    const int batch_offset = start_sys * a_pads[solvedim];
     trid_linear_backward_reg<REAL, INC>(
-        dimGrid_x, dimBlock_x, aa + batch_offset, cc + batch_offset,
-        dd + batch_offset, d + batch_offset, u + batch_offset,
-        boundaries + start_sys * 2, dims[solvedim], a_pads[solvedim], bsize,
-        dims[1], a_pads[1], offset, stream);
+        dimGrid_x, dimBlock_x, aa, cc, dd, d, u, boundaries, dims[solvedim],
+        a_pads[solvedim], dims[1], a_pads[1], start_sys, bsize, offset, stream);
   } else {
     DIM_V pads, dims; // TODO
     for (int i = 0; i < ndim; ++i) {

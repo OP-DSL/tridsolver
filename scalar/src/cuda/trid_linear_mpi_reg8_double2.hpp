@@ -211,8 +211,8 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
                     const double *__restrict__ c, const double *__restrict__ d,
                     double *__restrict__ aa, double *__restrict__ cc,
                     double *__restrict__ dd, double *__restrict__ boundaries,
-                    int sys_size, int sys_pads, int sys_n, int y_size,
-                    int y_pads, const int offset) {
+                    int sys_size, int sys_pads, int y_size, int y_pads,
+                    int start_sys, int sys_n, const int offset) {
   // Thread ID in global scope - every thread solves one system
   const int tid = threadIdx.x + threadIdx.y * blockDim.x +
                   blockIdx.x * blockDim.y * blockDim.x +
@@ -232,9 +232,12 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
   const int aligned         = (sys_pads % ALIGN_DOUBLE) == 0 && (offset % ALIGN_DOUBLE) == 0;
 
   int n = 0;
+  int sys = start_sys + tid;
   // Start index for this tridiagonal system
-  //int ind = sys_pads * tid;
-  int ind = (tid / y_size) * y_pads * sys_pads + (tid % y_size) * sys_pads;
+  int ind = sys_pads * sys;
+  //int ind = (tid / y_size) * y_pads * sys_pads + (tid % y_size) * sys_pads;
+
+  const int valid_sys = (sys % y_pads) < y_size;
 
   // Local arrays used in the register shuffle
   double8 l_a, l_b, l_c, l_d, l_aa, l_cc, l_dd;
@@ -243,7 +246,8 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
   // Check that this is an active thread
   if(active_thread) {
     // Check that this thread can perform an optimized solve
-    if(optimized_solve && sys_size >= 16) {
+    // TODO optimized solve
+    if(optimized_solve && sys_size >= 16 && false) {
       // Check whether memory is aligned
       if(aligned) {
         // Process first vector separately
@@ -538,14 +542,17 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
         cc[ind] = bb * (-cc[ind] * cc[ind + 1]);
       }
 
-      // Store boundary values for communication
-      int i = tid * 6;
-      boundaries[i + 0] = aa[ind];
-      boundaries[i + 1] = aa[ind + sys_size - 1];
-      boundaries[i + 2] = cc[ind];
-      boundaries[i + 3] = cc[ind + sys_size - 1];
-      boundaries[i + 4] = dd[ind];
-      boundaries[i + 5] = dd[ind + sys_size - 1];
+      if(valid_sys) {
+        // Store boundary values for communication
+        int i = (sys / y_pads) * y_size + (sys % y_pads);
+        i *= 6;
+        boundaries[i + 0] = aa[ind];
+        boundaries[i + 1] = aa[ind + sys_size - 1];
+        boundaries[i + 2] = cc[ind];
+        boundaries[i + 3] = cc[ind + sys_size - 1];
+        boundaries[i + 4] = dd[ind];
+        boundaries[i + 5] = dd[ind + sys_size - 1];
+      }
     }
   }
 }
@@ -557,8 +564,8 @@ __global__ void
 trid_linear_backward_double(const double *__restrict__ aa, const double *__restrict__ cc,
                      const double *__restrict__ dd, double *__restrict__ d,
                      double *__restrict__ u, const double *__restrict__ boundaries,
-                     int sys_size, int sys_pads, int sys_n, int y_size,
-                     int y_pads, const int offset) {
+                     int sys_size, int sys_pads, int y_size, int y_pads,
+                     int start_sys, int sys_n, const int offset) {
   // Thread ID in global scope - every thread solves one system
   const int tid = threadIdx.x + threadIdx.y * blockDim.x +
                   blockIdx.x * blockDim.y * blockDim.x +
@@ -578,9 +585,17 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
   const int aligned         = (sys_pads % ALIGN_DOUBLE) == 0 && (offset % ALIGN_DOUBLE) == 0;
 
   int n = 0;
+  int sys = start_sys + tid;
   // Start index for this tridiagonal system
-  //int ind = sys_pads * tid;
-  int ind = (tid / y_size) * y_pads * sys_pads + (tid % y_size) * sys_pads;
+  int ind = sys_pads * sys;
+  //int ind = (tid / y_size) * y_pads * sys_pads + (tid % y_size) * sys_pads;
+
+  const int valid_sys = (sys % y_pads) < y_size;
+  int bound_ind = 0;
+  if(valid_sys) {
+    bound_ind = (sys / y_pads) * y_size + (sys % y_pads);
+    bound_ind *= 2;
+  }
 
   // Local arrays used in register shuffle
   double8 l_aa, l_cc, l_dd, l_d, l_u;
@@ -588,10 +603,11 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
   // Check if active thread
   if(active_thread) {
     // Set start and end dd values
-    double dd0 = boundaries[2 * tid];
-    double ddn = boundaries[2 * tid + 1];
+    double dd0 = boundaries[bound_ind];
+    double ddn = boundaries[bound_ind + 1];
     // Check if optimized solve
-    if(optimized_solve && sys_size >= 16) {
+    // TODO optimized solve
+    if(optimized_solve && sys_size >= 16 && false) {
       // Check if aligned memory
       if(aligned) {
         if(INC) {
