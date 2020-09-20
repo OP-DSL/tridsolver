@@ -148,8 +148,20 @@ inline void forward_batched(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *a,
         solvedim, bsize, dims, start_sys);
   }
 #if !(defined(TRID_CUDA_AWARE_MPI) || defined(TRID_NCCL))
-  size_t comm_buf_size   = 3 * 2 * bsize;
-  size_t comm_buf_offset = 3 * 2 * start_sys;
+  int sys = (start_sys / a_pads[1]) * dims[1];
+  if(start_sys % a_pads[1] >= dims[1]) {
+    sys += dims[1];
+  } else {
+    sys += start_sys % a_pads[1];
+  }
+  int end_sys = ((start_sys + bsize) / a_pads[1]) * dims[1];
+  if((start_sys + bsize) % a_pads[1] >= dims[1]) {
+    end_sys += dims[1] - 1;
+  } else {
+    end_sys += (start_sys + bsize) % a_pads[1];
+  }
+  size_t comm_buf_size   = 3 * 2 * (end_sys - sys);
+  size_t comm_buf_offset = 3 * 2 * sys;
   cudaMemcpyAsync(send_buf_h + comm_buf_offset, boundaries + comm_buf_offset,
                   sizeof(REAL) * comm_buf_size, cudaMemcpyDeviceToHost, stream);
 #endif
@@ -466,14 +478,17 @@ void tridMultiDimBatchSolveMPI_allgather(
   const int reduced_len_l = 2;
   const int reduced_len_g = reduced_len_l * params.num_mpi_procs[solvedim];
 
-  if(solvedim == 0) {
-    sys_n = a_pads[1] * dims[2];
-  }
+  int sys_n_include_pads = a_pads[1] * dims[2];
 
   // Calculate required number of CUDA threads and blocksS
   int blockdimx = 128;
   int blockdimy = 1;
-  int dimgrid   = 1 + (sys_n - 1) / blockdimx; // can go up to 65535
+  int dimgrid;
+  if(solvedim == 0) {
+    dimgrid   = 1 + (sys_n_include_pads - 1) / blockdimx; // can go up to 65535
+  } else {
+    dimgrid   = 1 + (sys_n - 1) / blockdimx; // can go up to 65535
+  }
   int dimgridx  = dimgrid % 65536; // can go up to max 65535 on Fermi
   int dimgridy  = 1 + dimgrid / 65536;
 
@@ -484,9 +499,15 @@ void tridMultiDimBatchSolveMPI_allgather(
 
   // Do modified thomas forward pass
   BEGIN_PROFILING_CUDA2("thomas_forward", 0);
-  forward_batched(dimGrid_x, dimBlock_x, a, a_pads, b, b_pads, c, c_pads, d,
-                  d_pads, aa, cc, dd, boundaries, send_buf_h, dims, ndim,
-                  solvedim, 0, sys_n, offset);
+  if(solvedim == 0) {
+    forward_batched(dimGrid_x, dimBlock_x, a, a_pads, b, b_pads, c, c_pads, d,
+                    d_pads, aa, cc, dd, boundaries, send_buf_h, dims, ndim,
+                    solvedim, 0, sys_n_include_pads, offset);
+  } else {
+    forward_batched(dimGrid_x, dimBlock_x, a, a_pads, b, b_pads, c, c_pads, d,
+                    d_pads, aa, cc, dd, boundaries, send_buf_h, dims, ndim,
+                    solvedim, 0, sys_n, offset);
+  }
   cudaSafeCall(cudaDeviceSynchronize());
   END_PROFILING_CUDA2("thomas_forward", 0);
 
@@ -519,9 +540,15 @@ void tridMultiDimBatchSolveMPI_allgather(
   END_PROFILING_CUDA2("pcr_on_reduced", 0);
   // Do the backward pass to solve for remaining unknowns
   BEGIN_PROFILING_CUDA2("thomas_backward", 0);
-  backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd,
-                              d_pads, boundaries, d, u, u_pads, dims, ndim,
-                              solvedim, 0, sys_n, offset);
+  if(solvedim == 0) {
+    backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd,
+                                d_pads, boundaries, d, u, u_pads, dims, ndim,
+                                solvedim, 0, sys_n_include_pads, offset);
+  } else {
+    backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd,
+                                d_pads, boundaries, d, u, u_pads, dims, ndim,
+                                solvedim, 0, sys_n, offset);
+  }
   END_PROFILING_CUDA2("thomas_backward",0);
 }
 
