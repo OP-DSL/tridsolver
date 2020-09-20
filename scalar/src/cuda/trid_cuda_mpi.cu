@@ -466,6 +466,10 @@ void tridMultiDimBatchSolveMPI_allgather(
   const int reduced_len_l = 2;
   const int reduced_len_g = reduced_len_l * params.num_mpi_procs[solvedim];
 
+  if(solvedim == 0) {
+    sys_n = a_pads[1] * dims[2];
+  }
+
   // Calculate required number of CUDA threads and blocksS
   int blockdimx = 128;
   int blockdimy = 1;
