@@ -237,8 +237,6 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
   int ind = sys_pads * sys;
   //int ind = (tid / y_size) * y_pads * sys_pads + (tid % y_size) * sys_pads;
 
-  const int valid_sys = (sys % y_pads) < y_size;
-
   // Local arrays used in the register shuffle
   double8 l_a, l_b, l_c, l_d, l_aa, l_cc, l_dd;
   double bb, a2, c2, d2;
@@ -542,17 +540,13 @@ trid_linear_forward_double(const double *__restrict__ a, const double *__restric
         cc[ind] = bb * (-cc[ind] * cc[ind + 1]);
       }
 
-      if(valid_sys) {
-        // Store boundary values for communication
-        int i = (sys / y_pads) * y_size + (sys % y_pads);
-        i *= 6;
-        boundaries[i + 0] = aa[ind];
-        boundaries[i + 1] = aa[ind + sys_size - 1];
-        boundaries[i + 2] = cc[ind];
-        boundaries[i + 3] = cc[ind + sys_size - 1];
-        boundaries[i + 4] = dd[ind];
-        boundaries[i + 5] = dd[ind + sys_size - 1];
-      }
+      int i = sys * 6;
+      boundaries[i + 0] = aa[ind];
+      boundaries[i + 1] = aa[ind + sys_size - 1];
+      boundaries[i + 2] = cc[ind];
+      boundaries[i + 3] = cc[ind + sys_size - 1];
+      boundaries[i + 4] = dd[ind];
+      boundaries[i + 5] = dd[ind + sys_size - 1];
     }
   }
 }
@@ -590,21 +584,14 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
   int ind = sys_pads * sys;
   //int ind = (tid / y_size) * y_pads * sys_pads + (tid % y_size) * sys_pads;
 
-  const int valid_sys = (sys % y_pads) < y_size;
-  int bound_ind = 0;
-  if(valid_sys) {
-    bound_ind = (sys / y_pads) * y_size + (sys % y_pads);
-    bound_ind *= 2;
-  }
-
   // Local arrays used in register shuffle
   double8 l_aa, l_cc, l_dd, l_d, l_u;
 
   // Check if active thread
   if(active_thread) {
     // Set start and end dd values
-    double dd0 = boundaries[bound_ind];
-    double ddn = boundaries[bound_ind + 1];
+    double dd0 = boundaries[sys * 2];
+    double ddn = boundaries[sys * 2 + 1];
     // Check if optimized solve
     // TODO optimized solve
     if(optimized_solve && sys_size >= 16 && false) {
