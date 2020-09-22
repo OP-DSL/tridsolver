@@ -136,7 +136,7 @@ inline __device__ void load_array_reg16(const float* __restrict__ ga, float16* l
 // Same as load_array_reg16() with the following exception: if sys_pads would cause unaligned access the index is rounded down to the its floor value to prevent missaligned access.
 // ga - global array
 // la - local array
-inline __device__ void load_array_reg16_unaligned(float const* __restrict__ ga, float16* la, int n, int tid, int sys_pads, int sys_length) {
+inline __device__ void load_array_reg16_unaligned(float const* __restrict__ ga, float16* la, int n, int tid, int sys_pads, int sys_length, int offset) {
   // Global memory index of an element
   int gind;
   // Array indexing can be decided in compile time -> arrays will stay in registers
@@ -150,7 +150,7 @@ inline __device__ void load_array_reg16_unaligned(float const* __restrict__ ga, 
   int gind_floor;
   int i;
   for(i=0; i<4; i++) {
-    gind_floor   = (gind/ALIGN_FLOAT)*ALIGN_FLOAT + tcol*4; // Round index to floor
+    gind_floor   = ((gind + offset)/ALIGN_FLOAT)*ALIGN_FLOAT - offset + tcol*4; // Round index to floor
     (*la).vec[i] = __ldg( ((float4*)&ga[gind_floor]) );    // Get aligned data
     gind        += sys_pads;                         // Stride to the next system
   }
@@ -185,7 +185,7 @@ inline __device__ void store_array_reg16(float* __restrict__ ga, float16* la, in
 // Same as store_array_reg16() with the following exception: if stride would cause unaligned access the index is rounded down to the its floor value to prevent missaligned access.
 // ga - global array
 // la - local array
-inline __device__ void store_array_reg16_unaligned(float* __restrict__ ga, float16* __restrict__ la, int n, int tid, int sys_pads, int sys_length) {
+inline __device__ void store_array_reg16_unaligned(float* __restrict__ ga, float16* __restrict__ la, int n, int tid, int sys_pads, int sys_length, int offset) {
   // Global memory index of an element
   int gind;
   // Array indexing can be decided in compile time -> arrays will stay in registers
@@ -200,7 +200,7 @@ inline __device__ void store_array_reg16_unaligned(float* __restrict__ ga, float
   int gind_floor;
   int i;
   for(i=0; i<4; i++) {
-    gind_floor = (gind/ALIGN_FLOAT)*ALIGN_FLOAT + tcol*4; // Round index to floor
+    gind_floor = ((gind + offset)/ALIGN_FLOAT)*ALIGN_FLOAT - offset + tcol*4; // Round index to floor
     *((float4*)&ga[gind_floor]) = (*la).vec[i];  // Put aligned data
     gind += sys_pads;                              // Stride to the next system
   }
@@ -213,7 +213,7 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
                     const float *__restrict__ c, const float *__restrict__ d,
                     float *__restrict__ aa, float *__restrict__ cc,
                     float *__restrict__ dd, float *__restrict__ boundaries,
-                    int sys_size, int sys_pads, int sys_n) {
+                    int sys_size, int sys_pads, int sys_n, int offset) {
   // Thread ID in global scope - every thread solves one system
   const int tid = threadIdx.x + threadIdx.y * blockDim.x +
                   blockIdx.x * blockDim.y * blockDim.x +
@@ -231,7 +231,7 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
   const int active_thread   = optimized_solve || boundary_solve;
   // Check if aligned memory
   //const int aligned         = (sys_pads % VEC_F) == 0;
-  const int aligned = (sys_pads % ALIGN_FLOAT) == 0;
+  const int aligned = (sys_pads % ALIGN_FLOAT) == 0 && (offset % ALIGN_FLOAT) == 0;
 
   int n = 0;
   // Start index for this tridiagonal system
@@ -380,7 +380,7 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
         boundaries[i + 5] = dd[ind + sys_size - 1];
       } else {
         // Memory is unaligned
-        int ind_floor = (ind/ALIGN_FLOAT)*ALIGN_FLOAT;
+        int ind_floor = ((ind + offset)/ALIGN_FLOAT)*ALIGN_FLOAT - offset;
         int sys_off   = ind - ind_floor;
 
         // Handle start of unaligned memory
@@ -410,10 +410,10 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
         int n = VEC_F;
         // Back to normal
         for(; n < sys_size - VEC_F; n += VEC_F) {
-          load_array_reg16_unaligned(a,&l_a,n, tid, sys_pads, sys_size);
-          load_array_reg16_unaligned(b,&l_b,n, tid, sys_pads, sys_size);
-          load_array_reg16_unaligned(c,&l_c,n, tid, sys_pads, sys_size);
-          load_array_reg16_unaligned(d,&l_d,n, tid, sys_pads, sys_size);
+          load_array_reg16_unaligned(a,&l_a,n, tid, sys_pads, sys_size, offset);
+          load_array_reg16_unaligned(b,&l_b,n, tid, sys_pads, sys_size, offset);
+          load_array_reg16_unaligned(c,&l_c,n, tid, sys_pads, sys_size, offset);
+          load_array_reg16_unaligned(d,&l_d,n, tid, sys_pads, sys_size, offset);
           #pragma unroll 16
           for(int i=0; i<VEC_F; i++) {
             bb = 1.0 / (l_b.f[i] - l_a.f[i] * c2);
@@ -424,9 +424,9 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
             l_aa.f[i] = a2;
             l_cc.f[i] = c2;
           }
-          store_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size);
-          store_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size);
-          store_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
+          store_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size, offset);
+          store_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size, offset);
+          store_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size, offset);
         }
 
         // Handle end of unaligned memory
@@ -463,9 +463,9 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
 
         // Back to normal
         for(; n > 0; n -= VEC_F) {
-          load_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
-          load_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size);
-          load_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size);
+          load_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size, offset);
+          load_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size, offset);
+          load_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size, offset);
 
           for(int i = VEC_F - 1; i >= 0; i--) {
             d2 = l_dd.f[i] - l_cc.f[i] * d2;
@@ -476,9 +476,9 @@ trid_linear_forward_float(const float *__restrict__ a, const float *__restrict__
             l_aa.f[i] = a2;
           }
 
-          store_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size);
-          store_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size);
-          store_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
+          store_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size, offset);
+          store_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size, offset);
+          store_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size, offset);
         }
 
         for(int i = n + VEC_F - 1; i > sys_off; i--) {
@@ -556,7 +556,7 @@ __global__ void
 trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict__ cc,
                      const float *__restrict__ dd, float *__restrict__ d,
                      float *__restrict__ u, const float *__restrict__ boundaries,
-                     int sys_size, int sys_pads, int sys_n) {
+                     int sys_size, int sys_pads, int sys_n, int offset) {
   // Thread ID in global scope - every thread solves one system
   const int tid = threadIdx.x + threadIdx.y * blockDim.x +
                   blockIdx.x * blockDim.y * blockDim.x +
@@ -574,7 +574,7 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
   const int active_thread   = optimized_solve || boundary_solve;
   // Check if aligned memory
   //const int aligned         = (sys_pads % VEC_F) == 0;
-  const int aligned = (sys_pads % ALIGN_FLOAT) == 0;
+  const int aligned = (sys_pads % ALIGN_FLOAT) == 0 && (offset % ALIGN_FLOAT) == 0;
 
   int n = 0;
   // Start index for this tridiagonal system
@@ -660,7 +660,7 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
       } else {
         // Unaligned memory
         if(INC) {
-          int ind_floor = (ind/ALIGN_FLOAT)*ALIGN_FLOAT;
+          int ind_floor = ((ind + offset)/ALIGN_FLOAT)*ALIGN_FLOAT - offset;
           int sys_off   = ind - ind_floor;
 
           // Handle start of unaligned memory
@@ -678,15 +678,15 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
           n = VEC_F;
           // Back to normal
           for(; n < sys_size - VEC_F; n += VEC_F) {
-            load_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
-            load_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size);
-            load_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size);
-            load_array_reg16_unaligned(u,&l_u,n, tid, sys_pads, sys_size);
+            load_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size, offset);
+            load_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size, offset);
+            load_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size, offset);
+            load_array_reg16_unaligned(u,&l_u,n, tid, sys_pads, sys_size, offset);
             #pragma unroll 16
             for(int i=0; i<VEC_F; i++) {
               l_u.f[i] += l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
             }
-            store_array_reg16_unaligned(u,&l_u,n, tid, sys_pads, sys_size);
+            store_array_reg16_unaligned(u,&l_u,n, tid, sys_pads, sys_size, offset);
           }
 
           // Handle end of unaligned memory
@@ -697,7 +697,7 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
 
           u[ind + sys_size - 1] += ddn;
         } else {
-          int ind_floor = (ind/ALIGN_FLOAT)*ALIGN_FLOAT;
+          int ind_floor = ((ind + offset)/ALIGN_FLOAT)*ALIGN_FLOAT - offset;
           int sys_off   = ind - ind_floor;
 
           // Handle start of unaligned memory
@@ -715,15 +715,15 @@ trid_linear_backward_float(const float *__restrict__ aa, const float *__restrict
           n = VEC_F;
           // Back to normal
           for(; n < sys_size - VEC_F; n += VEC_F) {
-            load_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size);
-            load_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size);
-            load_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size);
-            load_array_reg16_unaligned(d,&l_d,n, tid, sys_pads, sys_size);
+            load_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size, offset);
+            load_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size, offset);
+            load_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size, offset);
+            load_array_reg16_unaligned(d,&l_d,n, tid, sys_pads, sys_size, offset);
             #pragma unroll 16
             for(int i=0; i<VEC_F; i++) {
               l_d.f[i] = l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
             }
-            store_array_reg16_unaligned(d,&l_d,n, tid, sys_pads, sys_size);
+            store_array_reg16_unaligned(d,&l_d,n, tid, sys_pads, sys_size, offset);
           }
 
           // Handle end of unaligned memory
