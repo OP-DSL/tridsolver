@@ -141,14 +141,14 @@ inline void forward_batched(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *a,
         cc + batch_offset, dd + batch_offset, boundaries + start_sys * 3 * 2,
         dims[solvedim], a_pads[solvedim], bsize, offset, stream);
   } else {
-    DIM_V pads, dims; // TODO
+    DIM_V k_pads, k_dims; // TODO
     for (int i = 0; i < ndim; ++i) {
-      pads.v[i] = a_pads[i];
-      dims.v[i] = a_pads[i];
+      k_pads.v[i] = a_pads[i];
+      k_dims.v[i] = dims[i];
     }
     trid_strided_multidim_forward<REAL><<<dimGrid_x, dimBlock_x, 0, stream>>>(
-        a, pads, b, pads, c, pads, d, pads, aa, cc, dd, boundaries, ndim,
-        solvedim, bsize, dims, start_sys);
+        a, k_pads, b, k_pads, c, k_pads, d, k_pads, aa, cc, dd, boundaries, ndim,
+        solvedim, bsize, k_dims, start_sys);
   }
 #if !(defined(TRID_CUDA_AWARE_MPI) || defined(TRID_NCCL))
   size_t comm_buf_size   = 3 * 2 * bsize;
@@ -174,15 +174,15 @@ inline void backward_batched(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
         boundaries + start_sys * 2, dims[solvedim], a_pads[solvedim], bsize,
         offset, stream);
   } else {
-    DIM_V pads, dims; // TODO
+    DIM_V k_pads, k_dims; // TODO
     for (int i = 0; i < ndim; ++i) {
-      pads.v[i] = a_pads[i];
-      dims.v[i] = a_pads[i];
+      k_pads.v[i] = a_pads[i];
+      k_dims.v[i] = dims[i];
     }
     trid_strided_multidim_backward<REAL, INC>
         <<<dimGrid_x, dimBlock_x, 0, stream>>>(
-            aa, pads, cc, pads, dd, d, pads, u, pads, boundaries, ndim,
-            solvedim, bsize, dims, start_sys);
+            aa, k_pads, cc, k_pads, dd, d, k_pads, u, k_pads, boundaries, ndim,
+            solvedim, bsize, k_dims, start_sys);
   }
 }
 
