@@ -652,7 +652,7 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
       } else {
         // Unaligned memory
         if(INC) {
-          int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE;
+          int ind_floor = ((ind + offset)/ALIGN_DOUBLE)*ALIGN_DOUBLE - offset;
           int sys_off   = ind - ind_floor;
 
           // Handle start of unaligned memory
@@ -689,7 +689,7 @@ trid_linear_backward_double(const double *__restrict__ aa, const double *__restr
 
           u[ind + sys_size - 1] += ddn;
         } else {
-          int ind_floor = (ind/ALIGN_DOUBLE)*ALIGN_DOUBLE;
+          int ind_floor = ((ind + offset)/ALIGN_DOUBLE)*ALIGN_DOUBLE - offset;
           int sys_off   = ind - ind_floor;
 
           // Handle start of unaligned memory

@@ -611,20 +611,20 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   case MpiSolverParams::ALLGATHER:
     tridMultiDimBatchSolveMPI_allgather<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
-        solvedim, dims, aa, cc, dd, boundaries, mpi_buf, sys_n, offset,
-        send_buf, receive_buf);
+        solvedim, dims, aa + offset, cc + offset, dd + offset, boundaries,
+        mpi_buf, sys_n, offset, send_buf, receive_buf);
     break;
   case MpiSolverParams::LATENCY_HIDING_INTERLEAVED:
     tridMultiDimBatchSolveMPI_interleaved<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
-        solvedim, dims, aa, cc, dd, boundaries, mpi_buf, sys_n, offset,
-        send_buf, receive_buf);
+        solvedim, dims, aa + offset, cc + offset, dd + offset, boundaries,
+        mpi_buf, sys_n, offset, send_buf, receive_buf);
     break;
   case MpiSolverParams::LATENCY_HIDING_TWO_STEP:
     tridMultiDimBatchSolveMPI_simple<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
-        solvedim, dims, aa, cc, dd, boundaries, mpi_buf, sys_n, offset,
-        send_buf, receive_buf);
+        solvedim, dims, aa + offset, cc + offset, dd + offset, boundaries,
+        mpi_buf, sys_n, offset, send_buf, receive_buf);
     break;
   default: assert(false && "Unknown communication strategy");
   }
