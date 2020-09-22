@@ -555,10 +555,14 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
 
   // The number of systems to solve
   //const int sys_n = eq_stride * outer_size;
-  int sys_n;
+  int sys_n = 1;
   if(solvedim == 0) {
-    sys_n = dims[ndim] * std::accumulate(a_pads + solvedim + 1, dims + ndim - 1,
-                                         1, std::multiplies<int>{});
+    if(ndim == 2) {
+      sys_n = a_pads[1];
+    } else if(ndim > 2) {
+      sys_n = dims[ndim - 1] * std::accumulate(a_pads + solvedim + 1, a_pads + ndim - 1,
+                                           1, std::multiplies<int>{});
+    }
   } else {
     sys_n = eq_stride * outer_size;
   }
