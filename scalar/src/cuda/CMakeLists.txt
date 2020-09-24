@@ -83,14 +83,6 @@ if (BUILD_FOR_GPU)
     option(USE_NCCL "Build library with NCCL for MPI comms" OFF)
     find_package(MPI REQUIRED)
     find_package(OpenMP REQUIRED)
-    # ---[ NCCL
-    if (USE_NCCL)
-      find_package(NCCL)
-      if (NCCL_FOUND)
-        add_definitions(-DTRID_NCCL)
-        include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
-      endif ()
-    endif ()
 
     cuda_add_library(
       tridcuda_mpi
@@ -100,6 +92,15 @@ if (BUILD_FOR_GPU)
       -Xcompiler
       -fPIC
       -Xcompiler) # Make binary relocatable
+
+    if (USE_NCCL)
+      find_package(NCCL)
+      if (NCCL_FOUND)
+        target_compile_definitions(tridcuda_mpi PRIVATE TRID_NCCL)
+        include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
+        target_link_libraries(${Name}_cuda_mpi ${NCCL_LIBRARY})
+      endif ()
+    endif ()
 
     if (USE_CUDA_AWARE_MPI)
       target_compile_definitions(tridcuda_mpi PRIVATE TRID_CUDA_AWARE_MPI)
