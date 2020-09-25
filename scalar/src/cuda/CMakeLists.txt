@@ -98,7 +98,7 @@ if (BUILD_FOR_GPU)
       if (NCCL_FOUND)
         target_compile_definitions(tridcuda_mpi PRIVATE TRID_NCCL)
         include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
-        target_link_libraries(${Name}_cuda_mpi ${NCCL_LIBRARY})
+        target_link_libraries(tridcuda_mpi ${NCCL_LIBRARY})
       endif ()
     endif ()
 
