@@ -628,6 +628,7 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
     break;
   default: assert(false && "Unknown communication strategy");
   }
+  cudaSafeCall(cudaDeviceSynchronize());
 #if PROFILING
   BEGIN_PROFILING2("barrier");
   cudaSafeCall(cudaPeekAtLastError());
