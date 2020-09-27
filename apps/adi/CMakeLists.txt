@@ -9,12 +9,6 @@ option(USE_NCCL "TDMA library built with NCCL" OFF)
 set(LIBTRID_PATH $ENV{TRIDSOLVER_INSTALL_PATH}
   CACHE STRING "Tridsolver (scalar) installation directory")
 
-list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
-
-if (USE_NCCL)
-  find_package(NCCL)
-endif ()
-
 if (INTEL_CC)
   # Detect/find Intel compilers
   find_program(CMAKE_C_COMPILER NAMES   mpicc)
@@ -36,6 +30,12 @@ if (INTEL_CC)
 endif (INTEL_CC)
 
 project("adi")
+
+list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+
+if (USE_NCCL)
+  find_package(NCCL)
+endif ()
 
 if (INTEL_CC)
   # Set compiler flags/options for Intel compiler
@@ -143,6 +143,7 @@ if (BUILD_FOR_GPU)
   find_package(MPI REQUIRED)
   find_package(OpenMP REQUIRED)
   if (NCCL_FOUND)
+    add_definitions(-DTRID_NCCL)
     include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
   endif ()
   cuda_include_directories(SYSTEM ${MPI_INCLUDE_PATH})
