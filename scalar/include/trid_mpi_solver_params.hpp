@@ -142,7 +142,7 @@ struct MpiSolverParams {
   }
 
   ~MpiSolverParams() {
-    for (int equation_dim = 0; equation_dim < this->communicators.size(); ++equation_dim) {
+    for (unsigned int equation_dim = 0; equation_dim < this->communicators.size(); ++equation_dim) {
       MPI_Group_free(&this->cart_groups[equation_dim]);
       MPI_Group_free(&this->neighbours_groups[equation_dim]);
       MPI_Comm_free(&this->communicators[equation_dim]);
