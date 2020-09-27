@@ -84,6 +84,14 @@ if (BUILD_FOR_GPU)
     find_package(MPI REQUIRED)
     find_package(OpenMP REQUIRED)
 
+    if (USE_NCCL)
+      find_package(NCCL)
+      if (NCCL_FOUND)
+        add_definitions(-DTRID_NCCL)
+        include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
+      endif ()
+    endif ()
+
     cuda_add_library(
       tridcuda_mpi
       ${PROJECT_SOURCE_DIR}/src/cuda/trid_cuda_mpi.cu
@@ -92,15 +100,6 @@ if (BUILD_FOR_GPU)
       -Xcompiler
       -fPIC
       -Xcompiler) # Make binary relocatable
-
-    if (USE_NCCL)
-      find_package(NCCL)
-      if (NCCL_FOUND)
-        target_compile_definitions(tridcuda_mpi PRIVATE TRID_NCCL)
-        include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
-        target_link_libraries(tridcuda_mpi ${NCCL_LIBRARY})
-      endif ()
-    endif ()
 
     if (USE_CUDA_AWARE_MPI)
       target_compile_definitions(tridcuda_mpi PRIVATE TRID_CUDA_AWARE_MPI)
