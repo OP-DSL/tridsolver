@@ -198,19 +198,21 @@ inline void forward_batched(const REAL *a, const REAL *b, const REAL *c, const R
     // Do modified thomas forward pass
     int start_ind = (start_sys / dims[0]) * pads[0] + (start_sys % dims[0]);
     int end_ind = (end_sys / dims[0]) * pads[0] + (end_sys % dims[0]);
+    n_sys = end_ind - start_ind;
     int batch_size =
         std::max(1, ROUND_DOWN(n_sys / omp_get_max_threads(), SIMD_VEC));
 #pragma omp parallel for
-    for (int ind = start_ind; ind < ROUND_DOWN(end_ind, batch_size);
-         ind += batch_size) {
+    for (int sys = 0; sys < ROUND_DOWN(n_sys, batch_size);
+         sys += batch_size) {
+      int ind = start_ind + sys;
       thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
                                      &aa[ind], &cc[ind], &dd[ind], dims[2],
                                      pads[0] * pads[1], batch_size);
     }
 
     // Do final strip if number of systems isn't a multiple of batch_size
-    if (end_ind != ROUND_DOWN(end_ind, batch_size)) {
-      int ind    = ROUND_DOWN(end_ind, batch_size);
+    if (n_sys != ROUND_DOWN(n_sys, batch_size)) {
+      int ind    = start_ind + ROUND_DOWN(n_sys, batch_size);
       int length = end_ind - ind;
       thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
                                      &aa[ind], &cc[ind], &dd[ind], dims[2],
@@ -592,18 +594,20 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
     // Do the backward pass to solve for remaining unknowns
     int start_ind = (start_sys / dims[0]) * pads[0] + (start_sys % dims[0]);
     int end_ind = (end_sys / dims[0]) * pads[0] + (end_sys % dims[0]);
+    n_sys = end_ind - start_ind;
     int batch_size =
         std::max(1, ROUND_DOWN(n_sys / omp_get_max_threads(), SIMD_VEC));
     #pragma omp parallel for
-    for (int ind = start_ind; ind < ROUND_DOWN(end_ind, batch_size);
-         ind += batch_size) {
+    for (int sys = 0; sys < ROUND_DOWN(n_sys, batch_size);
+         sys += batch_size) {
+      int ind = start_ind + sys;
       thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
                                            &d[ind], &u[ind], dims[2],
                                            pads[0] * pads[1], batch_size);
     }
 
-    if (end_ind != ROUND_DOWN(end_ind, batch_size)) {
-      int ind    = ROUND_DOWN(end_ind, batch_size);
+    if (n_sys != ROUND_DOWN(n_sys, batch_size)) {
+      int ind    = start_ind + ROUND_DOWN(n_sys, batch_size);
       int length = end_ind - ind;
       thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
                                            &d[ind], &u[ind], dims[2],
