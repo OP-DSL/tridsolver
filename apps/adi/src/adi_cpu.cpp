@@ -214,7 +214,7 @@ int main(int argc, char* argv[]) {
     timing_start(prof, &timer);
       preproc<FP>(lambda, h_u, h_du, h_ax, h_bx, h_cx, h_ay, h_by, h_cy, h_az, h_bz, h_cz, nx, nx_pad, ny, nz);
     timing_end(prof, &timer, &elapsed_preproc, "preproc");
-    
+
     //
     // perform tri-diagonal solves in x-direction
     //
@@ -227,7 +227,7 @@ int main(int argc, char* argv[]) {
     dims[0] = nx;
     dims[1] = ny;
     dims[2] = nz;
-    pads[0] = dims[0];
+    pads[0] = nx_pad;
     pads[1] = dims[1];
     pads[2] = dims[2];
 
@@ -239,7 +239,7 @@ int main(int argc, char* argv[]) {
     #endif
 
     timing_end(prof, &timer, &elapsed_trid_x, "trid_x");
-    
+
     //
     // perform tri-diagonal solves in y-direction
     //
@@ -251,7 +251,7 @@ int main(int argc, char* argv[]) {
     #elif FPPREC == 1
       tridDmtsvStridedBatch(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
     #endif
-    
+
     timing_end(prof, &timer, &elapsed_trid_y, "trid_y");
 
     //
@@ -268,10 +268,10 @@ int main(int argc, char* argv[]) {
 
     timing_end(prof, &timer, &elapsed_trid_z, "trid_z");
   }
-  
+
   rms("end h_u",h_u, nx_pad, nx, ny, nz);
   rms("end du", h_du, nx_pad, nx, ny, nz);
-  
+
   elapsed = elapsed_time(&timer2);
   elapsed_total = elapsed;
   printf("\nADI total execution time for %d iterations (sec): %f (s) \n", iter, elapsed);
