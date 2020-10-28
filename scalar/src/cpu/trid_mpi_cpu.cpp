@@ -43,6 +43,7 @@
 #include <type_traits>
 #include <sys/time.h>
 #include <cassert>
+#include <cmath>
 
 #include "timing.h"
 
@@ -50,7 +51,7 @@
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
 
-#define Z_BATCH 56
+//#define Z_BATCH 56
 
 // define MPI_datatype
 #if __cplusplus >= 201402L
@@ -175,11 +176,11 @@ inline void forward_batched(const REAL *a, const REAL *b, const REAL *c, const R
       int start_z = start_sys / dims[0];
       int end_z = end_sys / dims[0];
 #pragma omp parallel for
-      for (int z = start_z; z < end_z; z++) {
+      for (int z = start_z; z <= end_z; z++) {
         int ind = z * pads[0] * pads[1];
         // offset in the first z 'layer'
         int strip_start = z == start_z ? start_sys - start_z * dims[0] : 0;
-        int strip_len   = z == end_z ? end_sys - end_z * dims[0] : pads[0];
+        int strip_len   = z == end_z ? end_sys - end_z * dims[0] : dims[0];
         strip_len -= strip_start;
         //ind += strip_start * pads[0];
         ind += strip_start;
@@ -195,8 +196,22 @@ inline void forward_batched(const REAL *a, const REAL *b, const REAL *c, const R
      *
      *********************/
 
+    int start_y = start_sys / dims[0];
+    int end_y = end_sys / dims[0];
+    #pragma omp parallel for
+    for(int y = start_y; y <= end_y; y++) {
+      int ind = y * pads[0];
+      int strip_start = y == start_y ? start_sys - start_y * dims[0] : 0;
+      int strip_len   = y == end_y ? end_sys - end_y * dims[0] : dims[0];
+      strip_len -= strip_start;
+      //ind += strip_start * pads[0];
+      ind += strip_start;
+      thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
+                                     &aa[ind], &cc[ind], &dd[ind], dims[2],
+                                     pads[0] * pads[1], strip_len);
+    }
     // Do modified thomas forward pass
-    int start_ind = (start_sys / dims[0]) * pads[0] + (start_sys % dims[0]);
+    /*int start_ind = (start_sys / dims[0]) * pads[0] + (start_sys % dims[0]);
     int end_ind = (end_sys / dims[0]) * pads[0] + (end_sys % dims[0]);
     n_sys = end_ind - start_ind;
     int batch_size =
@@ -217,7 +232,7 @@ inline void forward_batched(const REAL *a, const REAL *b, const REAL *c, const R
       thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
                                      &aa[ind], &cc[ind], &dd[ind], dims[2],
                                      pads[0] * pads[1], length);
-    }
+    }*/
   }
   // Pack reduced systems (boundaries of each tridiagonal system)
   copy_boundaries_strided(aa, cc, dd, sndbuf, dims, pads, ndim, solvedim, start_sys,
@@ -260,9 +275,7 @@ inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
      * Y Dimension Solve
      *
      *********************/
-    // This dimension should not need to be altered for positive and negative padding
-
-    // Check if 2D solve
+    // 2D should not need to be altered for positive and negative padding
     if (ndim == 2) {
       // Do modified thomas forward pass
       int batch_size =
@@ -291,7 +304,7 @@ inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
         int ind = z * pads[0] * pads[1];
         thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
                                        &aa[ind], &cc[ind], &dd[ind], dims[1],
-                                       pads[0], pads[0]);
+                                       pads[0], dims[0]);
       }
     }
   } else if (solvedim == 2) {
@@ -300,10 +313,15 @@ inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
    * Z Dimension Solve
    *
    *********************/
-  // This dimension should not need to be altered for positive and negative padding
 
   // Do modified thomas forward pass
-  // Iterate over strips of length Z_BATCH
+  #pragma omp parallel for
+      for (int ind = 0; ind < dims[1] * pads[0]; ind += pads[0]) {
+        thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
+                                       &aa[ind], &cc[ind], &dd[ind], dims[2],
+                                       pads[0] * pads[1], dims[0]);
+      }
+/*
 #pragma omp parallel for
     for (int ind = 0; ind < ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
          ind += Z_BATCH) {
@@ -319,7 +337,7 @@ inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
       thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
                                      &aa[ind], &cc[ind], &dd[ind], dims[2],
                                      pads[0] * pads[1], length);
-    }
+    }*/
   }
 
   // Pack reduced systems (boundaries of each tridiagonal system)
@@ -476,7 +494,7 @@ inline void backward(const REAL *aa, const REAL *cc,
         int ind = z * pads[0] * pads[1];
         thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
                                              &d[ind], &u[ind], dims[1], pads[0],
-                                             pads[0]);
+                                             dims[0]);
       }
     }
   } else if(solvedim == 2) {
@@ -485,8 +503,14 @@ inline void backward(const REAL *aa, const REAL *cc,
      * Z Dimension Solve
      *
      *********************/
-    // This dimension should not need to be altered for positive and negative padding
 
+#pragma omp parallel for
+     for (int ind = 0; ind < dims[1] * pads[0]; ind += pads[0]) {
+       thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
+                                            &d[ind], &u[ind], dims[2],
+                                            pads[0] * pads[1], dims[0]);
+     }
+/*
     // Do the backward pass to solve for remaining unknowns
     #pragma omp parallel for
     for (int ind = 0; ind < ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
@@ -502,7 +526,7 @@ inline void backward(const REAL *aa, const REAL *cc,
       thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
                                            &d[ind], &u[ind], dims[2],
                                            pads[0] * pads[1], length);
-    }
+    }*/
   }
 }
 
@@ -571,11 +595,11 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
       int start_z = start_sys / dims[0];
       int end_z = end_sys / dims[0];
       #pragma omp parallel for
-      for (int z = start_z; z < end_z; z++) {
+      for (int z = start_z; z <= end_z; z++) {
         int ind = z * pads[0] * pads[1];
         // offset in the first z 'layer'
         int strip_start = z == start_z ? start_sys - start_z * dims[0] : 0;
-        int strip_len   = z == end_z ? end_sys - end_z * dims[0] : pads[0];
+        int strip_len   = z == end_z ? end_sys - end_z * dims[0] : dims[0];
         strip_len -= strip_start;
         //ind += strip_start * pads[0];
         ind += strip_start;
@@ -591,8 +615,22 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
      *
      *********************/
 
+     int start_y = start_sys / dims[0];
+     int end_y = end_sys / dims[0];
+     #pragma omp parallel for
+     for(int y = start_y; y <= end_y; y++) {
+       int ind = y * pads[0];
+       int strip_start = y == start_y ? start_sys - start_y * dims[0] : 0;
+       int strip_len   = y == end_y ? end_sys - end_y * dims[0] : dims[0];
+       strip_len -= strip_start;
+       //ind += strip_start * pads[0];
+       ind += strip_start;
+       thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
+                                            &d[ind], &u[ind], dims[2],
+                                            pads[0] * pads[1], strip_len);
+     }
     // Do the backward pass to solve for remaining unknowns
-    int start_ind = (start_sys / dims[0]) * pads[0] + (start_sys % dims[0]);
+    /*int start_ind = (start_sys / dims[0]) * pads[0] + (start_sys % dims[0]);
     int end_ind = (end_sys / dims[0]) * pads[0] + (end_sys % dims[0]);
     n_sys = end_ind - start_ind;
     int batch_size =
@@ -612,7 +650,7 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
       thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
                                            &d[ind], &u[ind], dims[2],
                                            pads[0] * pads[1], length);
-    }
+    }*/
   }
 }
 
