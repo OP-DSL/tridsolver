@@ -172,7 +172,7 @@ inline void backward_batched(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
         dimGrid_x, dimBlock_x, aa + batch_offset, cc + batch_offset,
         dd + batch_offset, d + batch_offset, u + batch_offset,
         boundaries + start_sys * 2, dims[solvedim], a_pads[solvedim], bsize,
-        offset, stream);
+        offset, start_sys, dims[1], a_pads[1], stream);
   } else {
     DIM_V k_pads, k_dims; // TODO
     for (int i = 0; i < ndim; ++i) {
