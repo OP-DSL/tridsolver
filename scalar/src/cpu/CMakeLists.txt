@@ -1,11 +1,10 @@
-cmake_minimum_required(VERSION 3.9)
-
 if (USE_PROFILING)
   add_library(profiling SHARED ./timing.cpp)
   target_include_directories(profiling PUBLIC ${PROJECT_SOURCE_DIR}/include)
   set_property(TARGET profiling PROPERTY POSITION_INDEPENDENT_CODE ON)
   if (BUILD_FOR_MPI)
     target_compile_definitions(profiling PRIVATE -DUSE_MPI)
+	target_link_libraries(profiling MPI::MPI_CXX)
   endif (BUILD_FOR_MPI)
   target_compile_definitions(profiling PUBLIC -DPROFILING=1)
 endif (USE_PROFILING)

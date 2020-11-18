@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.9)
-
 add_library(Catch INTERFACE)
 target_include_directories(Catch INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -9,7 +7,11 @@ if (BUILD_FOR_CPU)
   set(TEST_SOURCES catch_main.cpp test_cpu.cpp)
 
   add_executable(tests ${TEST_SOURCES})
-  target_link_libraries(tests Catch tridcpu)
+  target_link_libraries(
+    tests
+    Catch
+    tridcpu
+    OpenMP::OpenMP_CXX)
   target_include_directories(tests PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
 
   add_test(
@@ -26,7 +28,8 @@ if (BUILD_FOR_CPU)
       mpi_tests
       Catch
       tridcpu
-      MPI::MPI_CXX)
+      MPI::MPI_CXX
+      OpenMP::OpenMP_CXX)
     target_include_directories(mpi_tests PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
     add_test(
       NAME catch_mpi_test
@@ -34,13 +37,15 @@ if (BUILD_FOR_CPU)
       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     if (USE_PROFILING)
+      find_package(OpenMP REQUIRED)
       add_executable(mpi_perf_test performance_test.cpp)
       target_include_directories(mpi_perf_test PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
       target_link_libraries(
         mpi_perf_test
         tridcpu
         profiling
-        MPI::MPI_CXX)
+        MPI::MPI_CXX
+        OpenMP::OpenMP_CXX)
     endif (USE_PROFILING)
   endif (BUILD_FOR_MPI)
 endif (BUILD_FOR_CPU)
@@ -68,10 +73,10 @@ if (BUILD_FOR_GPU)
     option(USE_NCCL "Build library with NCCL for MPI comms" OFF)
     if (USE_NCCL)
       find_package(NCCL)
-	  if (NCCL_FOUND)
-	    add_definitions(-DTRID_NCCL)
+      if (NCCL_FOUND)
+        add_definitions(-DTRID_NCCL)
         include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
-	  endif ()
+      endif ()
     endif ()
     set(MPI_TEST_NUM_PROC
         "2"
@@ -85,7 +90,8 @@ if (BUILD_FOR_GPU)
       cuda_mpi_tests
       Catch
       tridcuda_mpi
-      MPI::MPI_CXX ${NCCL_LIBRARY})
+      MPI::MPI_CXX
+      ${NCCL_LIBRARY})
     add_test(
       NAME catch_cuda_mpi_test
       COMMAND "mpirun" -np ${MPI_TEST_NUM_PROC} $<TARGET_FILE:cuda_mpi_tests>
@@ -103,7 +109,8 @@ if (BUILD_FOR_GPU)
         cuda_mpi_perf_test
         tridcuda_mpi
         profiling_cuda
-        MPI::MPI_CXX ${NCCL_LIBRARY})
+        MPI::MPI_CXX
+        ${NCCL_LIBRARY})
     endif (USE_PROFILING)
   endif (BUILD_FOR_MPI)
 endif (BUILD_FOR_GPU)

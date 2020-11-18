@@ -1,48 +1,32 @@
 cmake_minimum_required(VERSION 3.9)
 project("libtrid")
 
-option(INTEL_CC "Use the Intel compiler." ON)
 option(BUILD_FOR_CPU "Build library for CPU architecture." OFF)
 option(BUILD_FOR_MIC "Build library for MIC architecture." OFF)
 option(BUILD_FOR_GPU "Build library for GPU architecture." OFF)
 option(BUILD_FOR_MPI "Build library for MPI combnied with the above architectures." OFF)
 option(BUILD_TESTING "Build tests for the library." OFF)
 option(USE_PROFILING "Build timing library for to measure timings." OFF)
+
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE
       "Release"
       CACHE STRING "Choose the type of build, options are: Debug Release
 RelWithDebInfo MinSizeRel." FORCE)
 endif (NOT CMAKE_BUILD_TYPE)
+list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+
+if (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
+  set(INTEL_CC
+      ON
+      CACHE BOOL "Use the Intel compiler.")
+endif (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
 
 if (INTEL_CC)
   option(PRODUCE_OPT_REPORT "Print intel optimisation reports" OFF)
-  # Detect/find Intel compilers
-  find_program(CMAKE_C_COMPILER NAMES mpicc)
-  find_program(CMAKE_CXX_COMPILER NAMES mpicxx)
-  find_program(CMAKE_AR NAMES xiar)
-  find_program(CMAKE_LINKER NAMES xild)
 
-  set(INTEL_PATH
-      $ENV{INTEL_PATH}
-      CACHE FILEPATH "Intel compiler suite path")
-
-  # set(CMAKE_C_COMPILER   ${INTEL_PATH}/bin/intel64/icc  CACHE FILEPATH "Intel compiler is prefered")
-
-  # set(CMAKE_CXX_COMPILER ${INTEL_PATH}/bin/intel64/icpc CACHE FILEPATH "Intel compiler is prefered")
-
-  if (CMAKE_C_COMPILER MATCHES CMAKE_C_COMPILER-NOTFOUND
-      OR CMAKE_CXX_COMPILER MATCHES CMAKE_CXX_COMPILER-NOTFOUND
-      OR CMAKE_AR MATCHES CMAKE_AR-NOTFOUND
-      OR CMAKE_LINKER MATCHES CMAKE_LINKER-NOTFOUND)
-    message(FATAL_ERROR "Cannot find Intel compiler.  You may need to run `/opt/intel/bin/compilervars.sh intel64'")
-  endif ()
-endif (INTEL_CC)
-
-list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
-if (INTEL_CC)
   # Set compiler flags/options for Intel compiler
-  set(FLAGS_INTEL_DEFAULT "-xHost -m64 -parallel -qopenmp -qno-offload")
+  set(FLAGS_INTEL_DEFAULT "-xHost -m64 -parallel -qno-offload")
   if (PRODUCE_OPT_REPORT)
     set(FLAGS_INTEL_DEFAULT "${FLAGS_INTEL_DEFAULT} -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout")
   endif (PRODUCE_OPT_REPORT)
@@ -54,7 +38,7 @@ if (INTEL_CC)
   # cmake-format: on
 else (INTEL_CC)
   # Set compiler flags/options for GCC compiler
-  set(FLAGS_GCC_DEFAULT "-march=native -fopenmp") # -march=core-avx2
+  set(FLAGS_GCC_DEFAULT "-march=native ") # -march=core-avx2
   set(FLAGS_GCC_DEBUG "-O0")
   set(FLAGS_GCC_RELEASE "-flto -fstrict-aliasing -finline-functions") # -ffast-math -fargument-noalias -fargument-
                                                                       # noalias-global
@@ -90,12 +74,12 @@ endif (BUILD_FOR_MPI)
 if (BUILD_FOR_GPU)
   include(CheckLanguage)
   check_language(CUDA)
-  if(CMAKE_CUDA_COMPILER)
-      enable_language(CUDA)
-      set(CMAKE_CUDA_STANDARD 11)
-      find_library(CUDART_LIBRARY cudart)
+  if (CMAKE_CUDA_COMPILER)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 11)
+    find_library(CUDART_LIBRARY cudart)
   else (CMAKE_CUDA_COMPILER)
-    #todo checking
+    # TODO ecking
   endif (CMAKE_CUDA_COMPILER)
 endif (BUILD_FOR_GPU)
 

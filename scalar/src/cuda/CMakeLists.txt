@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.9)
-
 if (BUILD_FOR_GPU)
   # need for cublas support until cmake 3.17
   find_package(CUDA REQUIRED)
