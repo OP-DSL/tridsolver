@@ -60,6 +60,7 @@ target_compile_definitions(trid_common_options INTERFACE -DN_MAX=${N_MAX})
 target_compile_definitions(trid_common_options INTERFACE -DN_MPI_MAX=${N_MPI_MAX})
 target_include_directories(trid_common_options INTERFACE ${PROJECT_SOURCE_DIR}/include)
 
+find_package(OpenMP REQUIRED)
 if (BUILD_FOR_MPI)
   find_package(MPI REQUIRED)
   # TODO check it

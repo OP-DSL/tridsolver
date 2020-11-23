@@ -2,7 +2,6 @@ add_library(Catch INTERFACE)
 target_include_directories(Catch INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
-find_package(OpenMP REQUIRED)
 
 if (BUILD_FOR_CPU)
   set(TEST_SOURCES catch_main.cpp test_cpu.cpp)
@@ -62,7 +61,11 @@ if (BUILD_FOR_GPU)
   add_executable(cuda_tests ${PROJECT_SOURCE_DIR}/test/catch_main.cpp ${PROJECT_SOURCE_DIR}/test/test_cuda.cu)
   # OPTIONS -Xcompiler -fPIC)
 
-  target_link_libraries(cuda_tests Catch tridcuda OpenMP::OpenMP_CXX)
+  target_link_libraries(
+    cuda_tests
+    Catch
+    tridcuda
+    OpenMP::OpenMP_CXX)
   target_include_directories(cuda_tests PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
   add_test(
     NAME catch_test_cuda
@@ -97,7 +100,6 @@ if (BUILD_FOR_GPU)
       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     if (USE_PROFILING)
-      # performance_test.cu is a symlink to performance_test.cpp TODO fix compilation with cpp (compile with nvcc)
       add_executable(cuda_mpi_perf_test performance_test.cpp)
       set_source_files_properties(performance_test.cpp PROPERTIES LANGUAGE CUDA)
       target_include_directories(cuda_mpi_perf_test PRIVATE ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/test/
