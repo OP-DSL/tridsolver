@@ -2,6 +2,7 @@ add_library(Catch INTERFACE)
 target_include_directories(Catch INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
+find_package(OpenMP REQUIRED)
 
 if (BUILD_FOR_CPU)
   set(TEST_SOURCES catch_main.cpp test_cpu.cpp)
@@ -37,7 +38,6 @@ if (BUILD_FOR_CPU)
       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     if (USE_PROFILING)
-      find_package(OpenMP REQUIRED)
       add_executable(mpi_perf_test performance_test.cpp)
       target_include_directories(mpi_perf_test PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
       target_link_libraries(
@@ -62,7 +62,7 @@ if (BUILD_FOR_GPU)
   add_executable(cuda_tests ${PROJECT_SOURCE_DIR}/test/catch_main.cpp ${PROJECT_SOURCE_DIR}/test/test_cuda.cu)
   # OPTIONS -Xcompiler -fPIC)
 
-  target_link_libraries(cuda_tests Catch tridcuda)
+  target_link_libraries(cuda_tests Catch tridcuda OpenMP::OpenMP_CXX)
   target_include_directories(cuda_tests PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
   add_test(
     NAME catch_test_cuda
@@ -81,15 +81,14 @@ if (BUILD_FOR_GPU)
     set(MPI_TEST_NUM_PROC
         "2"
         CACHE STRING "The number of processes to launch in MPI tests.")
-    find_package(MPI REQUIRED)
     add_executable(cuda_mpi_tests catch_mpi_main.cpp test_cuda_mpi.cu)
     target_include_directories(cuda_mpi_tests PRIVATE ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/test/
                                                       ${PROJECT_SOURCE_DIR}/src/cuda)
-    # cuda_add_cublas_to_target(cuda_mpi_tests)
     target_link_libraries(
       cuda_mpi_tests
       Catch
       tridcuda_mpi
+      OpenMP::OpenMP_CXX
       MPI::MPI_CXX
       ${NCCL_LIBRARY})
     add_test(
@@ -99,16 +98,17 @@ if (BUILD_FOR_GPU)
 
     if (USE_PROFILING)
       # performance_test.cu is a symlink to performance_test.cpp TODO fix compilation with cpp (compile with nvcc)
-      add_executable(cuda_mpi_perf_test performance_test.cu)
+      add_executable(cuda_mpi_perf_test performance_test.cpp)
+      set_source_files_properties(performance_test.cpp PROPERTIES LANGUAGE CUDA)
       target_include_directories(cuda_mpi_perf_test PRIVATE ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/test/
                                                             ${PROJECT_SOURCE_DIR}/src/cuda)
-      cuda_add_cublas_to_target(cuda_mpi_perf_test)
       target_compile_definitions(cuda_mpi_perf_test PRIVATE TRID_PERF_CUDA)
 
       target_link_libraries(
         cuda_mpi_perf_test
         tridcuda_mpi
         profiling_cuda
+        OpenMP::OpenMP_CXX
         MPI::MPI_CXX
         ${NCCL_LIBRARY})
     endif (USE_PROFILING)

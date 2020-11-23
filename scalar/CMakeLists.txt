@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 3.18)
 project("libtrid" C CXX)
 
 option(BUILD_FOR_CPU "Build library for CPU architecture." OFF)
@@ -71,8 +71,16 @@ if (BUILD_FOR_GPU)
   if (CMAKE_CUDA_COMPILER)
     enable_language(CUDA)
     set(CMAKE_CUDA_STANDARD 11)
+    # architecture
+    set(ARCHITECTURE
+        "AUTO"
+        CACHE STRING "Your target CUDA architecture")
+    include(cmake/CUDA_ARCH.cmake)
+    select_cuda_architectures("${ARCHITECTURE}" ARCH_LIST)
+    message(STATUS "CUDA_ARCH: ${ARCH_LIST}")
+    set(CMAKE_CUDA_ARCHITECTURES "${ARCH_LIST}")
   else (CMAKE_CUDA_COMPILER)
-    # TODO ecking
+    message(ERROR "Couldn't find CUDA compiler")
   endif (CMAKE_CUDA_COMPILER)
 endif (BUILD_FOR_GPU)
 

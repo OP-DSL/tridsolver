@@ -1,34 +1,13 @@
 if (BUILD_FOR_GPU)
-  # need for cublas support until cmake 3.17
-  find_package(CUDA REQUIRED)
-  include(FindCUDA)
+  # find cublas, nvToolsExt, etc.
+  find_package(CUDAToolkit)
 
-  # architecture
-  set(ARCHITECTURE
-      "AUTO"
-      CACHE STRING "Your target CUDA architecture")
-  if (${ARCHITECTURE} STREQUAL "AUTO")
-    set(CUDA_ARCH_LIST Auto)
-    cuda_select_nvcc_arch_flags(ARCH_LIST ${CUDA_ARCH_LIST})
-    string(
-      REPLACE ";"
-              " "
-              ARCH_FLAGS
-              "${ARCH_LIST}")
-  else ()
-    string(
-      REPLACE "NUM"
-              ${ARCHITECTURE}
-              ARCH_FLAGS
-              "-gencode arch=compute_NUM,code=sm_NUM")
-  endif ()
-
-  set(cuda_flags "-m64 -Xptxas -dlcm=cg ${ARCH_FLAGS}")
+  set(cuda_flags "-m64 -Xptxas -dlcm=cg ")
 
   # does not have effect TODO find working solution:
 
-  # set(CUDA_PROPAGATE_HOST_FLAGS OFF) set(CUDA_NVCC_FLAGS_DEBUG
-  # "${CUDA_NVCC_FLAGS_DEBUG}   -g -G -O0 -ftz=false -fmad=false")
+  # set(CUDA_PROPAGATE_HOST_FLAGS OFF) set(CUDA_NVCC_FLAGS_DEBUG "${CUDA_NVCC_FLAGS_DEBUG}   -g -G -O0 -ftz=false
+  # -fmad=false")
 
   if (USE_PROFILING)
     # PROFILE disables macros with the suffix 2 to achieve lower overhead to use with profiler
@@ -50,14 +29,14 @@ if (BUILD_FOR_GPU)
     else (${PROFILING_LEVEL} STREQUAL "PROFILE")
       target_compile_definitions(profiling_cuda PUBLIC -DPROFILING=2)
     endif (${PROFILING_LEVEL} STREQUAL "PROFILE")
-    target_link_directories(profiling_cuda PUBLIC "${CUDA_TOOLKIT_ROOT_DIR}/lib64")
-    target_link_libraries(profiling_cuda PRIVATE nvToolsExt)
+    target_link_libraries(profiling_cuda PRIVATE CUDA::nvToolsExt)
   endif (USE_PROFILING)
 
   add_library(tridcuda SHARED ./trid_cuda.cu)
-  cuda_add_cublas_to_target(tridcuda)
-  target_link_libraries(tridcuda trid_common_options)
+  target_link_libraries(tridcuda trid_common_options CUDA::cublas)
   set_target_properties(tridcuda PROPERTIES COMPILE_FLAGS "${cuda_flags}")
+  set_target_properties(tridcuda PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
   target_include_directories(tridcuda PRIVATE ${PROJECT_SOURCE_DIR}/src/cuda/ ${PROJECT_SOURCE_DIR}/src/cuda/generics/)
 
   install(
@@ -90,6 +69,7 @@ if (BUILD_FOR_GPU)
     target_include_directories(tridcuda_mpi PRIVATE ${PROJECT_SOURCE_DIR}/src/cuda/
                                                     ${PROJECT_SOURCE_DIR}/src/cuda/generics/)
     set_target_properties(tridcuda_mpi PROPERTIES COMPILE_FLAGS "${cuda_flags}")
+    set_target_properties(tridcuda_mpi PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
     if (USE_CUDA_AWARE_MPI)
       target_compile_definitions(tridcuda_mpi PRIVATE TRID_CUDA_AWARE_MPI)
@@ -100,9 +80,15 @@ if (BUILD_FOR_GPU)
       PRIVATE trid_common_options
       PUBLIC tridcuda
       PUBLIC MPI::MPI_CXX)
+
+    if (USE_NCCL)
+      target_link_libraries(tridcuda_mpi PUBLIC ${NCCL_LIBRARY})
+    endif (USE_NCCL)
+
     if (USE_PROFILING)
       target_link_libraries(tridcuda_mpi PUBLIC profiling_cuda)
     endif (USE_PROFILING)
+
     install(
       TARGETS tridcuda_mpi
       LIBRARY DESTINATION ${CMAKE_BINARY_DIR}/lib
