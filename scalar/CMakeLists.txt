@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.9)
-project("libtrid")
+project("libtrid" C CXX)
 
 option(BUILD_FOR_CPU "Build library for CPU architecture." OFF)
 option(BUILD_FOR_MIC "Build library for MIC architecture." OFF)
@@ -17,12 +17,6 @@ endif (NOT CMAKE_BUILD_TYPE)
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
-  set(INTEL_CC
-      ON
-      CACHE BOOL "Use the Intel compiler.")
-endif (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
-
-if (INTEL_CC)
   option(PRODUCE_OPT_REPORT "Print intel optimisation reports" OFF)
 
   # Set compiler flags/options for Intel compiler
@@ -36,7 +30,7 @@ if (INTEL_CC)
   set(CMAKE_C_FLAGS           "${CMAKE_C_FLAGS}       ${FLAGS_INTEL_DEFAULT}")
   set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} -O0")
   # cmake-format: on
-else (INTEL_CC)
+else (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
   # Set compiler flags/options for GCC compiler
   set(FLAGS_GCC_DEFAULT "-march=native ") # -march=core-avx2
   set(FLAGS_GCC_DEBUG "-O0")
@@ -52,7 +46,7 @@ else (INTEL_CC)
   set(CMAKE_C_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_GCC_DEBUG}   -std=c99")
   set(CMAKE_C_FLAGS_RELEASE   "${CMAKE_CXX_RELEASE}     ${FLAGS_GCC_RELEASE} -std=c99")
   # cmake-format: on
-endif (INTEL_CC)
+endif (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
 
 # Define maximal length of a scalar tridiagonal system
 set(N_MAX
@@ -77,7 +71,6 @@ if (BUILD_FOR_GPU)
   if (CMAKE_CUDA_COMPILER)
     enable_language(CUDA)
     set(CMAKE_CUDA_STANDARD 11)
-    find_library(CUDART_LIBRARY cudart)
   else (CMAKE_CUDA_COMPILER)
     # TODO ecking
   endif (CMAKE_CUDA_COMPILER)

@@ -71,7 +71,7 @@ if (BUILD_FOR_CPU)
     DESTINATION ${CMAKE_BINARY_DIR}/include)
 endif (BUILD_FOR_CPU)
 
-if (BUILD_FOR_MIC AND INTEL_CC)
+if (BUILD_FOR_MIC AND CMAKE_CXX_COMPILER_ID MATCHES "Intel")
 	add_library(tridmic_offload_sp OBJECT ./trid_cpu.cpp)
 	add_library(tridmic_offload_dp OBJECT ./trid_cpu.cpp)
 
@@ -120,4 +120,4 @@ if (BUILD_FOR_MIC AND INTEL_CC)
 					${PROJECT_SOURCE_DIR}/src/cpu/trid_mpi_cpu.hpp
 					${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
 		DESTINATION ${CMAKE_BINARY_DIR}/include)
-endif (BUILD_FOR_MIC AND INTEL_CC)
+endif (BUILD_FOR_MIC AND CMAKE_CXX_COMPILER_ID MATCHES "Intel")
