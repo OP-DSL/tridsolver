@@ -70,6 +70,8 @@ static struct option options[] = {
   {"opt",  required_argument, 0,  0   },
   {"prof", required_argument, 0,  0   },
   {"help", no_argument,       0,  'h' },
+  {"b",   required_argument, 0,  0   },
+  {"m", required_argument, 0,  0   },
   {0,      0,                 0,  0   }
 };
 
@@ -154,6 +156,8 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
   iter = 10;
   int opt  = 0;
   int prof = 1;
+  int batchSize = 16384;
+  int m = 0;
 
   pre_handle.lambda = 1.0f;
 
@@ -167,6 +171,8 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
     if(strcmp((char*)options[opt_index].name,"opt" ) == 0) opt  = atoi(optarg);
     if(strcmp((char*)options[opt_index].name,"prof") == 0) prof = atoi(optarg);
     if(strcmp((char*)options[opt_index].name,"help") == 0) print_help();
+    if(strcmp((char*)options[opt_index].name,"b" ) == 0) batchSize = atoi(optarg);
+    if(strcmp((char*)options[opt_index].name,"m" ) == 0) m      = atoi(optarg);
   }
 
   // Allocate memory to store problem characteristics
@@ -200,7 +206,22 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
   MPI_Cart_coords(app.comm, my_cart_rank, 3, app.coords);
 
   // Create MPI handle used by tridiagonal solver
-  app.params = new MpiSolverParams(app.comm, 3, app.pdims, 32, MpiSolverParams::GATHER_SCATTER);
+  switch(m) {
+    case 0:
+      app.params = new MpiSolverParams(app.comm, 3, app.pdims, batchSize, MpiSolverParams::GATHER_SCATTER);
+      break;
+    case 1:
+      app.params = new MpiSolverParams(app.comm, 3, app.pdims, batchSize, MpiSolverParams::ALLGATHER);
+      break;
+    case 2:
+      app.params = new MpiSolverParams(app.comm, 3, app.pdims, batchSize, MpiSolverParams::LATENCY_HIDING_TWO_STEP);
+      break;
+    case 3:
+      app.params = new MpiSolverParams(app.comm, 3, app.pdims, batchSize, MpiSolverParams::LATENCY_HIDING_INTERLEAVED);
+      break;
+    default:
+      exit(-1);
+  }
 
   // Calculate local problem size for this MPI process
   for(int i = 0; i < 3; i++) {
