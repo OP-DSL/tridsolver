@@ -70,7 +70,12 @@ static struct option options[] = {
   {"opt",  required_argument, 0,  0   },
   {"prof", required_argument, 0,  0   },
   {"help", no_argument,       0,  'h' },
-  {"b",   required_argument, 0,  0   },
+  {"bx",   required_argument, 0,  0   },
+  {"by",   required_argument, 0,  0   },
+  {"bz",   required_argument, 0,  0   },
+  {"px",   required_argument, 0,  0   },
+  {"py",   required_argument, 0,  0   },
+  {"pz",   required_argument, 0,  0   },
   {"m", required_argument, 0,  0   },
   {0,      0,                 0,  0   }
 };
@@ -156,7 +161,12 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
   iter = 10;
   int opt  = 0;
   int prof = 1;
-  int batchSize = 16384;
+  int bx = 16384;
+  int by = 16384;
+  int bz = 16384;
+  int px = 0;
+  int py = 0;
+  int pz = 0;
   int m = 0;
 
   pre_handle.lambda = 1.0f;
@@ -171,7 +181,12 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
     if(strcmp((char*)options[opt_index].name,"opt" ) == 0) opt  = atoi(optarg);
     if(strcmp((char*)options[opt_index].name,"prof") == 0) prof = atoi(optarg);
     if(strcmp((char*)options[opt_index].name,"help") == 0) print_help();
-    if(strcmp((char*)options[opt_index].name,"b" ) == 0) batchSize = atoi(optarg);
+    if(strcmp((char*)options[opt_index].name,"bx" ) == 0) bx    = atoi(optarg);
+    if(strcmp((char*)options[opt_index].name,"by" ) == 0) by    = atoi(optarg);
+    if(strcmp((char*)options[opt_index].name,"bz" ) == 0) bz    = atoi(optarg);
+    if(strcmp((char*)options[opt_index].name,"px" ) == 0) px    = atoi(optarg);
+    if(strcmp((char*)options[opt_index].name,"py" ) == 0) py    = atoi(optarg);
+    if(strcmp((char*)options[opt_index].name,"pz" ) == 0) pz    = atoi(optarg);
     if(strcmp((char*)options[opt_index].name,"m" ) == 0) m      = atoi(optarg);
   }
 
@@ -193,6 +208,9 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
 
   // Create 3D Cartesian MPI topology
   app.pdims     = (int *) calloc(3, sizeof(int));
+  app.pdims[0]  = px;
+  app.pdims[1]  = py;
+  app.pdims[2]  = pz;
   int *periodic = (int *) calloc(3, sizeof(int)); //false
   app.coords    = (int *) calloc(3, sizeof(int));
   MPI_Dims_create(procs, 3, app.pdims);
@@ -208,16 +226,24 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
   // Create MPI handle used by tridiagonal solver
   switch(m) {
     case 0:
-      app.params = new MpiSolverParams(app.comm, 3, app.pdims, batchSize, MpiSolverParams::GATHER_SCATTER);
+      app.params_x = new MpiSolverParams(app.comm, 3, app.pdims, bx, MpiSolverParams::GATHER_SCATTER);
+      app.params_y = new MpiSolverParams(app.comm, 3, app.pdims, by, MpiSolverParams::GATHER_SCATTER);
+      app.params_z = new MpiSolverParams(app.comm, 3, app.pdims, bz, MpiSolverParams::GATHER_SCATTER);
       break;
     case 1:
-      app.params = new MpiSolverParams(app.comm, 3, app.pdims, batchSize, MpiSolverParams::ALLGATHER);
+      app.params_x = new MpiSolverParams(app.comm, 3, app.pdims, bx, MpiSolverParams::ALLGATHER);
+      app.params_y = new MpiSolverParams(app.comm, 3, app.pdims, by, MpiSolverParams::ALLGATHER);
+      app.params_z = new MpiSolverParams(app.comm, 3, app.pdims, bz, MpiSolverParams::ALLGATHER);
       break;
     case 2:
-      app.params = new MpiSolverParams(app.comm, 3, app.pdims, batchSize, MpiSolverParams::LATENCY_HIDING_TWO_STEP);
+      app.params_x = new MpiSolverParams(app.comm, 3, app.pdims, bx, MpiSolverParams::LATENCY_HIDING_TWO_STEP);
+      app.params_y = new MpiSolverParams(app.comm, 3, app.pdims, by, MpiSolverParams::LATENCY_HIDING_TWO_STEP);
+      app.params_z = new MpiSolverParams(app.comm, 3, app.pdims, bz, MpiSolverParams::LATENCY_HIDING_TWO_STEP);
       break;
     case 3:
-      app.params = new MpiSolverParams(app.comm, 3, app.pdims, batchSize, MpiSolverParams::LATENCY_HIDING_INTERLEAVED);
+      app.params_x = new MpiSolverParams(app.comm, 3, app.pdims, bx, MpiSolverParams::LATENCY_HIDING_INTERLEAVED);
+      app.params_y = new MpiSolverParams(app.comm, 3, app.pdims, by, MpiSolverParams::LATENCY_HIDING_INTERLEAVED);
+      app.params_z = new MpiSolverParams(app.comm, 3, app.pdims, bz, MpiSolverParams::LATENCY_HIDING_INTERLEAVED);
       break;
     default:
       exit(-1);
@@ -242,6 +268,9 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
 
     printf("\nNumber of MPI procs in each dimenstion %d, %d, %d\n",
            app.pdims[0], app.pdims[1], app.pdims[2]);
+
+    printf("\nBatch size in each dimenstion %d, %d, %d\n",
+           bx, by, bz);
   }
 
   /*printf("Check parameters: SIMD_WIDTH = %d, sizeof(FP) = %d\n", SIMD_WIDTH, sizeof(FP));
@@ -316,7 +345,9 @@ void finalize(app_handle &app, preproc_handle<FP> &pre_handle) {
   free(app.coords);
   free(app.pads);
 
-  delete app.params;
+  delete app.params_x;
+  delete app.params_y;
+  delete app.params_z;
 }
 
 int main(int argc, char* argv[]) {
@@ -353,9 +384,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.pads);
+    tridSmtsvStridedBatchMPI(*(app.params_x), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.pads);
 #else
-    tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.pads);
+    tridDmtsvStridedBatchMPI(*(app.params_x), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.pads);
 #endif
     timing_end(&timer, &elapsed_trid_x);
 
@@ -364,9 +395,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.pads);
+    tridSmtsvStridedBatchMPI(*(app.params_y), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.pads);
 #else
-    tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.pads);
+    tridDmtsvStridedBatchMPI(*(app.params_y), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.pads);
 #endif
     timing_end(&timer, &elapsed_trid_y);
 
@@ -375,9 +406,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatchIncMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.pads);
+    tridSmtsvStridedBatchIncMPI(*(app.params_z), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.pads);
 #else
-    tridDmtsvStridedBatchIncMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.pads);
+    tridDmtsvStridedBatchIncMPI(*(app.params_z), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.pads);
 #endif
     timing_end(&timer, &elapsed_trid_z);
   }

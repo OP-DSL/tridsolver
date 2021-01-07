@@ -11,18 +11,21 @@ struct app_handle {
   FP *c;
   FP *d;
   FP *u;
-  
+
   int *size_g;
   int *size;
   int *start_g;
   int *end_g;
   int *pads;
-  
+
   int *pdims;
   int *coords;
-  
+
   MPI_Comm comm;
   MpiSolverParams *params;
+  MpiSolverParams *params_x;
+  MpiSolverParams *params_y;
+  MpiSolverParams *params_z;
 };
 
 #endif
