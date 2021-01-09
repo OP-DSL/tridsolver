@@ -59,8 +59,14 @@ void trid_linear_forward_reg<double>(dim3 dimGrid_x, dim3 dimBlock_x,
                                      double *boundaries, int sys_size,
                                      int sys_pads, int sys_n, int offset,
                                      cudaStream_t stream) {
-  trid_linear_forward_double<<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      a, b, c, d, aa, cc, dd, boundaries, sys_size, sys_pads, sys_n, offset);
+  const int aligned = (sys_pads % ALIGN_DOUBLE) == 0 && (offset % ALIGN_DOUBLE) == 0;
+  if(aligned) {
+    trid_linear_forward_double_aligned<<<dimGrid_x, dimBlock_x, 0, stream>>>(
+        a, b, c, d, aa, cc, dd, boundaries, sys_size, sys_pads, sys_n, offset);
+  } else {
+    trid_linear_forward_double_unaligned<<<dimGrid_x, dimBlock_x, 0, stream>>>(
+        a, b, c, d, aa, cc, dd, boundaries, sys_size, sys_pads, sys_n, offset);
+  }
 }
 template <>
 void trid_linear_forward_reg<float>(dim3 dimGrid_x, dim3 dimBlock_x,
@@ -69,8 +75,14 @@ void trid_linear_forward_reg<float>(dim3 dimGrid_x, dim3 dimBlock_x,
                                     float *cc, float *dd, float *boundaries,
                                     int sys_size, int sys_pads, int sys_n,
                                     int offset, cudaStream_t stream) {
-  trid_linear_forward_float<<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      a, b, c, d, aa, cc, dd, boundaries, sys_size, sys_pads, sys_n, offset);
+  const int aligned = (sys_pads % ALIGN_FLOAT) == 0 && (offset % ALIGN_FLOAT) == 0;
+  if(aligned) {
+    trid_linear_forward_float_aligned<<<dimGrid_x, dimBlock_x, 0, stream>>>(
+        a, b, c, d, aa, cc, dd, boundaries, sys_size, sys_pads, sys_n, offset);
+  } else {
+    trid_linear_forward_float_unaligned<<<dimGrid_x, dimBlock_x, 0, stream>>>(
+        a, b, c, d, aa, cc, dd, boundaries, sys_size, sys_pads, sys_n, offset);
+  }
 }
 
 //
@@ -92,9 +104,16 @@ void trid_linear_backward_reg<double, 0>(dim3 dimGrid_x, dim3 dimBlock_x,
                                          int sys_pads, int sys_n, int offset,
                                          int start_sys, int y_size, int y_pads,
                                          cudaStream_t stream) {
-  trid_linear_backward_double<0><<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
-      start_sys, y_size, y_pads);
+  const int aligned = (sys_pads % ALIGN_DOUBLE) == 0 && (offset % ALIGN_DOUBLE) == 0;
+  if(aligned) {
+    trid_linear_backward_double_aligned<0><<<dimGrid_x, dimBlock_x, 0, stream>>>(
+        aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
+        start_sys, y_size, y_pads);
+  } else {
+    trid_linear_backward_double_unaligned<0><<<dimGrid_x, dimBlock_x, 0, stream>>>(
+        aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
+        start_sys, y_size, y_pads);
+  }
 }
 template <>
 void trid_linear_backward_reg<double, 1>(dim3 dimGrid_x, dim3 dimBlock_x,
@@ -104,9 +123,16 @@ void trid_linear_backward_reg<double, 1>(dim3 dimGrid_x, dim3 dimBlock_x,
                                          int sys_pads, int sys_n, int offset,
                                          int start_sys, int y_size, int y_pads,
                                          cudaStream_t stream) {
-  trid_linear_backward_double<1><<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
-      start_sys, y_size, y_pads);
+  const int aligned = (sys_pads % ALIGN_DOUBLE) == 0 && (offset % ALIGN_DOUBLE) == 0;
+  if(aligned) {
+    trid_linear_backward_double_aligned<1><<<dimGrid_x, dimBlock_x, 0, stream>>>(
+        aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
+        start_sys, y_size, y_pads);
+  } else {
+    trid_linear_backward_double_unaligned<1><<<dimGrid_x, dimBlock_x, 0, stream>>>(
+        aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
+        start_sys, y_size, y_pads);
+  }
 }
 
 template <>
@@ -117,9 +143,16 @@ void trid_linear_backward_reg<float, 0>(dim3 dimGrid_x, dim3 dimBlock_x,
                                         int sys_pads, int sys_n, int offset,
                                         int start_sys, int y_size, int y_pads,
                                         cudaStream_t stream) {
-  trid_linear_backward_float<0><<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
-      start_sys, y_size, y_pads);
+  const int aligned = (sys_pads % ALIGN_FLOAT) == 0 && (offset % ALIGN_FLOAT) == 0;
+  if(aligned) {
+    trid_linear_backward_float_aligned<0><<<dimGrid_x, dimBlock_x, 0, stream>>>(
+        aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
+        start_sys, y_size, y_pads);
+  } else {
+    trid_linear_backward_float_unaligned<0><<<dimGrid_x, dimBlock_x, 0, stream>>>(
+        aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
+        start_sys, y_size, y_pads);
+  }
 }
 
 template <>
@@ -130,9 +163,16 @@ void trid_linear_backward_reg<float, 1>(dim3 dimGrid_x, dim3 dimBlock_x,
                                         int sys_pads, int sys_n, int offset,
                                         int start_sys, int y_size, int y_pads,
                                         cudaStream_t stream) {
-  trid_linear_backward_float<1><<<dimGrid_x, dimBlock_x, 0, stream>>>(
-      aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
-      start_sys, y_size, y_pads);
+  const int aligned = (sys_pads % ALIGN_FLOAT) == 0 && (offset % ALIGN_FLOAT) == 0;
+  if(aligned) {
+    trid_linear_backward_float_aligned<1><<<dimGrid_x, dimBlock_x, 0, stream>>>(
+        aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
+        start_sys, y_size, y_pads);
+  } else {
+    trid_linear_backward_float_unaligned<1><<<dimGrid_x, dimBlock_x, 0, stream>>>(
+        aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
+        start_sys, y_size, y_pads);
+  }
 }
 
 
