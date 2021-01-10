@@ -105,7 +105,6 @@ if (BUILD_FOR_GPU)
       target_compile_definitions(tridcuda_mpi PRIVATE TRID_CUDA_AWARE_MPI)
     endif (USE_CUDA_AWARE_MPI)
 
-    target_link_libraries(tridcuda_mpi tridcuda)
     if (USE_PROFILING)
       target_link_libraries(tridcuda_mpi profiling_cuda)
     endif (USE_PROFILING)
