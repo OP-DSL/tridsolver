@@ -658,101 +658,75 @@ trid_linear_backward_float_aligned(const float *__restrict__ aa, const float *__
       // If in padding, do dummy loads and stores without changing values in
       // padding so the register shuffle optimization can continue for other
       // threads
-      if(padded_sys) {
-        if(INC) {
-          // Handle first vector
-          load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
-          load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
-          load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
-          load_array_reg16(u,&l_u,n, woffset, sys_pads);
+      if(INC) {
+        // Handle first vector
+        load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
+        load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
+        load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
+        load_array_reg16(u,&l_u,n, woffset, sys_pads);
 
-          store_array_reg16(u,&l_u,n, woffset, sys_pads);
-
-          // Iterate over remaining vectors
-          for(n = VEC_F; n < sys_size - VEC_F; n += VEC_F) {
-            load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
-            load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
-            load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
-            load_array_reg16(u,&l_u,n, woffset, sys_pads);
-
-            store_array_reg16(u,&l_u,n, woffset, sys_pads);
-          }
-        } else {
-          // Handle first vector
-          load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
-          load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
-          load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
-
-          store_array_reg16(d,&l_d,n, woffset, sys_pads);
-
-          // Iterate over all remaining vectors
-          for(n = VEC_F; n < sys_size - VEC_F; n += VEC_F) {
-            load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
-            load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
-            load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
-
-            store_array_reg16(d,&l_d,n, woffset, sys_pads);
-          }
-        }
-      } else {
-        if(INC) {
-          // Handle first vector
-          load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
-          load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
-          load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
-          load_array_reg16(u,&l_u,n, woffset, sys_pads);
-
+        if(!padded_sys) {
           l_u.f[0] += dd0;
 
           for(int i = 1; i < VEC_F; i++) {
             l_u.f[i] += l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
           }
+        }
 
-          store_array_reg16(u,&l_u,n, woffset, sys_pads);
+        store_array_reg16(u,&l_u,n, woffset, sys_pads);
 
-          // Iterate over remaining vectors
-          for(n = VEC_F; n < sys_size - VEC_F; n += VEC_F) {
-            load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
-            load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
-            load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
-            load_array_reg16(u,&l_u,n, woffset, sys_pads);
+        // Iterate over remaining vectors
+        for(n = VEC_F; n < sys_size - VEC_F; n += VEC_F) {
+          load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
+          load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
+          load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
+          load_array_reg16(u,&l_u,n, woffset, sys_pads);
+          if(!padded_sys) {
             for(int i = 0; i < VEC_F; i++) {
               l_u.f[i] += l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
             }
-            store_array_reg16(u,&l_u,n, woffset, sys_pads);
           }
+          store_array_reg16(u,&l_u,n, woffset, sys_pads);
+        }
 
+        if(!padded_sys) {
           // Handle last section separately as might not completely fit into a vector
           for(; n < sys_size - 1; n++) {
             u[ind + n] += dd[ind + n] - aa[ind + n] * dd0 - cc[ind + n] * ddn;
           }
 
           u[ind + sys_size - 1] += ddn;
-        } else {
-          // Handle first vector
-          load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
-          load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
-          load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
+        }
+      } else {
+        // Handle first vector
+        load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
+        load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
+        load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
 
+        if(!padded_sys) {
           l_d.f[0] = dd0;
 
           for(int i = 1; i < VEC_F; i++) {
             l_d.f[i] = l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
           }
+        }
 
-          store_array_reg16(d,&l_d,n, woffset, sys_pads);
+        store_array_reg16(d,&l_d,n, woffset, sys_pads);
 
-          // Iterate over all remaining vectors
-          for(n = VEC_F; n < sys_size - VEC_F; n += VEC_F) {
-            load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
-            load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
-            load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
+        // Iterate over all remaining vectors
+        for(n = VEC_F; n < sys_size - VEC_F; n += VEC_F) {
+          load_array_reg16(aa,&l_aa,n, woffset, sys_pads);
+          load_array_reg16(cc,&l_cc,n, woffset, sys_pads);
+          load_array_reg16(dd,&l_dd,n, woffset, sys_pads);
+          if(!padded_sys) {
             for(int i = 0; i < VEC_F; i++) {
               l_d.f[i] = l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
             }
-            store_array_reg16(d,&l_d,n, woffset, sys_pads);
           }
+          store_array_reg16(d,&l_d,n, woffset, sys_pads);
+        }
 
+        if(!padded_sys) {
           // Handle last section separately as might not completely fit into a vector
           for(int i = n; i < sys_size - 1; i++) {
             d[ind + i] = dd[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
@@ -823,35 +797,11 @@ trid_linear_backward_float_unaligned(const float *__restrict__ aa, const float *
       // If in padding, do dummy loads and stores without changing values in
       // padding so the register shuffle optimization can continue for other
       // threads
-      if(padded_sys) {
-        if(INC) {
-          n = VEC_F;
-          // Back to normal
-          for(; n < sys_size - VEC_F; n += VEC_F) {
-            load_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size, offset);
-            load_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size, offset);
-            load_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size, offset);
-            load_array_reg16_unaligned(u,&l_u,n, tid, sys_pads, sys_size, offset);
+      if(INC) {
+        int ind_floor = ((ind + offset)/ALIGN_FLOAT)*ALIGN_FLOAT - offset;
+        int sys_off   = ind - ind_floor;
 
-            store_array_reg16_unaligned(u,&l_u,n, tid, sys_pads, sys_size, offset);
-          }
-        } else {
-          n = VEC_F;
-          // Back to normal
-          for(; n < sys_size - VEC_F; n += VEC_F) {
-            load_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size, offset);
-            load_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size, offset);
-            load_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size, offset);
-            load_array_reg16_unaligned(d,&l_d,n, tid, sys_pads, sys_size, offset);
-
-            store_array_reg16_unaligned(d,&l_d,n, tid, sys_pads, sys_size, offset);
-          }
-        }
-      } else {
-        if(INC) {
-          int ind_floor = ((ind + offset)/ALIGN_FLOAT)*ALIGN_FLOAT - offset;
-          int sys_off   = ind - ind_floor;
-
+        if(!padded_sys) {
           // Handle start of unaligned memory
           for(int i = 0; i < VEC_F; i++) {
             if(i >= sys_off) {
@@ -863,21 +813,25 @@ trid_linear_backward_float_unaligned(const float *__restrict__ aa, const float *
               }
             }
           }
+        }
 
-          n = VEC_F;
-          // Back to normal
-          for(; n < sys_size - VEC_F; n += VEC_F) {
-            load_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size, offset);
-            load_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size, offset);
-            load_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size, offset);
-            load_array_reg16_unaligned(u,&l_u,n, tid, sys_pads, sys_size, offset);
+        n = VEC_F;
+        // Back to normal
+        for(; n < sys_size - VEC_F; n += VEC_F) {
+          load_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size, offset);
+          load_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size, offset);
+          load_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size, offset);
+          load_array_reg16_unaligned(u,&l_u,n, tid, sys_pads, sys_size, offset);
+          if(!padded_sys) {
             #pragma unroll 16
             for(int i=0; i<VEC_F; i++) {
               l_u.f[i] += l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
             }
-            store_array_reg16_unaligned(u,&l_u,n, tid, sys_pads, sys_size, offset);
           }
+          store_array_reg16_unaligned(u,&l_u,n, tid, sys_pads, sys_size, offset);
+        }
 
+        if(!padded_sys) {
           // Handle end of unaligned memory
           for(int i = n; i < sys_size + sys_off - 1; i++) {
             int loc_ind = ind_floor + i;
@@ -885,10 +839,12 @@ trid_linear_backward_float_unaligned(const float *__restrict__ aa, const float *
           }
 
           u[ind + sys_size - 1] += ddn;
-        } else {
-          int ind_floor = ((ind + offset)/ALIGN_FLOAT)*ALIGN_FLOAT - offset;
-          int sys_off   = ind - ind_floor;
+        }
+      } else {
+        int ind_floor = ((ind + offset)/ALIGN_FLOAT)*ALIGN_FLOAT - offset;
+        int sys_off   = ind - ind_floor;
 
+        if(!padded_sys) {
           // Handle start of unaligned memory
           for(int i = 0; i < VEC_F; i++) {
             if(i >= sys_off) {
@@ -900,21 +856,25 @@ trid_linear_backward_float_unaligned(const float *__restrict__ aa, const float *
               }
             }
           }
+        }
 
-          n = VEC_F;
-          // Back to normal
-          for(; n < sys_size - VEC_F; n += VEC_F) {
-            load_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size, offset);
-            load_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size, offset);
-            load_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size, offset);
-            load_array_reg16_unaligned(d,&l_d,n, tid, sys_pads, sys_size, offset);
+        n = VEC_F;
+        // Back to normal
+        for(; n < sys_size - VEC_F; n += VEC_F) {
+          load_array_reg16_unaligned(aa,&l_aa,n, tid, sys_pads, sys_size, offset);
+          load_array_reg16_unaligned(cc,&l_cc,n, tid, sys_pads, sys_size, offset);
+          load_array_reg16_unaligned(dd,&l_dd,n, tid, sys_pads, sys_size, offset);
+          load_array_reg16_unaligned(d,&l_d,n, tid, sys_pads, sys_size, offset);
+          if(!padded_sys) {
             #pragma unroll 16
             for(int i=0; i<VEC_F; i++) {
               l_d.f[i] = l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
             }
-            store_array_reg16_unaligned(d,&l_d,n, tid, sys_pads, sys_size, offset);
           }
+          store_array_reg16_unaligned(d,&l_d,n, tid, sys_pads, sys_size, offset);
+        }
 
+        if(!padded_sys) {
           // Handle end of unaligned memory
           for(int i = n; i < sys_size + sys_off - 1; i++) {
             int loc_ind = ind_floor + i;
