@@ -558,7 +558,7 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   int sys_n = 1;
   if(solvedim == 0) {
     if(ndim == 2) {
-      sys_n = a_pads[1];
+      sys_n = dims[1];
     } else if(ndim > 2) {
       sys_n = dims[ndim - 1] * std::accumulate(a_pads + solvedim + 1, a_pads + ndim - 1,
                                            1, std::multiplies<int>{});
