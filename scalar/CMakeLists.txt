@@ -74,8 +74,9 @@ set(N_MAX
     1024
     CACHE STRING
           "Maximal length of the internal buffer for storing intermediate c and d vectors of the Thomas algorithm")
+set(N_MPI_MAX 128 CACHE STRING "Maximum number of MPI processes in a dimension")
 add_definitions(-DN_MAX=${N_MAX})
-
+add_definitions(-DN_MPI_MAX=${N_MPI_MAX})
 # Invoke subprojects
 add_subdirectory(src/cpu)
 add_subdirectory(src/cuda)
