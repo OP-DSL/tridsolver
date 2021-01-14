@@ -28,15 +28,8 @@ if (BUILD_FOR_CPU)
     PRIVATE ./
     PRIVATE ../)
 
-  if (OpenMP_CXX_FOUND)
-    target_link_libraries(tridcpu_sp PRIVATE OpenMP::OpenMP_CXX)
-    target_link_libraries(tridcpu_dp PRIVATE OpenMP::OpenMP_CXX)
-  else ()
-    # TODO checking
-  endif ()
-
-  target_link_libraries(tridcpu_sp PRIVATE trid_common_options)
-  target_link_libraries(tridcpu_dp PRIVATE trid_common_options)
+  target_link_libraries(tridcpu_sp PRIVATE OpenMP::OpenMP_CXX trid_common_options)
+  target_link_libraries(tridcpu_dp PRIVATE OpenMP::OpenMP_CXX trid_common_options)
 
   if (BUILD_FOR_MPI)
     target_link_libraries(tridcpu_sp PUBLIC MPI::MPI_CXX)

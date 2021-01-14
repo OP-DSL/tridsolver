@@ -4,14 +4,10 @@ if (BUILD_FOR_GPU)
 
   set(cuda_flags "-m64 -Xptxas -dlcm=cg ")
 
-  # does not have effect TODO find working solution:
-
-  # set(CUDA_PROPAGATE_HOST_FLAGS OFF) set(CUDA_NVCC_FLAGS_DEBUG "${CUDA_NVCC_FLAGS_DEBUG}   -g -G -O0 -ftz=false
-  # -fmad=false")
+  set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG}   -g -G -O0 ")
 
   if (USE_PROFILING)
     # PROFILE disables macros with the suffix 2 to achieve lower overhead to use with profiler
-
     # DETAILED enables all macros and performs deatailed time measures, but has bigger overhead
     set(PROFILING_LEVEL
         "DETAILED"

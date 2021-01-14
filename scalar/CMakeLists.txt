@@ -63,7 +63,6 @@ target_include_directories(trid_common_options INTERFACE ${PROJECT_SOURCE_DIR}/i
 find_package(OpenMP REQUIRED)
 if (BUILD_FOR_MPI)
   find_package(MPI REQUIRED)
-  # TODO check it
 endif (BUILD_FOR_MPI)
 
 if (BUILD_FOR_GPU)
@@ -79,7 +78,7 @@ if (BUILD_FOR_GPU)
     include(cmake/CUDA_ARCH.cmake)
     select_cuda_architectures("${ARCHITECTURE}" ARCH_LIST)
     message(STATUS "CUDA_ARCH: ${ARCH_LIST}")
-    set(CMAKE_CUDA_ARCHITECTURES "${ARCH_LIST}")
+    set(CMAKE_CUDA_ARCHITECTURES "${ARCH_LIST}" CACHE STRING "CUDA architectures" FORCE)
   else (CMAKE_CUDA_COMPILER)
     message(ERROR "Couldn't find CUDA compiler")
   endif (CMAKE_CUDA_COMPILER)
