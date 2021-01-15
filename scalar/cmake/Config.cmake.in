@@ -1,3 +1,8 @@
 @PACKAGE_INIT@
 
 include("${CMAKE_CURRENT_LIST_DIR}/tridcpuTarget.cmake")
+
+set(TRIDSOLVER_N_MAX
+    @N_MAX@
+    CACHE STRING
+    "Maximum length of the internal buffer for storing intermediate c and d vectors of the Thomas algorithm" FORCE)

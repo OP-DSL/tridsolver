@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 2.8.8)
+cmake_minimum_required(VERSION 3.18)
+project("adi" C CXX)
 
-option(INTEL_CC "Use the Intel compiler." ON)
 option(BUILD_FOR_CPU "Build library for CPU architecture." OFF)
 option(BUILD_FOR_MIC "Build library for MIC architecture." OFF)
 option(BUILD_FOR_GPU "Build library for GPU architecture." OFF)
@@ -9,82 +9,65 @@ option(USE_NCCL "TDMA library built with NCCL" OFF)
 set(LIBTRID_PATH $ENV{TRIDSOLVER_INSTALL_PATH}
   CACHE STRING "Tridsolver (scalar) installation directory")
 
-if (INTEL_CC)
-  # Detect/find Intel compilers
-  find_program(CMAKE_C_COMPILER NAMES   mpicc)
-  find_program(CMAKE_CXX_COMPILER NAMES mpicxx)
-  find_program(CMAKE_AR NAMES           xiar)
-  find_program(CMAKE_LINKER NAMES       xild)
+if (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
+  option(PRODUCE_OPT_REPORT "Print intel optimisation reports" OFF)
 
-  set(INTEL_PATH $ENV{INTEL_PATH} CACHE FILEPATH "Intel compiler suite path")
-  #set(CMAKE_C_COMPILER   ${INTEL_PATH}/bin/intel64/icc  CACHE FILEPATH "Intel compiler is prefered")
-  #set(CMAKE_CXX_COMPILER ${INTEL_PATH}/bin/intel64/icpc CACHE FILEPATH "Intel compiler is prefered")
-  set(MPI_PATH $ENV{MPI_INSTALL_PATH} CACHE FILEPATH "MPI library path")
-
-  if (CMAKE_C_COMPILER MATCHES CMAKE_C_COMPILER-NOTFOUND OR
-      CMAKE_CXX_COMPILER MATCHES CMAKE_CXX_COMPILER-NOTFOUND OR
-      CMAKE_AR MATCHES CMAKE_AR-NOTFOUND OR
-      CMAKE_LINKER MATCHES CMAKE_LINKER-NOTFOUND)
-    message(FATAL_ERROR "Cannot find Intel compiler.  You may need to run `. /opt/intel/bin/compilervars.sh intel64'")
-  endif ()
-endif (INTEL_CC)
-
-project("adi")
-
-list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
-
-if (USE_NCCL)
-  find_package(NCCL)
-endif ()
-
-if (INTEL_CC)
   # Set compiler flags/options for Intel compiler
-  set(FLAGS_INTEL_DEFAULT "-O3 -xMIC-AVX512 -xHost -m64 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout")
-  #set(FLAGS_INTEL_DEFAULT "-xAVX -m64 -parallel -openmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par") #-xCORE_AVX2
-  set(FLAGS_INTEL_DEBUG   "-O3 -xMIC-AVX512 -xHost -m64 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout -g")
-  set(FLAGS_INTEL_RELEASE "-O3 -xMIC-AVX512 -xHost -m64 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout") #-fp-model fast
+  set(FLAGS_INTEL_DEFAULT "-xHost -m64 -parallel -qno-offload")
+  if (PRODUCE_OPT_REPORT)
+    set(FLAGS_INTEL_DEFAULT "${FLAGS_INTEL_DEFAULT} -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout")
+  endif (PRODUCE_OPT_REPORT)
 
-  set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS}       ${FLAGS_INTEL_DEFAULT}")
-  set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_INTEL_DEBUG}  ")
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_RELEASE}     ${FLAGS_INTEL_RELEASE}")
-
-  set(CMAKE_C_FLAGS         "${CMAKE_CXX_FLAGS}       ${FLAGS_INTEL_DEFAULT}")
-  set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_INTEL_DEBUG}  ")
-  set(CMAKE_C_FLAGS_RELEASE "${CMAKE_CXX_RELEASE}     ${FLAGS_INTEL_RELEASE}")
-else (INTEL_CC)
+  # cmake-format: off
+  set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS}     ${FLAGS_INTEL_DEFAULT}")
+  set(CMAKE_C_FLAGS           "${CMAKE_C_FLAGS}       ${FLAGS_INTEL_DEFAULT}")
+  set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} -O0")
+  # cmake-format: on
+else (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
   # Set compiler flags/options for GCC compiler
-  set(FLAGS_GCC_DEFAULT "-mavx -fopenmp") #-march=core-avx2
-  set(FLAGS_GCC_DEBUG   "-g -O0")
-  set(FLAGS_GCC_RELEASE "-O3 -flto -fstrict-aliasing -finline-functions") # -ffast-math -fargument-noalias -fargument-noalias-global
+  set(FLAGS_GCC_DEFAULT "-march=native ") # -march=core-avx2
+  set(FLAGS_GCC_RELEASE "-flto -fstrict-aliasing -finline-functions") # -ffast-math -fargument-noalias -fargument-
+                                                                      # noalias-global
 
+  # cmake-format: off
   set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS}       ${FLAGS_GCC_DEFAULT}")
-  set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_GCC_DEBUG}  ")
+  set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} -O0")
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_RELEASE}     ${FLAGS_GCC_RELEASE}")
 
-  set(CMAKE_C_FLAGS         "${CMAKE_CXX_FLAGS}       ${FLAGS_GCC_DEFAULT} -std=c99")
-  set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_GCC_DEBUG}   -std=c99")
-  set(CMAKE_C_FLAGS_RELEASE "${CMAKE_CXX_RELEASE}     ${FLAGS_GCC_RELEASE} -std=c99")
-endif (INTEL_CC)
+  set(CMAKE_C_FLAGS           "${CMAKE_C_FLAGS}         ${FLAGS_GCC_DEFAULT}")
+  set(CMAKE_C_FLAGS_DEBUG     "${CMAKE_C_FLAGS_DEBUG}   -O0")
+  set(CMAKE_C_FLAGS_RELEASE   "${CMAKE_C_RELEASE}       ${FLAGS_GCC_RELEASE}")
+  # cmake-format: on
+endif (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
 
+# TODO retrieve this from tridsolver
+# set(N_MAX
+#     1024
+#     CACHE STRING
+#           "Maximum length of the internal buffer for storing intermediate c and d vectors of the Thomas algorithm")
+# add_definitions(-DN_MAX=${N_MAX})
 
-#set(CMAKE_GENERATOR_TOOLSET "Intel C++ Compiler XE 15.0" CACHE STRING "Platform Toolset" FORCE)
-
-set(N_MAX 1024 CACHE STRING "Maximum length of the internal buffer for storing intermediate c and d vectors of the Thomas algorithm")
-add_definitions(-DN_MAX=${N_MAX})
-
-set(FPPREC 1 CACHE STRING "0 - single precision build; 1 - double precision build")
+set(FPPREC
+    1
+    CACHE STRING "0 - single precision build; 1 - double precision build")
+set_property(CACHE FPPREC PROPERTY STRINGS 0 1)
 add_definitions(-DFPPREC=${FPPREC})
 
-#include_directories(${LIBTRID_PATH}/scalar/include ./include ../libtrid/ ../libtrid/src )
-
 if (BUILD_FOR_CPU)
+  find_package(tridcpu PATHS ${LIBTRID_PATH})
   add_executable(adi_cpu src/adi_cpu.cpp)
-  #target_compile_options(adi_cpu PRIVATE -xAVX -parallel -openmp -no-offload)
-  target_include_directories(adi_cpu PRIVATE ${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include)
-  target_link_libraries(adi_cpu PRIVATE -L${LIBTRID_PATH}/lib -ltridcpu -L${INTEL_PATH}/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
+  target_include_directories(adi_cpu PRIVATE ${PROJECT_SOURCE_DIR}/include)
+  target_link_libraries(
+    adi_cpu
+    PRIVATE tridcpu
+            -limf
+            -lintlc
+            -lsvml
+            -lirng
+            -liomp5
+            -lcilkrts)
 
-  #/opt/intel/composer_xe_2015.3.187/bin/intel64/icc -O3 -xAVX -ip -restrict -parallel -fopenmp -openmp-report2 -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par  -DFPPREC=0  -DN_MAX=1024  -I./include -I./libtrid  -I./include -I./libtrid -I/opt/intel/composer_xe_2015.3.187/mkl/include   -D__LAPACKE__ src/adi_cpu.cpp -L/opt/intel/composer_xe_2015.3.187/mkl/lib/intel64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -L/opt/intel/composer_xe_2015.3.187/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts -o adi_mkl
-
+  # cmake-format: off
   add_executable(adi_mkl src/adi_cpu.cpp)
   target_compile_definitions(adi_mkl PRIVATE -D__MKL__)
   target_compile_options(adi_mkl PRIVATE -xAVX -parallel -qopenmp -no-offload)
@@ -94,9 +77,11 @@ if (BUILD_FOR_CPU)
   add_executable(adi_mpi_cpu src/adi_mpi_cpu.cpp)
   target_include_directories(adi_mpi_cpu PRIVATE ${INTEL_PATH}/mkl/include ${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include ${MPI_PATH}/include)
   target_link_libraries(adi_mpi_cpu PRIVATE -L${LIBTRID_PATH}/lib -ltridcpu -L${INTEL_PATH}/compiler/lib/intel64 -L${MPI_PATH}/lib -lmpi -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
+  # cmake-format: on
 
 endif (BUILD_FOR_CPU)
 
+# cmake-format: off
 if (BUILD_FOR_MIC)
   add_executable(adi_mic_offload src/adi_cpu.cpp)
   target_link_libraries(adi_mic_offload ${LIBTRID_PATH}/lib/libtridmic_offload.so)
@@ -186,3 +171,4 @@ target_include_directories(compare PRIVATE ${LIBTRID_PATH}/include)
 
 #install(TARGETS libtridcuda DESTINATION lib)
 #install(FILES src/cuda/trid_cuda.h DESTINATION include)
+# cmake-format: on

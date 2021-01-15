@@ -30,6 +30,7 @@ if (BUILD_FOR_CPU)
 
   target_link_libraries(tridcpu_sp PRIVATE OpenMP::OpenMP_CXX trid_common_options)
   target_link_libraries(tridcpu_dp PRIVATE OpenMP::OpenMP_CXX trid_common_options)
+  target_link_libraries(tridcpu PUBLIC trid_common_options)
 
   if (BUILD_FOR_MPI)
     target_link_libraries(tridcpu_sp PUBLIC MPI::MPI_CXX)
@@ -49,14 +50,15 @@ if (BUILD_FOR_CPU)
   target_compile_definitions(tridcpu_dp PRIVATE -DFPPREC=1)
 
   install(
-    TARGETS tridcpu
+    TARGETS tridcpu trid_common_options
     EXPORT tridcpuTarget
     LIBRARY DESTINATION ${PROJECT_NAME}/lib
     ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
   install(
     FILES ${PROJECT_SOURCE_DIR}/include/trid_cpu.h
           ${PROJECT_SOURCE_DIR}/include/trid_common.h
-          # ${PROJECT_SOURCE_DIR}/include/trid_util.h ${PROJECT_SOURCE_DIR}/include/trid_simd.h
+          # ${PROJECT_SOURCE_DIR}/include/trid_util.h
+          ${PROJECT_SOURCE_DIR}/include/trid_simd.h
           ${PROJECT_SOURCE_DIR}/include/trid_mpi_cpu.h
           # ${PROJECT_SOURCE_DIR}/src/cpu/trid_mpi_cpu.hpp
           ${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
