@@ -60,7 +60,6 @@ public:
 
   size_t capacity() const { return _capacity; }
 
-  //friend void std::swap(AlignedArray<T, Align> &, AlignedArray<T, Align> &);
 };
 
 template <typename Float, unsigned Align = 1> class MeshLoader {
@@ -136,25 +135,21 @@ AlignedArray<T, Align>::AlignedArray(const AlignedArray &other, size_t start,
 
 template <typename T, unsigned Align>
 AlignedArray<T, Align> &AlignedArray<T, Align>::operator=(AlignedArray rhs) {
-  std::swap(*this, rhs);
+  std::swap(this->_capacity, rhs._capacity);
+  std::swap(this->_size, rhs._size);
+  std::swap(this->padded_data, rhs.padded_data);
+  std::swap(this->padding, rhs.padding);
   return *this;
 }
 
 template <typename T, unsigned Align>
 AlignedArray<T, Align>::AlignedArray(AlignedArray &&other) : AlignedArray{} {
-  std::swap(*this, other);
+  std::swap(this->_capacity, other._capacity);
+  std::swap(this->_size, other._size);
+  std::swap(this->padded_data, other.padded_data);
+  std::swap(this->padding, other.padding);
 }
-/*
-namespace std {
-template <typename T, unsigned Align>
-void swap(AlignedArray<T, Align> &lhs, AlignedArray<T, Align> &rhs) {
-  std::swap(lhs._capacity, rhs._capacity);
-  std::swap(lhs._size, rhs._size);
-  std::swap(lhs.padded_data, rhs.padded_data);
-  std::swap(lhs.padding, rhs.padding);
-}
-} // namespace std
-*/
+
 template <typename T, unsigned Align>
 void AlignedArray<T, Align>::allocate(size_t capacity) {
   assert(_capacity == 0 && "Array has already been allocated");

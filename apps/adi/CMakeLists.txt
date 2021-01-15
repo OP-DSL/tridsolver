@@ -5,9 +5,10 @@ option(BUILD_FOR_CPU "Build library for CPU architecture." OFF)
 option(BUILD_FOR_MIC "Build library for MIC architecture." OFF)
 option(BUILD_FOR_GPU "Build library for GPU architecture." OFF)
 option(BUILD_FOR_MPI "Build library for MPI combnied with the above architectures." OFF)
-option(USE_NCCL "TDMA library built with NCCL" OFF)
-set(LIBTRID_PATH $ENV{TRIDSOLVER_INSTALL_PATH}
-  CACHE STRING "Tridsolver (scalar) installation directory")
+
+set(LIBTRID_PATH
+    $ENV{TRIDSOLVER_INSTALL_PATH}
+    CACHE STRING "Tridsolver (scalar) installation directory")
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
   option(PRODUCE_OPT_REPORT "Print intel optimisation reports" OFF)
@@ -40,13 +41,6 @@ else (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
   # cmake-format: on
 endif (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
 
-# TODO retrieve this from tridsolver
-# set(N_MAX
-#     1024
-#     CACHE STRING
-#           "Maximum length of the internal buffer for storing intermediate c and d vectors of the Thomas algorithm")
-# add_definitions(-DN_MAX=${N_MAX})
-
 set(FPPREC
     1
     CACHE STRING "0 - single precision build; 1 - double precision build")
@@ -54,18 +48,17 @@ set_property(CACHE FPPREC PROPERTY STRINGS 0 1)
 add_definitions(-DFPPREC=${FPPREC})
 
 if (BUILD_FOR_CPU)
-  find_package(tridcpu PATHS ${LIBTRID_PATH})
+  find_package(OpenMP REQUIRED)
+  find_package(
+    libtrid
+    REQUIRED
+    PATHS
+    ${LIBTRID_PATH})
+  # the tridsolver config file should set TRIDSOLVER_N_MAX value
+  add_definitions(-DN_MAX=${TRIDSOLVER_N_MAX})
   add_executable(adi_cpu src/adi_cpu.cpp)
   target_include_directories(adi_cpu PRIVATE ${PROJECT_SOURCE_DIR}/include)
-  target_link_libraries(
-    adi_cpu
-    PRIVATE tridcpu
-            -limf
-            -lintlc
-            -lsvml
-            -lirng
-            -liomp5
-            -lcilkrts)
+  target_link_libraries(adi_cpu PRIVATE libtrid::tridcpu OpenMP::OpenMP_CXX)
 
   # cmake-format: off
   add_executable(adi_mkl src/adi_cpu.cpp)
@@ -73,11 +66,14 @@ if (BUILD_FOR_CPU)
   target_compile_options(adi_mkl PRIVATE -xAVX -parallel -qopenmp -no-offload)
   target_include_directories(adi_mkl PRIVATE ${INTEL_PATH}/mkl/include ${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include)
   target_link_libraries(adi_mkl -L${LIBTRID_PATH}/lib -ltridcpu -L${INTEL_PATH}/mkl/lib/intel64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -L${INTEL_PATH}/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
-
-  add_executable(adi_mpi_cpu src/adi_mpi_cpu.cpp)
-  target_include_directories(adi_mpi_cpu PRIVATE ${INTEL_PATH}/mkl/include ${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include ${MPI_PATH}/include)
-  target_link_libraries(adi_mpi_cpu PRIVATE -L${LIBTRID_PATH}/lib -ltridcpu -L${INTEL_PATH}/compiler/lib/intel64 -L${MPI_PATH}/lib -lmpi -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
   # cmake-format: on
+
+  if (BUILD_FOR_MPI)
+    find_package(MPI REQUIRED)
+    add_executable(adi_mpi_cpu src/adi_mpi_cpu.cpp)
+    target_include_directories(adi_mpi_cpu PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(adi_mpi_cpu PRIVATE libtrid::tridcpu_mpi OpenMP::OpenMP_CXX MPI::MPI_CXX)
+  endif (BUILD_FOR_MPI)
 
 endif (BUILD_FOR_CPU)
 

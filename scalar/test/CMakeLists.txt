@@ -27,7 +27,7 @@ if (BUILD_FOR_CPU)
     target_link_libraries(
       mpi_tests
       Catch
-      tridcpu
+      tridcpu_mpi
       MPI::MPI_CXX
       OpenMP::OpenMP_CXX)
     target_include_directories(mpi_tests PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
@@ -41,7 +41,7 @@ if (BUILD_FOR_CPU)
       target_include_directories(mpi_perf_test PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
       target_link_libraries(
         mpi_perf_test
-        tridcpu
+        tridcpu_mpi
         profiling
         MPI::MPI_CXX
         OpenMP::OpenMP_CXX)

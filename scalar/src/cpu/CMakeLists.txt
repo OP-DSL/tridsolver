@@ -10,39 +10,25 @@ if (USE_PROFILING)
 endif (USE_PROFILING)
 
 if (BUILD_FOR_CPU)
-  set(CPP_SOURCES ./trid_cpu.cpp)
-  if (BUILD_FOR_MPI)
-    set(CPP_SOURCES ${CPP_SOURCES} ./trid_mpi_cpu.cpp)
-  endif (BUILD_FOR_MPI)
+  set(${PROJECT_NAME}_components "${${PROJECT_NAME}_components} tridcpu")
+  set(${PROJECT_NAME}_components
+      ${${PROJECT_NAME}_components}
+      PARENT_SCOPE)
 
-  add_library(tridcpu_sp OBJECT ${CPP_SOURCES})
-  add_library(tridcpu_dp OBJECT ${CPP_SOURCES})
+  add_library(tridcpu_sp OBJECT ./trid_cpu.cpp)
+  add_library(tridcpu_dp OBJECT ./trid_cpu.cpp)
   add_library(tridcpu SHARED $<TARGET_OBJECTS:tridcpu_sp> $<TARGET_OBJECTS:tridcpu_dp>)
+  add_library(${PROJECT_NAME}::tridcpu ALIAS tridcpu)
 
-  target_include_directories(
-    tridcpu_sp
-    PRIVATE ./
-    PRIVATE ../)
-  target_include_directories(
-    tridcpu_dp
-    PRIVATE ./
-    PRIVATE ../)
-
-  target_link_libraries(tridcpu_sp PRIVATE OpenMP::OpenMP_CXX trid_common_options)
-  target_link_libraries(tridcpu_dp PRIVATE OpenMP::OpenMP_CXX trid_common_options)
-  target_link_libraries(tridcpu PUBLIC trid_common_options)
-
-  if (BUILD_FOR_MPI)
-    target_link_libraries(tridcpu_sp PUBLIC MPI::MPI_CXX)
-    target_link_libraries(tridcpu_dp PUBLIC MPI::MPI_CXX)
-    target_link_libraries(tridcpu PUBLIC MPI::MPI_CXX)
-  endif (BUILD_FOR_MPI)
-
+  set(CPU_LIBS "OpenMP::OpenMP_CXX;trid_common_options;trid_global_options")
+  set(CPU_INTERFACE_LIBS "trid_global_options")
   if (USE_PROFILING)
-    target_link_libraries(tridcpu_sp PUBLIC profiling)
-    target_link_libraries(tridcpu_dp PUBLIC profiling)
-    target_link_libraries(tridcpu PUBLIC profiling)
+    set(CPU_LIBS "${CPU_LIBS};profiling")
+    set(CPU_INTERFACE_LIBS "${CPU_INTERFACE_LIBS};profiling")
   endif (USE_PROFILING)
+  target_link_libraries(tridcpu_dp PRIVATE ${CPU_LIBS})
+  target_link_libraries(tridcpu_sp PRIVATE ${CPU_LIBS})
+  target_link_libraries(tridcpu PUBLIC ${CPU_INTERFACE_LIBS})
 
   set_property(TARGET tridcpu_sp tridcpu_dp PROPERTY POSITION_INDEPENDENT_CODE ON)
 
@@ -50,19 +36,60 @@ if (BUILD_FOR_CPU)
   target_compile_definitions(tridcpu_dp PRIVATE -DFPPREC=1)
 
   install(
-    TARGETS tridcpu trid_common_options
+    TARGETS tridcpu trid_global_options
     EXPORT tridcpuTarget
     LIBRARY DESTINATION ${PROJECT_NAME}/lib
     ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
   install(
-    FILES ${PROJECT_SOURCE_DIR}/include/trid_cpu.h
-          ${PROJECT_SOURCE_DIR}/include/trid_common.h
-          # ${PROJECT_SOURCE_DIR}/include/trid_util.h
+    FILES ${PROJECT_SOURCE_DIR}/include/trid_cpu.h ${PROJECT_SOURCE_DIR}/include/trid_common.h
           ${PROJECT_SOURCE_DIR}/include/trid_simd.h
-          ${PROJECT_SOURCE_DIR}/include/trid_mpi_cpu.h
-          # ${PROJECT_SOURCE_DIR}/src/cpu/trid_mpi_cpu.hpp
-          ${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
     DESTINATION ${PROJECT_NAME}/include)
+  install(
+    EXPORT tridcpuTarget
+    FILE tridcpuTarget.cmake
+    NAMESPACE ${PROJECT_NAME}::
+    DESTINATION ${PROJECT_NAME}/lib/cmake)
+
+  if (BUILD_FOR_MPI)
+    set(${PROJECT_NAME}_components "${${PROJECT_NAME}_components} tridcpu_mpi")
+    set(${PROJECT_NAME}_components
+        ${${PROJECT_NAME}_components}
+        PARENT_SCOPE)
+    add_library(tridcpu_sp_mpi OBJECT ./trid_mpi_cpu.cpp)
+    add_library(tridcpu_dp_mpi OBJECT ./trid_mpi_cpu.cpp)
+    add_library(tridcpu_mpi SHARED $<TARGET_OBJECTS:tridcpu_sp_mpi> $<TARGET_OBJECTS:tridcpu_dp_mpi>)
+    add_library(${PROJECT_NAME}::tridcpu_mpi ALIAS tridcpu_mpi)
+    target_link_libraries(
+      tridcpu_sp_mpi
+      PRIVATE ${CPU_LIBS}
+      PUBLIC MPI::MPI_CXX)
+    target_link_libraries(
+      tridcpu_dp_mpi
+      PRIVATE ${CPU_LIBS}
+      PUBLIC MPI::MPI_CXX)
+    target_link_libraries(tridcpu_mpi PUBLIC ${CPU_INTERFACE_LIBS} tridcpu MPI::MPI_CXX)
+
+    set_property(TARGET tridcpu_sp_mpi tridcpu_dp_mpi PROPERTY POSITION_INDEPENDENT_CODE ON)
+
+    target_compile_definitions(tridcpu_sp_mpi PRIVATE -DFPPREC=0)
+    target_compile_definitions(tridcpu_dp_mpi PRIVATE -DFPPREC=1)
+    install(
+      TARGETS tridcpu_mpi
+      EXPORT tridcpuMPITarget
+      LIBRARY DESTINATION ${PROJECT_NAME}/lib
+      ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
+    install(
+      FILES ${PROJECT_SOURCE_DIR}/include/trid_common.h
+            ${PROJECT_SOURCE_DIR}/include/trid_simd.h
+            ${PROJECT_SOURCE_DIR}/include/trid_mpi_cpu.h
+            ${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
+      DESTINATION ${PROJECT_NAME}/include)
+    install(
+      EXPORT tridcpuMPITarget
+      FILE tridcpu_mpiTarget.cmake
+      NAMESPACE ${PROJECT_NAME}::
+      DESTINATION ${PROJECT_NAME}/lib/cmake)
+  endif (BUILD_FOR_MPI)
 endif (BUILD_FOR_CPU)
 
 # cmake-format: off

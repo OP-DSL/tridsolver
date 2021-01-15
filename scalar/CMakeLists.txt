@@ -53,11 +53,14 @@ set(N_MAX
     CACHE STRING
           "Maximal length of the internal buffer for storing intermediate c and d vectors of the Thomas algorithm")
 set(N_MPI_MAX 128 CACHE STRING "Maximum number of MPI processes in a dimension")
+# internal options that shouldn't be exported
 add_library(trid_common_options INTERFACE)
 target_compile_features(trid_common_options INTERFACE cxx_std_14)
 target_compile_definitions(trid_common_options INTERFACE -DN_MAX=${N_MAX})
 target_compile_definitions(trid_common_options INTERFACE -DN_MPI_MAX=${N_MPI_MAX})
-target_include_directories(trid_common_options INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+# tridsolver public options that should be exported with the library
+add_library(trid_global_options INTERFACE)
+target_include_directories(trid_global_options INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
                                                          $<INSTALL_INTERFACE:${PROJECT_NAME}/include>)
 
 find_package(OpenMP REQUIRED)
@@ -86,28 +89,27 @@ if (BUILD_FOR_GPU)
   endif (CMAKE_CUDA_COMPILER)
 endif (BUILD_FOR_GPU)
 
+set(libtrid_components "")
 # Invoke subprojects
 add_subdirectory(src/cpu)
 add_subdirectory(src/cuda)
+  message(STATUS "${${PROJECT_NAME}_components}")
 if (BUILD_TESTING)
   enable_testing()
   add_subdirectory(test)
 endif (BUILD_TESTING)
 
-if (BUILD_FOR_CPU)
-  install(
-    EXPORT tridcpuTarget
-    FILE tridcpuTarget.cmake
-    DESTINATION ${PROJECT_NAME}/lib/cmake/tridcpu)
+# if (BUILD_FOR_CPU)
+# install( EXPORT tridcpuTarget FILE tridcpuTarget.cmake DESTINATION ${PROJECT_NAME}/lib/cmake/tridcpu)
 
-  include(CMakePackageConfigHelpers)
-  # generate the config file that includes the exports
-  configure_package_config_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Config.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/tridcpuConfig.cmake"
-    INSTALL_DESTINATION "libtrid/lib/cmake/tridcpu"
-    NO_SET_AND_CHECK_MACRO NO_CHECK_REQUIRED_COMPONENTS_MACRO)
+include(CMakePackageConfigHelpers)
+# generate the config file that includes the exports
+configure_package_config_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Config.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+  INSTALL_DESTINATION "${PROJECT_NAME}/lib/cmake"
+  NO_SET_AND_CHECK_MACRO NO_CHECK_REQUIRED_COMPONENTS_MACRO) # TODO test these
 
-  # install the configuration file
-  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/tridcpuConfig.cmake DESTINATION ${PROJECT_NAME}/lib/cmake/tridcpu)
-  export(EXPORT tridcpuTarget FILE "${CMAKE_CURRENT_BINARY_DIR}/tridcpuTarget.cmake")
-endif (BUILD_FOR_CPU)
+# install the configuration file
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake DESTINATION ${PROJECT_NAME}/lib/cmake/)
+# export(EXPORT tridcpuTarget FILE "${CMAKE_CURRENT_BINARY_DIR}/tridcpuTarget.cmake")
+# endif (BUILD_FOR_CPU)
