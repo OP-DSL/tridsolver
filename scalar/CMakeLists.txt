@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project("libtrid" C CXX)
+project(libtrid CXX)
 
 option(BUILD_FOR_CPU "Build library for CPU architecture." OFF)
 option(BUILD_FOR_MIC "Build library for MIC architecture." OFF)
@@ -33,18 +33,17 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
 else (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
   # Set compiler flags/options for GCC compiler
   set(FLAGS_GCC_DEFAULT "-march=native ") # -march=core-avx2
-  set(FLAGS_GCC_DEBUG "-O0")
   set(FLAGS_GCC_RELEASE "-flto -fstrict-aliasing -finline-functions") # -ffast-math -fargument-noalias -fargument-
                                                                       # noalias-global
 
   # cmake-format: off
   set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS}       ${FLAGS_GCC_DEFAULT}")
-  set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_GCC_DEBUG}  ")
+  set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} -O0")
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_RELEASE}     ${FLAGS_GCC_RELEASE}")
 
-  set(CMAKE_C_FLAGS           "${CMAKE_CXX_FLAGS}       ${FLAGS_GCC_DEFAULT} -std=c99")
-  set(CMAKE_C_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_GCC_DEBUG}   -std=c99")
-  set(CMAKE_C_FLAGS_RELEASE   "${CMAKE_CXX_RELEASE}     ${FLAGS_GCC_RELEASE} -std=c99")
+  set(CMAKE_C_FLAGS           "${CMAKE_C_FLAGS}         ${FLAGS_GCC_DEFAULT}")
+  set(CMAKE_C_FLAGS_DEBUG     "${CMAKE_C_FLAGS_DEBUG}   -O0")
+  set(CMAKE_C_FLAGS_RELEASE   "${CMAKE_C_RELEASE}       ${FLAGS_GCC_RELEASE}")
   # cmake-format: on
 endif (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
 
@@ -58,7 +57,8 @@ add_library(trid_common_options INTERFACE)
 target_compile_features(trid_common_options INTERFACE cxx_std_14)
 target_compile_definitions(trid_common_options INTERFACE -DN_MAX=${N_MAX})
 target_compile_definitions(trid_common_options INTERFACE -DN_MPI_MAX=${N_MPI_MAX})
-target_include_directories(trid_common_options INTERFACE ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(trid_common_options INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+                                                         $<INSTALL_INTERFACE:include>)
 
 find_package(OpenMP REQUIRED)
 if (BUILD_FOR_MPI)
@@ -78,7 +78,9 @@ if (BUILD_FOR_GPU)
     include(cmake/CUDA_ARCH.cmake)
     select_cuda_architectures("${ARCHITECTURE}" ARCH_LIST)
     message(STATUS "CUDA_ARCH: ${ARCH_LIST}")
-    set(CMAKE_CUDA_ARCHITECTURES "${ARCH_LIST}" CACHE STRING "CUDA architectures" FORCE)
+    set(CMAKE_CUDA_ARCHITECTURES
+        "${ARCH_LIST}"
+        CACHE STRING "CUDA architectures" FORCE)
   else (CMAKE_CUDA_COMPILER)
     message(ERROR "Couldn't find CUDA compiler")
   endif (CMAKE_CUDA_COMPILER)
@@ -91,3 +93,21 @@ if (BUILD_TESTING)
   enable_testing()
   add_subdirectory(test)
 endif (BUILD_TESTING)
+
+if (BUILD_FOR_CPU)
+  install(
+    EXPORT tridcpuTarget
+    FILE tridcpuTarget.cmake
+    DESTINATION ${PROJECT_NAME}/lib/cmake/tridcpu)
+
+  include(CMakePackageConfigHelpers)
+  # generate the config file that includes the exports
+  configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Config.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/tridcpuConfig.cmake"
+    INSTALL_DESTINATION "libtrid/lib/cmake/tridcpu"
+    NO_SET_AND_CHECK_MACRO NO_CHECK_REQUIRED_COMPONENTS_MACRO)
+
+  # install the configuration file
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/tridcpuConfig.cmake DESTINATION ${PROJECT_NAME}/lib/cmake/tridcpu)
+  export(EXPORT tridcpuTarget FILE "${CMAKE_CURRENT_BINARY_DIR}/tridcpuTarget.cmake")
+endif (BUILD_FOR_CPU)

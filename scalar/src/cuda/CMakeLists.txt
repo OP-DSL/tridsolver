@@ -8,6 +8,7 @@ if (BUILD_FOR_GPU)
 
   if (USE_PROFILING)
     # PROFILE disables macros with the suffix 2 to achieve lower overhead to use with profiler
+
     # DETAILED enables all macros and performs deatailed time measures, but has bigger overhead
     set(PROFILING_LEVEL
         "DETAILED"

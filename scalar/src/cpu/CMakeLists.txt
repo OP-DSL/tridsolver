@@ -50,19 +50,20 @@ if (BUILD_FOR_CPU)
 
   install(
     TARGETS tridcpu
-    LIBRARY DESTINATION ${CMAKE_BINARY_DIR}/lib
-    ARCHIVE DESTINATION ${CMAKE_BINARY_DIR}/lib)
+    EXPORT tridcpuTarget
+    LIBRARY DESTINATION ${PROJECT_NAME}/lib
+    ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
   install(
     FILES ${PROJECT_SOURCE_DIR}/include/trid_cpu.h
           ${PROJECT_SOURCE_DIR}/include/trid_common.h
-          ${PROJECT_SOURCE_DIR}/include/trid_util.h
-          ${PROJECT_SOURCE_DIR}/include/trid_simd.h
+          # ${PROJECT_SOURCE_DIR}/include/trid_util.h ${PROJECT_SOURCE_DIR}/include/trid_simd.h
           ${PROJECT_SOURCE_DIR}/include/trid_mpi_cpu.h
-          ${PROJECT_SOURCE_DIR}/src/cpu/trid_mpi_cpu.hpp
+          # ${PROJECT_SOURCE_DIR}/src/cpu/trid_mpi_cpu.hpp
           ${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
-    DESTINATION ${CMAKE_BINARY_DIR}/include)
+    DESTINATION ${PROJECT_NAME}/include)
 endif (BUILD_FOR_CPU)
 
+# cmake-format: off
 if (BUILD_FOR_MIC AND CMAKE_CXX_COMPILER_ID MATCHES "Intel")
 	add_library(tridmic_offload_sp OBJECT ./trid_cpu.cpp)
 	add_library(tridmic_offload_dp OBJECT ./trid_cpu.cpp)
@@ -113,3 +114,4 @@ if (BUILD_FOR_MIC AND CMAKE_CXX_COMPILER_ID MATCHES "Intel")
 					${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
 		DESTINATION ${CMAKE_BINARY_DIR}/include)
 endif (BUILD_FOR_MIC AND CMAKE_CXX_COMPILER_ID MATCHES "Intel")
+# cmake-format: on
