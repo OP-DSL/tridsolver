@@ -46,6 +46,7 @@ if (BUILD_FOR_GPU)
 
   install(
     TARGETS tridcuda
+    EXPORT tridcudaTarget
     LIBRARY DESTINATION ${PROJECT_NAME}/lib
     ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
 

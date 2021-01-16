@@ -36,14 +36,12 @@ if (BUILD_FOR_CPU)
   target_compile_definitions(tridcpu_dp PRIVATE -DFPPREC=1)
 
   install(
-    TARGETS tridcpu trid_global_options
+    TARGETS tridcpu
     EXPORT tridcpuTarget
     LIBRARY DESTINATION ${PROJECT_NAME}/lib
     ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
-  install(
-    FILES ${PROJECT_SOURCE_DIR}/include/trid_cpu.h ${PROJECT_SOURCE_DIR}/include/trid_common.h
-          ${PROJECT_SOURCE_DIR}/include/trid_simd.h
-    DESTINATION ${PROJECT_NAME}/include)
+  install(FILES ${PROJECT_SOURCE_DIR}/include/trid_cpu.h ${PROJECT_SOURCE_DIR}/include/trid_common.h
+                ${PROJECT_SOURCE_DIR}/include/trid_simd.h DESTINATION ${PROJECT_NAME}/include)
   install(
     EXPORT tridcpuTarget
     FILE tridcpuTarget.cmake

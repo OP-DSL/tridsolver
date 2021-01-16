@@ -63,6 +63,20 @@ add_library(trid_global_options INTERFACE)
 target_include_directories(trid_global_options INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
                                                          $<INSTALL_INTERFACE:${PROJECT_NAME}/include>)
 
+install(
+  TARGETS trid_global_options
+  EXPORT tridCommonTarget
+  LIBRARY DESTINATION ${PROJECT_NAME}/lib
+  ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
+
+install(FILES ${PROJECT_SOURCE_DIR}/include/trid_common.h DESTINATION ${PROJECT_NAME}/include)
+
+install(
+  EXPORT tridCommonTarget
+  FILE trid_commonTarget.cmake
+  NAMESPACE ${PROJECT_NAME}::
+  DESTINATION ${PROJECT_NAME}/lib/cmake)
+
 find_package(OpenMP REQUIRED)
 if (BUILD_FOR_MPI)
   find_package(MPI REQUIRED)
@@ -89,18 +103,18 @@ if (BUILD_FOR_GPU)
   endif (CMAKE_CUDA_COMPILER)
 endif (BUILD_FOR_GPU)
 
-set(libtrid_components "")
+set(libtrid_components "trid_common")
 # Invoke subprojects
 add_subdirectory(src/cpu)
 add_subdirectory(src/cuda)
-  message(STATUS "${${PROJECT_NAME}_components}")
+message(STATUS "${${PROJECT_NAME}_components}")
 if (BUILD_TESTING)
   enable_testing()
   add_subdirectory(test)
 endif (BUILD_TESTING)
 
-# if (BUILD_FOR_CPU)
-# install( EXPORT tridcpuTarget FILE tridcpuTarget.cmake DESTINATION ${PROJECT_NAME}/lib/cmake/tridcpu)
+# if (BUILD_FOR_CPU) install( EXPORT tridcpuTarget FILE tridcpuTarget.cmake DESTINATION
+# ${PROJECT_NAME}/lib/cmake/tridcpu)
 
 include(CMakePackageConfigHelpers)
 # generate the config file that includes the exports
@@ -111,5 +125,4 @@ configure_package_config_file(
 
 # install the configuration file
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake DESTINATION ${PROJECT_NAME}/lib/cmake/)
-# export(EXPORT tridcpuTarget FILE "${CMAKE_CURRENT_BINARY_DIR}/tridcpuTarget.cmake")
-# endif (BUILD_FOR_CPU)
+# export(EXPORT tridcpuTarget FILE "${CMAKE_CURRENT_BINARY_DIR}/tridcpuTarget.cmake") endif (BUILD_FOR_CPU)

@@ -5,7 +5,7 @@ option(BUILD_FOR_CPU "Build library for CPU architecture." OFF)
 option(BUILD_FOR_MIC "Build library for MIC architecture." OFF)
 option(BUILD_FOR_GPU "Build library for GPU architecture." OFF)
 option(BUILD_FOR_MPI "Build library for MPI combnied with the above architectures." OFF)
-
+option(USE_NCCL "TDMA library built with NCCL" OFF)
 set(LIBTRID_PATH
     $ENV{TRIDSOLVER_INSTALL_PATH}
     CACHE STRING "Tridsolver (scalar) installation directory")
@@ -105,38 +105,54 @@ if (BUILD_FOR_MIC)
   target_include_directories(adi_mic_native_mkl PRIVATE -I${INTEL_PATH}/mkl/include)
   target_link_libraries(adi_mic_native_mkl ${LIBTRID_PATH}/lib/libtridmic_native.so -L./libtrid/lib -limf -lintlc -lsvml -lirng) #-L$(INTEL_PATH)/mkl/lib/mic -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_rt -liomp5 -lpthread -lm -lgfortran)
 endif (BUILD_FOR_MIC)
+# cmake-format: on
 
 if (BUILD_FOR_GPU)
-  include(FindCUDA)
-  #find_package(CUDA)
+  include(CheckLanguage)
+  check_language(CUDA)
+  if (CMAKE_CUDA_COMPILER)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 11)
+  else (CMAKE_CUDA_COMPILER)
+    message(ERROR "Couldn't find CUDA compiler")
+  endif (CMAKE_CUDA_COMPILER)
 
-  set(CUDA_PROPAGATE_HOST_FLAGS OFF)
-  set(CUDA_NVCC_FLAGS         "-arch sm_35 --ptxas-options=-v -Xptxas -dlcm=cg -std=c++11")
-  set(CUDA_NVCC_FLAGS_DEBUG   "-g -G -O0 -ftz=false -fmad=false")
-  set(CUDA_NVCC_FLAGS_RELEASE "-O3")
+  find_package(
+    libtrid
+    REQUIRED
+    PATHS
+    ${LIBTRID_PATH})
+  find_package(CUDAToolkit)
 
-  set(CUDA_LIBRARIES ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcudart.so)
-  cuda_include_directories(${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include)
-  cuda_add_executable(adi_cuda src/adi_cuda.cu src/preproc.cu)
-  cuda_add_cublas_to_target(adi_cuda)
-  target_link_libraries(adi_cuda -L${LIBTRID_PATH}/lib -ltridcuda)
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --ptxas-options=-v -Xptxas -dlcm=cg")
+  set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG}   -g -G -O0 ")
+
+  add_executable(adi_cuda std/adi_cuda.cu std/preproc.cu)
+  target_include_directories(adi_cuda ${PROJECT_SOURCE_DIR}/include)
+  target_link_libraries(adi_cuda libtrid::tridcuda CUDA::cublas)
 
   find_package(MPI REQUIRED)
-  find_package(OpenMP REQUIRED)
-  if (NCCL_FOUND)
-    add_definitions(-DTRID_NCCL)
-    include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
+
+  if (USE_NCCL)
+    find_package(NCCL)
+
+    if (NCCL_FOUND)
+      add_definitions(-DTRID_NCCL)
+      include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
+    endif ()
   endif ()
-  cuda_include_directories(SYSTEM ${MPI_INCLUDE_PATH})
-  cuda_add_executable(adi_mpi_cuda src/adi_mpi_cuda.cu)
-  #cuda_include_directories(${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include SYSTEM ${MPI_INCLUDE_PATH})
-  cuda_add_cublas_to_target(adi_mpi_cuda)
-  target_link_libraries(adi_mpi_cuda -L${LIBTRID_PATH}/lib -ltridcuda -ltridcuda_mpi ${MPI_C_LIBRARIES} ${NCCL_LIBRARY})
+  add_executable(adi_mpi_cuda src/adi_mpi_cuda.cu)
+  target_include_directories(adi_mpi_cuda ${PROJECT_SOURCE_DIR}/include)
+  target_link_libraries(
+    adi_mpi_cuda
+    libtrid::trid_cuda_mpi
+    MPI::MPI_CXX
+    CUDA::cublas
+    ${NCCL_LIBRARY})
 endif (BUILD_FOR_GPU)
 
-
-
-#INCS_MKL = -I./include -I./libtrid -I$(INTEL_PATH)/mkl/include
+# cmake-format: off
+#INCS_MKL = -I./include -I./libtrid -I$(INTEL_PATH)/mkl/include  
 #LIBS_MKL = -L$(INTEL_PATH)/mkl/lib/intel64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -L$(INTEL_PATH)/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts
 #LIBS_MKL = $(INTEL_PATH)/mkl/lib/intel64/libmkl_intel_lp64.a \
 #	   $(INTEL_PATH)/mkl/lib/intel64/libmkl_intel_thread.a \
