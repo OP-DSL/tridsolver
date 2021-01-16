@@ -206,25 +206,16 @@ void tridMultiDimBatchSolve(const REAL *d_a, const int *a_pads,
 
   if (solvedim == 0) {
 
-    /* If there is padding in the Y-dimension, this solver will break down */
-    bool foundBadPadding = false;
-    for ( int i = 1 ; i < ndim ; i++ ) {
-        foundBadPadding |= (a_pads[i] != dims[i]);
-    }
-    if ( foundBadPadding ) {
-        printf("CUDA solver for Trid MultiDimBatchSolve is not currently "
-                "capable of solving systems with padding in the 'Y' "
-                "dimension.\n");
-        exit(-1);
-    }
-
+    assert(ndim <= 3);
     /* Padded size of solve dimension */
     int sys_pads = a_pads[0];
     /* Number of systems to solve */
     int sys_n_lin = 1;
-    for ( int i = 1 ; i < ndim ; i++ ) {
-        sys_n_lin *= dims[i];
-    }
+    if(ndim > 1)
+      sys_n_lin *= a_pads[1];
+
+    if(ndim == 3)
+      sys_n_lin *= dims[2];
 
     if ( ndim == 1 || opts[0] != 0) {
 
@@ -270,18 +261,36 @@ void tridMultiDimBatchSolve(const REAL *d_a, const int *a_pads,
         int newDims[MAXDIM] = {sys_n_lin, dims[0]};
         int newPads[MAXDIM] = {sys_n_lin, a_pads[0]}; /* Assumption of no actual padding in original Y (& Z) dimensions */
         int newNumDim = max(ndim-1, 2); /* Linearized Y&Z dimensions, so potentially reduced to 2D problem */
-        /* TODO:  Better pads arrays */
-        tridMultiDimBatchSolve<REAL, INC>(aT, newPads, bT, newPads, cT, newPads, dT, newPads, uT, newPads, newNumDim, 1, newDims, opts, sync);
+
+        if(a_pads[1] == dims[1]) {
+          /* TODO:  Better pads arrays */
+          tridMultiDimBatchSolve<REAL, INC>(aT, newPads, bT, newPads, cT, newPads, dT, newPads, uT, newPads, newNumDim, 1, newDims, opts, sync);
+        } else {
+          /*
+            This ignores the optimization options passed in the case of
+            padding in the y dimension.
+          */
+          int blockdimx = 128; // Has to be the multiple of 32(or maybe 4??)
+          int blockdimy = 1;
+          int dimgrid = 1 + (sys_n_lin - 1) / blockdimx; // can go up to 65535
+          int dimgridx = dimgrid % 65536; // can go up to max 65535 on Fermi
+          int dimgridy = 1 + dimgrid / 65536;
+          dim3 dimGrid(dimgridx, dimgridy);
+          dim3 dimBlock(blockdimx, blockdimy);
+
+          trid_strided_multidim_x_solve_y_padding<REAL, REAL, INC>(dimGrid, dimBlock,
+              aT, newPads, bT, newPads, cT, newPads, dT, newPads, uT, newPads,
+              newNumDim, 1, sys_n_lin, newDims, dims[1], a_pads[1]);
+        }
 
         cudaDeviceSetCacheConfig(cudaFuncCachePreferShared);
         if ( INC ) transpose(handle, n, m, uT, d_u);
         else transpose(handle, n, m, dT, d_d);
         cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
-
     }
   } else {
     if (solvedim == 1 && opts[1] == 3) { // If y-solve and ThomasPCR
-     
+
       int numTrids = dims[0] * dims[2];
       int length = dims[1];
       int stride1 = dims[0];
@@ -300,7 +309,7 @@ void tridMultiDimBatchSolve(const REAL *d_a, const int *a_pads,
       //  printf("This option is only valid for __CUDA_ARCH__ >= 300\n");
       //#endif
     } else if (solvedim == 2 && opts[2] == 3) { // If z-solve and ThomasPCR
-     
+
       int numTrids = dims[0] * dims[1];
       int length = dims[2];
       int stride1 = dims[0] * dims[1];
@@ -317,7 +326,7 @@ void tridMultiDimBatchSolve(const REAL *d_a, const int *a_pads,
       //  printf("This option is only valid for __CUDA_ARCH__ >= 300\n");
       //#endif
     } else {
-     
+
       // Test if data is aligned
       long isaligned = 0;
       isaligned =
@@ -332,7 +341,7 @@ void tridMultiDimBatchSolve(const REAL *d_a, const int *a_pads,
 
       if (isaligned == 0) { // If any of the above is non-zero, vector loads can not be used
         if (sizeof(REAL) == 4) {
-         
+
           // Kernel launch configuration
           int sys_n_float4 = sys_n / 4;
           int blockdimx_float4 =
@@ -441,7 +450,7 @@ void tridMultiDimBatchSolve(const REAL *d_a, const int *a_pads,
   }
   if (sync == 1)
     cudaSafeCall(cudaDeviceSynchronize());
-  
+
 }
 
 //------------------------------------------------------------------------------------------------------------------

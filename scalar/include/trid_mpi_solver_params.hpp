@@ -62,6 +62,8 @@ struct MpiSolverParams {
   // communicator that includes every node calculating the same set of equations
   // as the current node for each dimension.
   std::vector<MPI_Comm> communicators;
+  std::vector<MPI_Group> cart_groups;
+  std::vector<MPI_Group> neighbours_groups;
 #ifdef TRID_NCCL
   std::vector<ncclComm_t> ncclComms;
 #endif
@@ -84,7 +86,8 @@ struct MpiSolverParams {
   MpiSolverParams(MPI_Comm cartesian_communicator, int num_dims,
                   int *num_mpi_procs_, int mpi_batch_size = 32,
                   MPICommStrategy _strategy = LATENCY_HIDING_INTERLEAVED)
-      : communicators(num_dims), num_mpi_procs(num_mpi_procs_),
+      : communicators(num_dims), cart_groups(num_dims),
+        neighbours_groups(num_dims), num_mpi_procs(num_mpi_procs_),
         mpi_coords(num_dims), mpi_batch_size(mpi_batch_size),
         strategy(_strategy) {
     int cart_rank;
@@ -115,12 +118,12 @@ struct MpiSolverParams {
       std::sort(neighbours.begin(), neighbours.end());
 
       // Create new communicator for neighbours
-      MPI_Group cart_group;
-      MPI_Comm_group(cartesian_communicator, &cart_group);
-      MPI_Group neighbours_group;
-      MPI_Group_incl(cart_group, neighbours.size(), neighbours.data(),
-                     &neighbours_group);
-      MPI_Comm_create(cartesian_communicator, neighbours_group,
+      //MPI_Group cart_group;
+      MPI_Comm_group(cartesian_communicator, &this->cart_groups[equation_dim]);
+      //MPI_Group neighbours_group;
+      MPI_Group_incl(this->cart_groups[equation_dim], neighbours.size(), neighbours.data(),
+                     &this->neighbours_groups[equation_dim]);
+      MPI_Comm_create(cartesian_communicator, this->neighbours_groups[equation_dim],
                       &this->communicators[equation_dim]);
 #ifdef TRID_NCCL
       int this_rank, this_size;
@@ -135,6 +138,17 @@ struct MpiSolverParams {
       NCCLCHECK(ncclCommInitRank(&this->ncclComms[equation_dim],
 				 neighbours.size(), id, this_rank));
 #endif
+    }
+  }
+
+  ~MpiSolverParams() {
+    for (unsigned int equation_dim = 0; equation_dim < this->communicators.size(); ++equation_dim) {
+      MPI_Group_free(&this->cart_groups[equation_dim]);
+      MPI_Group_free(&this->neighbours_groups[equation_dim]);
+      MPI_Comm_free(&this->communicators[equation_dim]);
+      #ifdef TRID_NCCL
+      NCCLCHECK(ncclCommDestroy(this->ncclComms[equation_dim]));
+      #endif
     }
   }
 };

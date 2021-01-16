@@ -70,29 +70,60 @@ const MPI_Datatype mpi_datatype =
     (std::is_same<REAL, double>::value ? MPI_DOUBLE : MPI_FLOAT)
 #endif
 
-template <bool ON_DEVICE, typename REAL>
-inline void alloc(REAL **arr, int size) {
-  if (*arr) {
-    if (ON_DEVICE)
-      cudaFree(*arr);
-    else
-      cudaFreeHost(*arr);
-  }
-  if (ON_DEVICE)
-    cudaSafeCall(cudaMalloc(arr, size));
-  else
-    cudaSafeCall(cudaMallocHost(arr, size));
-}
+namespace {
 
-template <bool ON_DEVICE = true, typename... REAL>
-inline void alloc_if_bigger(int &curr_size, int required_size,
-                            REAL **... arrays) {
-  if (curr_size < required_size) {
-    (void)std::initializer_list<int>{
-        (alloc<ON_DEVICE>(arrays, required_size), 0)...};
-    curr_size = required_size;
+enum class memory_env { HOST, DEVICE };
+
+template <memory_env mem_env> struct mem_buffer {
+  size_t size  = 0;       /*<< size of the buffer in bytes */
+  char *buffer = nullptr; /*<< pointer to memory in mem_env */
+
+  template <typename REAL> REAL *get_bytes_as(size_t bytes) {
+    if (size < bytes) {
+      if (buffer) {
+        if (mem_env == memory_env::DEVICE) {
+          cudaFree(buffer);
+        } else {
+          cudaFreeHost(buffer);
+        }
+      }
+      if (mem_env == memory_env::DEVICE) {
+        cudaSafeCall(cudaMalloc(&buffer, bytes));
+      } else {
+        cudaSafeCall(cudaMallocHost(&buffer, bytes));
+      }
+      size = bytes;
+    }
+    return reinterpret_cast<REAL *>(buffer);
   }
-}
+
+  void free() {
+    if (buffer) {
+      if (mem_env == memory_env::DEVICE) {
+        cudaFree(buffer);
+      } else {
+        cudaFreeHost(buffer);
+      }
+      buffer = nullptr;
+      size   = 0;
+    }
+  }
+
+  ~mem_buffer() { free(); }
+  mem_buffer() noexcept          = default;
+  mem_buffer(const mem_buffer &) = delete;
+  mem_buffer &operator=(const mem_buffer &) = delete;
+  mem_buffer(const mem_buffer &&)           = delete;
+  mem_buffer &operator=(mem_buffer &&) = delete;
+};
+
+mem_buffer<memory_env::DEVICE> aa_buf, cc_buf, dd_buf, boundaries_buf,
+    mpi_buffer;
+
+#if !(defined(TRID_CUDA_AWARE_MPI) || defined(TRID_NCCL))
+mem_buffer<memory_env::HOST> send_buffer, receive_buffer;
+#endif
+} // namespace
 
 template <typename REAL>
 inline void forward_batched(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *a,
@@ -101,23 +132,23 @@ inline void forward_batched(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *a,
                             const int *d_pads, REAL *aa, REAL *cc, REAL *dd,
                             REAL *boundaries, REAL *send_buf_h, const int *dims,
                             int ndim, int solvedim, int start_sys, int bsize,
-                            cudaStream_t stream = nullptr) {
+                            int offset, cudaStream_t stream = nullptr) {
   if (solvedim == 0) {
     const int batch_offset = start_sys * a_pads[solvedim]; // TODO pads
     trid_linear_forward_reg(
         dimGrid_x, dimBlock_x, a + batch_offset, b + batch_offset,
         c + batch_offset, d + batch_offset, aa + batch_offset,
         cc + batch_offset, dd + batch_offset, boundaries + start_sys * 3 * 2,
-        dims[solvedim], a_pads[solvedim], bsize, stream);
+        dims[solvedim], a_pads[solvedim], bsize, offset, stream);
   } else {
-    DIM_V pads, dims; // TODO
+    DIM_V k_pads, k_dims; // TODO
     for (int i = 0; i < ndim; ++i) {
-      pads.v[i] = a_pads[i];
-      dims.v[i] = a_pads[i];
+      k_pads.v[i] = a_pads[i];
+      k_dims.v[i] = dims[i];
     }
     trid_strided_multidim_forward<REAL><<<dimGrid_x, dimBlock_x, 0, stream>>>(
-        a, pads, b, pads, c, pads, d, pads, aa, cc, dd, boundaries, ndim,
-        solvedim, bsize, dims, start_sys);
+        a, k_pads, b, k_pads, c, k_pads, d, k_pads, aa, cc, dd, boundaries, ndim,
+        solvedim, bsize, k_dims, start_sys);
   }
 #if !(defined(TRID_CUDA_AWARE_MPI) || defined(TRID_NCCL))
   size_t comm_buf_size   = 3 * 2 * bsize;
@@ -134,24 +165,24 @@ inline void backward_batched(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
                              const int *d_pads, const REAL *boundaries, REAL *d,
                              REAL *u, const int *u_pads, const int *dims,
                              int ndim, int solvedim, int start_sys, int bsize,
-                             cudaStream_t stream = nullptr) {
+                             int offset, cudaStream_t stream = nullptr) {
   if (solvedim == 0) {
-    const int batch_offset  = start_sys * a_pads[solvedim];
+    const int batch_offset = start_sys * a_pads[solvedim];
     trid_linear_backward_reg<REAL, INC>(
         dimGrid_x, dimBlock_x, aa + batch_offset, cc + batch_offset,
         dd + batch_offset, d + batch_offset, u + batch_offset,
         boundaries + start_sys * 2, dims[solvedim], a_pads[solvedim], bsize,
-        stream);
+        offset, start_sys, dims[1], a_pads[1], stream);
   } else {
-    DIM_V pads, dims; // TODO
+    DIM_V k_pads, k_dims; // TODO
     for (int i = 0; i < ndim; ++i) {
-      pads.v[i] = a_pads[i];
-      dims.v[i] = a_pads[i];
+      k_pads.v[i] = a_pads[i];
+      k_dims.v[i] = dims[i];
     }
     trid_strided_multidim_backward<REAL, INC>
         <<<dimGrid_x, dimBlock_x, 0, stream>>>(
-            aa, pads, cc, pads, dd, d, pads, u, pads, boundaries, ndim,
-            solvedim, bsize, dims, start_sys);
+            aa, k_pads, cc, k_pads, dd, d, k_pads, u, k_pads, boundaries, ndim,
+            solvedim, bsize, k_dims, start_sys);
   }
 }
 
@@ -164,7 +195,7 @@ void reduced_and_backward(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
                           const int *dims, int ndim, int solvedim,
                           int mpi_coord, int bidx, int batch_size,
                           int num_batches, int reduced_len_g, int sys_n,
-                          cudaStream_t stream) {
+                          int offset, cudaStream_t stream) {
   int batch_start = bidx * batch_size;
   int bsize       = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
 #if !(defined(TRID_CUDA_AWARE_MPI) || defined(TRID_NCCL))
@@ -175,19 +206,19 @@ void reduced_and_backward(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
       reduced_len_g * 3 * bsize * sizeof(REAL), cudaMemcpyHostToDevice, stream);
 #endif
   // Finish the solve for batch
-  BEGIN_PROFILING_CUDA2("pcr_on_reduced",stream);
+  BEGIN_PROFILING_CUDA2("pcr_on_reduced", stream);
   int buf_offset       = 3 * reduced_len_g * batch_start;
   int bound_buf_offset = 2 * batch_start;
   pcr_on_reduced_batched<REAL>(recv_buf + buf_offset,
                                boundaries + bound_buf_offset, bsize, mpi_coord,
                                reduced_len_g, stream);
-  END_PROFILING_CUDA2("pcr_on_reduced",stream);
+  END_PROFILING_CUDA2("pcr_on_reduced", stream);
   // Perform the backward run of the modified thomas algorithm
-  BEGIN_PROFILING_CUDA2("thomas_backward",stream);
+  BEGIN_PROFILING_CUDA2("thomas_backward", stream);
   backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd,
                               d_pads, boundaries, d, u, u_pads, dims, ndim,
-                              solvedim, batch_start, bsize, stream);
-  END_PROFILING_CUDA2("thomas_backward",stream);
+                              solvedim, batch_start, bsize, offset, stream);
+  END_PROFILING_CUDA2("thomas_backward", stream);
 }
 
 template <typename REAL, int INC>
@@ -196,7 +227,7 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
     const REAL *b, const int *b_pads, const REAL *c, const int *c_pads, REAL *d,
     const int *d_pads, REAL *u, const int *u_pads, int ndim, int solvedim,
     const int *dims, REAL *aa, REAL *cc, REAL *dd, REAL *boundaries,
-    REAL *recv_buf, int sys_n, REAL *send_buf_h = nullptr,
+    REAL *recv_buf, int sys_n, int offset, REAL *send_buf_h = nullptr,
     REAL *recv_buf_h = nullptr) {
   BEGIN_PROFILING2("host-overhead");
   // length of reduced system
@@ -218,10 +249,11 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
   std::vector<cudaStream_t> streams(num_batches);
 #ifdef TRID_NCCL
   std::vector<cudaEvent_t> events(num_batches);
-  for (int bidx = 0; bidx < num_batches; ++bidx) 
-    cudaSafeCall(cudaEventCreateWithFlags(&events[bidx],cudaEventDisableTiming));
+  for (int bidx = 0; bidx < num_batches; ++bidx)
+    cudaSafeCall(
+        cudaEventCreateWithFlags(&events[bidx], cudaEventDisableTiming));
 #endif
-  for (int bidx = 0; bidx < num_batches; ++bidx) 
+  for (int bidx = 0; bidx < num_batches; ++bidx)
     cudaStreamCreate(&streams[bidx]);
   END_PROFILING2("host-overhead");
   for (int bidx = 0; bidx < num_batches; ++bidx) {
@@ -231,17 +263,19 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
     size_t comm_buf_offset = 3 * reduced_len_l * batch_start;
     // Do modified thomas forward pass
     // For the bidx-th batch
-    BEGIN_PROFILING_CUDA2("thomas_forward",streams[bidx]);
+    BEGIN_PROFILING_CUDA2("thomas_forward", streams[bidx]);
 #ifdef TRID_NCCL
-    //TODO: this actually hurts in a system where p2p is enabled between all GPUs
+    // TODO: this actually hurts in a system where p2p is enabled between all
+    // GPUs
     // but does it help when we need to go through the network?
-    if (bidx != 0 ) //for interleaved, forward should wait for completion of previous forward
-      cudaSafeCall(cudaStreamWaitEvent(streams[bidx],events[bidx-1],0));
+    if (bidx != 0) // for interleaved, forward should wait for completion of
+                   // previous forward
+      cudaSafeCall(cudaStreamWaitEvent(streams[bidx], events[bidx - 1], 0));
 #endif
     forward_batched(dimGrid_x, dimBlock_x, a, a_pads, b, b_pads, c, c_pads, d,
                     d_pads, aa, cc, dd, boundaries, send_buf_h, dims, ndim,
-                    solvedim, batch_start, bsize, streams[bidx]);
-    END_PROFILING_CUDA2("thomas_forward",streams[bidx]);
+                    solvedim, batch_start, bsize, offset, streams[bidx]);
+    END_PROFILING_CUDA2("thomas_forward", streams[bidx]);
     // wait for the previous MPI transaction to finish
     if (bidx != 0) {
       BEGIN_PROFILING2("mpi_wait");
@@ -255,10 +289,10 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
           dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd, d_pads, boundaries,
           d, u, u_pads, recv_buf_h, recv_buf, dims, ndim, solvedim,
           params.mpi_coords[solvedim], bidx - 1, batch_size, num_batches,
-          reduced_len_g, sys_n, streams[bidx - 1]);
+          reduced_len_g, sys_n, offset, streams[bidx - 1]);
     }
 #ifdef TRID_NCCL
-    cudaSafeCall(cudaEventRecord(events[bidx],streams[bidx]));
+    cudaSafeCall(cudaEventRecord(events[bidx], streams[bidx]));
 #else
     cudaSafeCall(cudaStreamSynchronize(streams[bidx]));
 #endif
@@ -274,7 +308,7 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
 #elif defined(TRID_NCCL)
     NCCLCHECK(ncclAllGather(boundaries + comm_buf_offset,
                             recv_buf + recv_comm_buf_offset,
-                            comm_buf_size*sizeof(REAL), ncclChar,
+                            comm_buf_size * sizeof(REAL), ncclChar,
                             params.ncclComms[solvedim], streams[bidx]));
 #else
     // Communicate boundary results
@@ -297,7 +331,7 @@ inline void tridMultiDimBatchSolveMPI_interleaved(
       dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd, d_pads, boundaries, d,
       u, u_pads, recv_buf_h, recv_buf, dims, ndim, solvedim,
       params.mpi_coords[solvedim], num_batches - 1, batch_size, num_batches,
-      reduced_len_g, sys_n, streams[num_batches - 1]);
+      reduced_len_g, sys_n, offset, streams[num_batches - 1]);
   BEGIN_PROFILING2("host-overhead");
 #ifdef TRID_NCCL
   for (int bidx = 0; bidx < num_batches; ++bidx)
@@ -314,7 +348,7 @@ inline void tridMultiDimBatchSolveMPI_simple(
     const REAL *b, const int *b_pads, const REAL *c, const int *c_pads, REAL *d,
     const int *d_pads, REAL *u, const int *u_pads, int ndim, int solvedim,
     const int *dims, REAL *aa, REAL *cc, REAL *dd, REAL *boundaries,
-    REAL *recv_buf, int sys_n, REAL *send_buf_h = nullptr,
+    REAL *recv_buf, int sys_n, int offset, REAL *send_buf_h = nullptr,
     REAL *recv_buf_h = nullptr) {
   BEGIN_PROFILING2("host-overhead");
 
@@ -335,7 +369,7 @@ inline void tridMultiDimBatchSolveMPI_simple(
   dim3 dimBlock_x(blockdimx, blockdimy);
   std::vector<MPI_Request> requests(num_batches);
   std::vector<cudaStream_t> streams(num_batches);
-  for (int bidx = 0; bidx < num_batches; ++bidx) 
+  for (int bidx = 0; bidx < num_batches; ++bidx)
     cudaStreamCreate(&streams[bidx]);
   END_PROFILING2("host-overhead");
   for (int bidx = 0; bidx < num_batches; ++bidx) {
@@ -343,32 +377,33 @@ inline void tridMultiDimBatchSolveMPI_simple(
     int bsize = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
     // Do modified thomas forward pass
     // For the bidx-th batch
-    BEGIN_PROFILING_CUDA2("thomas_forward",streams[bidx]);
+    BEGIN_PROFILING_CUDA2("thomas_forward", streams[bidx]);
     forward_batched(dimGrid_x, dimBlock_x, a, a_pads, b, b_pads, c, c_pads, d,
-                    d_pads, aa, cc, dd, boundaries, send_buf_h, dims, ndim, solvedim,
-                    batch_start, bsize, streams[bidx]);
-    END_PROFILING_CUDA2("thomas_forward",streams[bidx]);
+                    d_pads, aa, cc, dd, boundaries, send_buf_h, dims, ndim,
+                    solvedim, batch_start, bsize, offset, streams[bidx]);
+    END_PROFILING_CUDA2("thomas_forward", streams[bidx]);
   } // batches
   int ready_batches = 0;
   for (int bidx = 0; bidx < num_batches; ++bidx) {
     int batch_start = bidx * batch_size;
     int bsize = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
 #ifndef TRID_NCCL
-    while(cudaStreamQuery(streams[bidx]) != cudaSuccess && ready_batches != bidx) {
+    while (cudaStreamQuery(streams[bidx]) != cudaSuccess &&
+           ready_batches != bidx) {
       int finished, found_finished;
       MPI_Status status;
       // up until bidx all streams communicating
       MPI_Testany(bidx, requests.data(), &finished, &found_finished, &status);
-      if(found_finished && finished != MPI_UNDEFINED) {
+      if (found_finished && finished != MPI_UNDEFINED) {
         ready_batches++;
         reduced_and_backward<REAL, INC>(
             dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd, d_pads,
             boundaries, d, u, u_pads, recv_buf_h, recv_buf, dims, ndim,
             solvedim, params.mpi_coords[solvedim], finished, batch_size,
-            num_batches, reduced_len_g, sys_n, streams[finished]);
+            num_batches, reduced_len_g, sys_n, offset, streams[finished]);
       }
     }
-    if(ready_batches == bidx) {
+    if (ready_batches == bidx) {
       cudaStreamSynchronize(streams[bidx]);
     }
 #endif
@@ -386,14 +421,14 @@ inline void tridMultiDimBatchSolveMPI_simple(
 #elif defined(TRID_NCCL)
     NCCLCHECK(ncclAllGather(boundaries + comm_buf_offset,
                             recv_buf + recv_comm_buf_offset,
-                            comm_buf_size*sizeof(REAL), ncclChar,
+                            comm_buf_size * sizeof(REAL), ncclChar,
                             params.ncclComms[solvedim], streams[bidx]));
 #else
     // Communicate boundary results
-      MPI_Iallgather(send_buf_h + comm_buf_offset, comm_buf_size,
-                     MPI_DATATYPE(REAL), recv_buf_h + recv_comm_buf_offset,
-                     comm_buf_size, MPI_DATATYPE(REAL),
-                     params.communicators[solvedim], &requests[bidx]);
+    MPI_Iallgather(send_buf_h + comm_buf_offset, comm_buf_size,
+                   MPI_DATATYPE(REAL), recv_buf_h + recv_comm_buf_offset,
+                   comm_buf_size, MPI_DATATYPE(REAL),
+                   params.communicators[solvedim], &requests[bidx]);
 #endif
     END_PROFILING2("MPI_Iallgather");
   } // batches
@@ -416,7 +451,7 @@ inline void tridMultiDimBatchSolveMPI_simple(
         dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd, d_pads, boundaries,
         d, u, u_pads, recv_buf_h, recv_buf, dims, ndim, solvedim,
         params.mpi_coords[solvedim], bidx, batch_size, num_batches,
-        reduced_len_g, sys_n, streams[bidx]);
+        reduced_len_g, sys_n, offset, streams[bidx]);
   }
   BEGIN_PROFILING2("host-overhead");
   for (int bidx = 0; bidx < num_batches; ++bidx)
@@ -430,7 +465,7 @@ void tridMultiDimBatchSolveMPI_allgather(
     const REAL *b, const int *b_pads, const REAL *c, const int *c_pads, REAL *d,
     const int *d_pads, REAL *u, const int *u_pads, int ndim, int solvedim,
     const int *dims, REAL *aa, REAL *cc, REAL *dd, REAL *boundaries,
-    REAL *recv_buf, int sys_n, REAL *send_buf_h = nullptr,
+    REAL *recv_buf, int sys_n, int offset, REAL *send_buf_h = nullptr,
     REAL *recv_buf_h = nullptr) {
   BEGIN_PROFILING2("host-overhead");
   // length of reduced system
@@ -450,12 +485,12 @@ void tridMultiDimBatchSolveMPI_allgather(
   END_PROFILING2("host-overhead");
 
   // Do modified thomas forward pass
-  BEGIN_PROFILING_CUDA2("thomas_forward",0);
+  BEGIN_PROFILING_CUDA2("thomas_forward", 0);
   forward_batched(dimGrid_x, dimBlock_x, a, a_pads, b, b_pads, c, c_pads, d,
                   d_pads, aa, cc, dd, boundaries, send_buf_h, dims, ndim,
-                  solvedim, 0, sys_n);
+                  solvedim, 0, sys_n, offset);
   cudaSafeCall(cudaDeviceSynchronize());
-  END_PROFILING_CUDA2("thomas_forward",0);
+  END_PROFILING_CUDA2("thomas_forward", 0);
 
   BEGIN_PROFILING2("mpi_communication");
 #ifdef TRID_CUDA_AWARE_MPI
@@ -464,10 +499,8 @@ void tridMultiDimBatchSolveMPI_allgather(
                 comm_buf_size, MPI_DATATYPE(REAL),
                 params.communicators[solvedim]);
 #elif defined(TRID_NCCL)
-  NCCLCHECK(ncclAllGather(boundaries,
-                            recv_buf,
-                            comm_buf_size*sizeof(REAL), ncclChar,
-                            params.ncclComms[solvedim], 0));
+  NCCLCHECK(ncclAllGather(boundaries, recv_buf, comm_buf_size * sizeof(REAL),
+                          ncclChar, params.ncclComms[solvedim], 0));
 #else
   // Communicate boundary results
   MPI_Allgather(send_buf_h, comm_buf_size, MPI_DATATYPE(REAL), recv_buf_h,
@@ -482,16 +515,16 @@ void tridMultiDimBatchSolveMPI_allgather(
   END_PROFILING2("mpi_communication");
 
   // Solve the reduced system
-  BEGIN_PROFILING_CUDA2("pcr_on_reduced",0);
+  BEGIN_PROFILING_CUDA2("pcr_on_reduced", 0);
   pcr_on_reduced_batched<REAL>(recv_buf, boundaries, sys_n,
                                params.mpi_coords[solvedim], reduced_len_g);
-  END_PROFILING_CUDA2("pcr_on_reduced",0);
+  END_PROFILING_CUDA2("pcr_on_reduced", 0);
   // Do the backward pass to solve for remaining unknowns
-  BEGIN_PROFILING_CUDA2("thomas_backward",0);
+  BEGIN_PROFILING_CUDA2("thomas_backward", 0);
   backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd,
                               d_pads, boundaries, d, u, u_pads, dims, ndim,
-                              solvedim, 0, sys_n);
-  END_PROFILING_CUDA2("thomas_backward",0);
+                              solvedim, 0, sys_n, offset);
+  END_PROFILING_CUDA2("thomas_backward", 0);
 }
 
 template <typename REAL, int INC>
@@ -500,7 +533,7 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
                                const int *b_pads, const REAL *c,
                                const int *c_pads, REAL *d, const int *d_pads,
                                REAL *u, const int *u_pads, int ndim,
-                               int solvedim, const int *dims) {
+                               int solvedim, const int *dims, int offset) {
   // TODO paddings!!
   assert(solvedim < ndim);
   assert((
@@ -521,48 +554,52 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
                                          std::multiplies<int>{});
 
   // The number of systems to solve
-  const int sys_n = eq_stride * outer_size;
+  //const int sys_n = eq_stride * outer_size;
+  int sys_n = 1;
+  if(solvedim == 0) {
+    if(ndim == 2) {
+      sys_n = dims[1];
+    } else if(ndim > 2) {
+      sys_n = dims[ndim - 1] * std::accumulate(a_pads + solvedim + 1, a_pads + ndim - 1,
+                                           1, std::multiplies<int>{});
+    }
+  } else {
+    sys_n = eq_stride * outer_size;
+  }
 
   // The local length of reduced systems
   const int loc_red_len = 2;
 
   // Allocate memory used during the solve
-  const int local_helper_size = outer_size * eq_stride * local_eq_size;
-  static int alloc_size = 0, boundaries_alloc_size = 0;
-  static REAL *aa = nullptr, *cc = nullptr, *dd = nullptr,
-              *boundaries = nullptr;
-  alloc_if_bigger(alloc_size, local_helper_size * sizeof(REAL), &aa, &cc, &dd);
-  alloc_if_bigger(boundaries_alloc_size, sys_n * 3 * loc_red_len * sizeof(REAL),
-                  &boundaries);
+  //const int local_helper_size = outer_size * eq_stride * local_eq_size;
+  const int local_helper_size = std::accumulate(a_pads, a_pads + ndim, 1,
+                                                std::multiplies<int>{});
+  REAL *aa = aa_buf.get_bytes_as<REAL>(local_helper_size * sizeof(REAL)),
+       *cc = cc_buf.get_bytes_as<REAL>(local_helper_size * sizeof(REAL)),
+       *dd = dd_buf.get_bytes_as<REAL>(local_helper_size * sizeof(REAL)),
+       *boundaries = boundaries_buf.get_bytes_as<REAL>(sys_n * 3 * loc_red_len *
+                                                       sizeof(REAL));
 
   // Allocate receive buffer for MPI communication of reduced system
   const size_t reduced_len_g = 2 * params.num_mpi_procs[solvedim];
-  static int mpi_buf_size    = 0;
-  static REAL *mpi_buf       = nullptr;
-  alloc_if_bigger(mpi_buf_size, reduced_len_g * 3 * sys_n * sizeof(REAL),
-                  &mpi_buf);
-  static REAL *send_buf = nullptr, *receive_buf = nullptr;
+  REAL *mpi_buf =
+      mpi_buffer.get_bytes_as<REAL>(reduced_len_g * 3 * sys_n * sizeof(REAL));
+  REAL *send_buf = nullptr, *receive_buf = nullptr;
 #if !(defined(TRID_CUDA_AWARE_MPI) || defined(TRID_NCCL))
-  static int send_buf_size = 0, receive_buf_size = 0;
   const size_t comm_buf_size = loc_red_len * 3 * sys_n;
   // MPI buffers on host
-  alloc_if_bigger<false>(send_buf_size, comm_buf_size * sizeof(REAL),
-                         &send_buf);
-  alloc_if_bigger<false>(receive_buf_size,
-                         comm_buf_size * params.num_mpi_procs[solvedim] *
-                             sizeof(REAL),
-                         &receive_buf);
+  send_buf    = send_buffer.get_bytes_as<REAL>(comm_buf_size * sizeof(REAL));
+  receive_buf = receive_buffer.get_bytes_as<REAL>(
+      comm_buf_size * params.num_mpi_procs[solvedim] * sizeof(REAL));
 #endif
 #ifdef TRID_NCCL
-//Dry-run, first call of this is quite expensive
-    int rank;
-    MPI_Comm_rank(params.communicators[solvedim], &rank);
-    NCCLCHECK(ncclAllGather(mpi_buf + 1 * rank,
-                            mpi_buf,
-                            sizeof(REAL), ncclChar,
-                            params.ncclComms[solvedim], 0));
-    cudaSafeCall(cudaDeviceSynchronize());
-#endif  
+  // Dry-run, first call of this is quite expensive
+  int rank;
+  MPI_Comm_rank(params.communicators[solvedim], &rank);
+  NCCLCHECK(ncclAllGather(mpi_buf + 1 * rank, mpi_buf, sizeof(REAL), ncclChar,
+                          params.ncclComms[solvedim], 0));
+  cudaSafeCall(cudaDeviceSynchronize());
+#endif
 #if PROFILING
   MPI_Barrier(MPI_COMM_WORLD);
   BEGIN_PROFILING("tridMultiDimBatchSolveMPI");
@@ -574,23 +611,24 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   case MpiSolverParams::ALLGATHER:
     tridMultiDimBatchSolveMPI_allgather<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
-        solvedim, dims, aa, cc, dd, boundaries, mpi_buf, sys_n, send_buf,
-        receive_buf);
+        solvedim, dims, aa + offset, cc + offset, dd + offset, boundaries,
+        mpi_buf, sys_n, offset, send_buf, receive_buf);
     break;
   case MpiSolverParams::LATENCY_HIDING_INTERLEAVED:
     tridMultiDimBatchSolveMPI_interleaved<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
-        solvedim, dims, aa, cc, dd, boundaries, mpi_buf, sys_n, send_buf,
-        receive_buf);
+        solvedim, dims, aa + offset, cc + offset, dd + offset, boundaries,
+        mpi_buf, sys_n, offset, send_buf, receive_buf);
     break;
   case MpiSolverParams::LATENCY_HIDING_TWO_STEP:
     tridMultiDimBatchSolveMPI_simple<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
-        solvedim, dims, aa, cc, dd, boundaries, mpi_buf, sys_n, send_buf,
-        receive_buf);
+        solvedim, dims, aa + offset, cc + offset, dd + offset, boundaries,
+        mpi_buf, sys_n, offset, send_buf, receive_buf);
     break;
   default: assert(false && "Unknown communication strategy");
   }
+  cudaSafeCall(cudaDeviceSynchronize());
 #if PROFILING
   BEGIN_PROFILING2("barrier");
   cudaSafeCall(cudaPeekAtLastError());
@@ -605,9 +643,10 @@ template <typename REAL, int INC>
 void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
                                const REAL *b, const REAL *c, REAL *d, REAL *u,
                                int ndim, int solvedim, const int *dims,
-                               const int *pads) {
+                               const int *pads, int offset) {
   tridMultiDimBatchSolveMPI<REAL, INC>(params, a, pads, b, pads, c, pads, d,
-                                       pads, u, pads, ndim, solvedim, dims);
+                                       pads, u, pads, ndim, solvedim, dims,
+                                       offset);
 }
 
 // Solve a batch of tridiagonal systems along a specified axis ('solvedim').
@@ -621,9 +660,9 @@ tridStatus_t tridDmtsvStridedBatchMPI(const MpiSolverParams &params,
                                       const double *a, const double *b,
                                       const double *c, double *d, double *u,
                                       int ndim, int solvedim, const int *dims,
-                                      const int *pads) {
+                                      const int *pads, int offset) {
   tridMultiDimBatchSolveMPI<double, 0>(params, a, b, c, d, u, ndim, solvedim,
-                                       dims, pads);
+                                       dims, pads, offset);
   return TRID_STATUS_SUCCESS;
 }
 
@@ -631,9 +670,9 @@ tridStatus_t tridSmtsvStridedBatchMPI(const MpiSolverParams &params,
                                       const float *a, const float *b,
                                       const float *c, float *d, float *u,
                                       int ndim, int solvedim, const int *dims,
-                                      const int *pads) {
+                                      const int *pads, int offset) {
   tridMultiDimBatchSolveMPI<float, 0>(params, a, b, c, d, u, ndim, solvedim,
-                                      dims, pads);
+                                      dims, pads, offset);
   return TRID_STATUS_SUCCESS;
 }
 
@@ -648,9 +687,10 @@ tridStatus_t tridDmtsvStridedBatchIncMPI(const MpiSolverParams &params,
                                          const double *a, const double *b,
                                          const double *c, double *d, double *u,
                                          int ndim, int solvedim,
-                                         const int *dims, const int *pads) {
+                                         const int *dims, const int *pads,
+                                         int offset) {
   tridMultiDimBatchSolveMPI<double, 1>(params, a, b, c, d, u, ndim, solvedim,
-                                       dims, pads);
+                                       dims, pads, offset);
   return TRID_STATUS_SUCCESS;
 }
 
@@ -658,9 +698,10 @@ tridStatus_t tridSmtsvStridedBatchIncMPI(const MpiSolverParams &params,
                                          const float *a, const float *b,
                                          const float *c, float *d, float *u,
                                          int ndim, int solvedim,
-                                         const int *dims, const int *pads) {
+                                         const int *dims, const int *pads,
+                                         int offset) {
   tridMultiDimBatchSolveMPI<float, 1>(params, a, b, c, d, u, ndim, solvedim,
-                                      dims, pads);
+                                      dims, pads, offset);
   return TRID_STATUS_SUCCESS;
 }
 
@@ -670,10 +711,10 @@ tridStatus_t tridDmtsvStridedBatchPaddedMPI(
     const MpiSolverParams &params, const double *a, const int *a_pads,
     const double *b, const int *b_pads, const double *c, const int *c_pads,
     double *d, const int *d_pads, double *u, const int *u_pads, int ndim,
-    int solvedim, const int *dims) {
+    int solvedim, const int *dims, int offset) {
   tridMultiDimBatchSolveMPI<double, 0>(params, a, a_pads, b, b_pads, c, c_pads,
                                        d, d_pads, u, u_pads, ndim, solvedim,
-                                       dims);
+                                       dims, offset);
   return TRID_STATUS_SUCCESS;
 }
 
@@ -681,10 +722,10 @@ tridStatus_t tridSmtsvStridedBatchPaddedMPI(
     const MpiSolverParams &params, const float *a, const int *a_pads,
     const float *b, const int *b_pads, const float *c, const int *c_pads,
     float *d, const int *d_pads, float *u, const int *u_pads, int ndim,
-    int solvedim, const int *dims) {
+    int solvedim, const int *dims, int offset) {
   tridMultiDimBatchSolveMPI<float, 0>(params, a, a_pads, b, b_pads, c, c_pads,
                                       d, d_pads, u, u_pads, ndim, solvedim,
-                                      dims);
+                                      dims, offset);
   return TRID_STATUS_SUCCESS;
 }
 
@@ -692,10 +733,10 @@ tridStatus_t tridDmtsvStridedBatchPaddedIncMPI(
     const MpiSolverParams &params, const double *a, const int *a_pads,
     const double *b, const int *b_pads, const double *c, const int *c_pads,
     double *d, const int *d_pads, double *u, const int *u_pads, int ndim,
-    int solvedim, const int *dims) {
+    int solvedim, const int *dims, int offset) {
   tridMultiDimBatchSolveMPI<double, 1>(params, a, a_pads, b, b_pads, c, c_pads,
                                        d, d_pads, u, u_pads, ndim, solvedim,
-                                       dims);
+                                       dims, offset);
   return TRID_STATUS_SUCCESS;
 }
 
@@ -703,10 +744,9 @@ tridStatus_t tridSmtsvStridedBatchPaddedIncMPI(
     const MpiSolverParams &params, const float *a, const int *a_pads,
     const float *b, const int *b_pads, const float *c, const int *c_pads,
     float *d, const int *d_pads, float *u, const int *u_pads, int ndim,
-    int solvedim, const int *dims) {
+    int solvedim, const int *dims, int offset) {
   tridMultiDimBatchSolveMPI<float, 1>(params, a, a_pads, b, b_pads, c, c_pads,
                                       d, d_pads, u, u_pads, ndim, solvedim,
-                                      dims);
+                                      dims, offset);
   return TRID_STATUS_SUCCESS;
 }
-

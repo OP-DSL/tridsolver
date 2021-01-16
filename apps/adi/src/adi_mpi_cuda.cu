@@ -18,12 +18,12 @@
  *     * The name of Endre László may not be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY Endre László ''AS IS'' AND ANY 
+ * THIS SOFTWARE IS PROVIDED BY Endre László ''AS IS'' AND ANY
  * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
  * DISCLAIMED. IN NO EVENT SHALL Endre László BE LIABLE FOR ANY
  * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; 
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
@@ -71,6 +71,8 @@ static struct option options[] = {
   {"opt",  required_argument, 0,  0   },
   {"prof", required_argument, 0,  0   },
   {"help", no_argument,       0,  'h' },
+  {"b",   required_argument, 0,  0   },
+  {"m", required_argument, 0,  0   },
   {0,      0,                 0,  0   }
 };
 
@@ -156,6 +158,8 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
   iter = 10;
   int opt  = 0;
   int prof = 1;
+  int batchSize = 16384;
+  int m = 1;
 
   pre_handle.lambda = 1.0f;
 
@@ -170,18 +174,20 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
     if(strcmp((char*)options[opt_index].name,"opt" ) == 0) opt  = atoi(optarg);
     if(strcmp((char*)options[opt_index].name,"prof") == 0) prof = atoi(optarg);
     if(strcmp((char*)options[opt_index].name,"help") == 0) print_help();
+    if(strcmp((char*)options[opt_index].name,"b" ) == 0) batchSize = atoi(optarg);
+    if(strcmp((char*)options[opt_index].name,"m" ) == 0) m      = atoi(optarg);
   }
-  
-  // Allocate memory to store problem characteristics 
+
+  // Allocate memory to store problem characteristics
   app.size_g = (int *) calloc(3, sizeof(int));
   app.size = (int *) calloc(3, sizeof(int));
   app.start_g = (int *) calloc(3, sizeof(int));
   app.end_g = (int *) calloc(3, sizeof(int));
-  
+
   app.size_g[0] = nx_g;
   app.size_g[1] = ny_g;
   app.size_g[2] = nz_g;
-  
+
   // Set up MPI for tridiagonal solver
   int procs, rank;
   MPI_Comm_size(MPI_COMM_WORLD, &procs);
@@ -192,62 +198,74 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
   int *periodic = (int *) calloc(3, sizeof(int)); //false
   app.coords   = (int *) calloc(3, sizeof(int));
   MPI_Dims_create(procs, 3, app.pdims);
-  
+
   // Setup up which GPU this MPI process is using
   // Currently set for 4 GPUs per node, with 1 MPI process per GPU
   //devid = rank % 4;
   cudaSafeCall( cudaSetDevice(devid) );
   cutilDeviceInit(argc, argv);
   cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
-  
+
   // Create 3D Cartesian MPI communicator
   MPI_Cart_create(MPI_COMM_WORLD, 3, app.pdims, periodic, 0,  &app.comm);
-  
+
   int my_cart_rank;
-  
+
   MPI_Comm_rank(app.comm, &my_cart_rank);
   MPI_Cart_coords(app.comm, my_cart_rank, 3, app.coords);
 
   // Create MPI handle used by tridiagonal solver
-  app.params = new MpiSolverParams(app.comm, 3, app.pdims, 32, MpiSolverParams::ALLGATHER);
-  
+  switch(m) {
+    case 1:
+      app.params = new MpiSolverParams(app.comm, 3, app.pdims, batchSize, MpiSolverParams::ALLGATHER);
+      break;
+    case 2:
+      app.params = new MpiSolverParams(app.comm, 3, app.pdims, batchSize, MpiSolverParams::LATENCY_HIDING_TWO_STEP);
+      break;
+    case 3:
+      app.params = new MpiSolverParams(app.comm, 3, app.pdims, batchSize, MpiSolverParams::LATENCY_HIDING_INTERLEAVED);
+      break;
+    default:
+      exit(-1);
+  }
+
   // Calculate local problem size for this MPI process
   for(int i = 0; i < 3; i++) {
     setStartEnd(&app.start_g[i], &app.end_g[i], app.coords[i], app.pdims[i], app.size_g[i]);
     app.size[i] = app.end_g[i] - app.start_g[i] + 1;
   }
-  
+
   free(periodic);
 
   if(rank==0) {
-    printf("\nGlobal grid dimensions: %d x %d x %d\n", 
+    printf("\nGlobal grid dimensions: %d x %d x %d\n",
            app.size_g[0], app.size_g[1], app.size_g[2]);
 
     printf("\nNumber of MPI procs in each dimenstion %d, %d, %d\n",
            app.pdims[0], app.pdims[1], app.pdims[2]);
   }
-  
+
   // Allocate memory for local section of problem
   int size = app.size[0] * app.size[1] * app.size[2];
-  
+
   cudaSafeCall( cudaMalloc((void **)&app.a, size * sizeof(FP)) );
   cudaSafeCall( cudaMalloc((void **)&app.b, size * sizeof(FP)) );
   cudaSafeCall( cudaMalloc((void **)&app.c, size * sizeof(FP)) );
   cudaSafeCall( cudaMalloc((void **)&app.d, size * sizeof(FP)) );
   cudaSafeCall( cudaMalloc((void **)&app.u, size * sizeof(FP)) );
-  
+
   FP *h_u = (FP *) malloc(sizeof(FP) * size);
-  
+
   // Initialize
   for(int k = 0; k < app.size[2]; k++) {
     for(int j = 0; j < app.size[1]; j++) {
       for(int i = 0; i < app.size[0]; i++) {
         int ind = k * app.size[0] * app.size[1] + j*app.size[0] + i;
-        if( (app.start_g[0]==0 && i==0) || 
+        if( (app.start_g[0]==0 && i==0) ||
             (app.end_g[0]==app.size_g[0]-1 && i==app.size[0]-1) ||
-            (app.start_g[1]==0 && j==0) || 
+            (app.start_g[1]==0 && j==0) ||
             (app.end_g[1]==app.size_g[1]-1 && j==app.size[1]-1) ||
-            (app.start_g[2]==0 && k==0) || 
+            (app.start_g[2]==0 && k==0) ||
             (app.end_g[2]==app.size_g[2]-1 && k==app.size[2]-1)) {
           h_u[ind] = 1.0f;
         } else {
@@ -256,24 +274,24 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
       }
     }
   }
-  
+
   // Copy initial values to GPU memory
   cudaSafeCall( cudaMemcpy(app.u, h_u, sizeof(FP) * size, cudaMemcpyHostToDevice) );
-  
+
   free(h_u);
-  
+
   // Allocate memory used in each iteration's preprocessing
   pre_handle.rcv_size_x = 2 * app.size[1] * app.size[2];
   pre_handle.rcv_size_y = 2 * app.size[0] * app.size[2];
   pre_handle.rcv_size_z = 2 * app.size[1] * app.size[0];
-  
+
   pre_handle.halo_snd_x = (FP*) malloc(pre_handle.rcv_size_x * sizeof(FP));
   pre_handle.halo_rcv_x = (FP*) malloc(pre_handle.rcv_size_x * sizeof(FP));
   pre_handle.halo_snd_y = (FP*) malloc(pre_handle.rcv_size_y * sizeof(FP));
   pre_handle.halo_rcv_y = (FP*) malloc(pre_handle.rcv_size_y * sizeof(FP));
   pre_handle.halo_snd_z = (FP*) malloc(pre_handle.rcv_size_z * sizeof(FP));
   pre_handle.halo_rcv_z = (FP*) malloc(pre_handle.rcv_size_z * sizeof(FP));
-  
+
   cudaSafeCall( cudaMalloc((void **)&pre_handle.rcv_x, pre_handle.rcv_size_x * sizeof(FP)) );
   cudaSafeCall( cudaMalloc((void **)&pre_handle.rcv_y, pre_handle.rcv_size_y * sizeof(FP)) );
   cudaSafeCall( cudaMalloc((void **)&pre_handle.rcv_z, pre_handle.rcv_size_z * sizeof(FP)) );
@@ -293,13 +311,13 @@ void finalize(app_handle &app, preproc_handle<FP> &pre_handle) {
   cudaSafeCall( cudaFree(pre_handle.rcv_x) );
   cudaSafeCall( cudaFree(pre_handle.rcv_y) );
   cudaSafeCall( cudaFree(pre_handle.rcv_z) );
-  
+
   cudaSafeCall( cudaFree(app.a) );
   cudaSafeCall( cudaFree(app.b) );
   cudaSafeCall( cudaFree(app.c) );
   cudaSafeCall( cudaFree(app.d) );
   cudaSafeCall( cudaFree(app.u) );
-  
+
   free(app.size_g);
   free(app.size);
   free(app.start_g);
@@ -331,14 +349,14 @@ int main(int argc, char* argv[]) {
   // Allocate memory used in sums of distributed arrays
   FP *h_u = (FP *) malloc(sizeof(FP) * app.size[0] * app.size[1] * app.size[2]);
   FP *du = (FP *) malloc(sizeof(FP) * app.size[0] * app.size[1] * app.size[2]);
-  
+
   // Iterate over specified number of time steps
   for(int it = 0; it < iter; it++) {
     // Preprocess
     timing_start(&timer);
-    
+
     preproc_mpi_cuda<FP>(pre_handle, app);
-    
+
     timing_end(&timer, &elapsed_preproc);
 
     cudaSafeCall( cudaDeviceSynchronize() );
@@ -352,7 +370,7 @@ int main(int argc, char* argv[]) {
 #else
     tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.size);
 #endif
-    
+
     timing_end(&timer, &elapsed_trid_x);
 
     //
@@ -377,13 +395,13 @@ int main(int argc, char* argv[]) {
 #endif
     timing_end(&timer, &elapsed_trid_z);
   }
-  
+
   timing_end(&timer1, &elapsed_total);
-  
+
   // Print sum of these arrays (basic error checking)
   cudaSafeCall( cudaMemcpy(h_u, app.u, sizeof(FP) * app.size[0] * app.size[1] * app.size[2], cudaMemcpyDeviceToHost) );
   cudaSafeCall( cudaMemcpy(du, app.d, sizeof(FP) * app.size[0] * app.size[1] * app.size[2], cudaMemcpyDeviceToHost) );
-  
+
   rms("end h", h_u, app);
   rms("end d", du, app);
 
@@ -391,9 +409,9 @@ int main(int argc, char* argv[]) {
 
   free(h_u);
   free(du);
-  
+
   MPI_Barrier(MPI_COMM_WORLD);
-  
+
   // Print out timings of each section
   if(app.coords[0] == 0 && app.coords[1] == 0 && app.coords[2] == 0) {
     // Print execution times
@@ -406,10 +424,10 @@ int main(int argc, char* argv[]) {
         elapsed_trid_z);
   }
   MPI_Barrier(MPI_COMM_WORLD);
-  
+
   // Free memory
   finalize(app, pre_handle);
-  
+
   MPI_Finalize();
   cudaDeviceReset();
   return 0;

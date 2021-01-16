@@ -13,8 +13,8 @@ template <>
 tridStatus_t tridStridedBatchWrapper<float>(const MpiSolverParams &params,
                                             const float *a, const float *b,
                                             const float *c, float *d, float *u,
-                                            int ndim, int solvedim,
-                                            const int *dims, const int *pads) {
+                                            int ndim, int solvedim, const int *dims,
+                                            const int *pads) {
   return tridSmtsvStridedBatchMPI(params, a, b, c, d, u, ndim, solvedim, dims,
                                   pads);
 }

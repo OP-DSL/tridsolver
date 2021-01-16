@@ -21,7 +21,7 @@ public:
   size_t size() const { return _size; }
   T *data() { return arr_d; }
   const T *data() const { return arr_d; }
-  friend void std::swap(DeviceArray<T> &, DeviceArray<T> &);
+  //friend void std::swap(DeviceArray<T> &, DeviceArray<T> &);
 };
 
 template <typename Float> class GPUMesh {
@@ -78,14 +78,14 @@ template <typename T>
 DeviceArray<T> &DeviceArray<T>::operator=(DeviceArray<T> other) {
   std::swap(*this, other);
 }
-
+/*
 namespace std {
 template <typename T> void swap(DeviceArray<T> &lhs, DeviceArray<T> &rhs) {
   std::swap(lhs._size, rhs._size);
   std::swap(lhs.arr_d, rhs.arr_d);
 }
 } // namespace std
-
+*/
 template <typename T> DeviceArray<T>::~DeviceArray() {
   if (arr_d)
     cudaFree(arr_d);

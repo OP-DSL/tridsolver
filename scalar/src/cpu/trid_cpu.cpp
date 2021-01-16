@@ -404,9 +404,13 @@ void trid_scalar(const FP *__restrict a, const FP *__restrict b,
 // Function for selecting the proper setup for solve in a specific dimension
 //
 void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
-                            int ndim, int solvedim, int *dims, int *pads,
+                            int ndim, int solvedim, int *dims_p, int *pads,
                             int inc) {
 
+  int dims[3] = {1, 1, 1};
+  for(int i = 0; i < ndim; i++) {
+    dims[i] = dims_p[i];
+  }
   if (solvedim == 0) {
     int sys_stride = 1; // Stride between the consecutive elements of a system
     int sys_size = dims[0]; // Size (length) of a system
