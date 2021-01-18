@@ -246,7 +246,7 @@ TEMPLATE_TEST_CASE("cpu: trid_scalar large", "[large]", double, float) {
   }
 }
 
-TEST_CASE("cpu: trid_scalar_vec small") {
+TEST_CASE("cpu: trid_scalar_vec small", "[small]") {
   SECTION("double") {
     SECTION("ndims: 2") {
       SECTION("solvedim: 1") {

@@ -107,14 +107,10 @@ set(libtrid_components "trid_common")
 # Invoke subprojects
 add_subdirectory(src/cpu)
 add_subdirectory(src/cuda)
-message(STATUS "${${PROJECT_NAME}_components}")
 if (BUILD_TESTING)
   enable_testing()
   add_subdirectory(test)
 endif (BUILD_TESTING)
-
-# if (BUILD_FOR_CPU) install( EXPORT tridcpuTarget FILE tridcpuTarget.cmake DESTINATION
-# ${PROJECT_NAME}/lib/cmake/tridcpu)
 
 include(CMakePackageConfigHelpers)
 # generate the config file that includes the exports

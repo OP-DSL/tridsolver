@@ -127,25 +127,26 @@ if (BUILD_FOR_GPU)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --ptxas-options=-v -Xptxas -dlcm=cg")
   set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG}   -g -G -O0 ")
 
-  add_executable(adi_cuda std/adi_cuda.cu std/preproc.cu)
-  target_include_directories(adi_cuda ${PROJECT_SOURCE_DIR}/include)
+  add_executable(adi_cuda src/adi_cuda.cu src/preproc.cu)
+  target_include_directories(adi_cuda PRIVATE ${PROJECT_SOURCE_DIR}/include)
   target_link_libraries(adi_cuda libtrid::tridcuda CUDA::cublas)
 
   find_package(MPI REQUIRED)
 
   if (USE_NCCL)
+    list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
     find_package(NCCL)
 
     if (NCCL_FOUND)
-      add_definitions(-DTRID_NCCL)
-      include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
+      # add_definitions(-DTRID_NCCL)
+      # include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
     endif ()
   endif ()
   add_executable(adi_mpi_cuda src/adi_mpi_cuda.cu)
-  target_include_directories(adi_mpi_cuda ${PROJECT_SOURCE_DIR}/include)
+  target_include_directories(adi_mpi_cuda PRIVATE ${PROJECT_SOURCE_DIR}/include)
   target_link_libraries(
     adi_mpi_cuda
-    libtrid::trid_cuda_mpi
+    libtrid::tridcuda_mpi
     MPI::MPI_CXX
     CUDA::cublas
     ${NCCL_LIBRARY})
@@ -177,7 +178,7 @@ endif (BUILD_FOR_GPU)
 add_executable(adi_orig ${PROJECT_SOURCE_DIR}/src/adi_orig.c)
 
 add_executable(compare ${PROJECT_SOURCE_DIR}/src/compare.c)
-target_include_directories(compare PRIVATE ${LIBTRID_PATH}/include)
+target_link_libraries(compare PRIVATE libtrid::tridcpu) # uses trid_common.h
 
 
 
