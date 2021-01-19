@@ -35,7 +35,6 @@
 #ifndef TRID_MPI_GPU_HPP__
 #define TRID_MPI_GPU_HPP__
 
-#define N_MPI_MAX 128
 #include "trid_common.h"
 #include "trid_mpi_solver_params.hpp"
 
