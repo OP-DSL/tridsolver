@@ -52,7 +52,9 @@ set(N_MAX
     1024
     CACHE STRING
           "Maximal length of the internal buffer for storing intermediate c and d vectors of the Thomas algorithm")
-set(N_MPI_MAX 128 CACHE STRING "Maximum number of MPI processes in a dimension")
+set(N_MPI_MAX
+    128
+    CACHE STRING "Maximum number of MPI processes in a dimension")
 # internal options that shouldn't be exported
 add_library(trid_common_options INTERFACE)
 target_compile_features(trid_common_options INTERFACE cxx_std_14)
