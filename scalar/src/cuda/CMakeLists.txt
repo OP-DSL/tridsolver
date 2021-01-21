@@ -64,12 +64,20 @@ if (BUILD_FOR_GPU)
     DESTINATION ${PROJECT_NAME}/lib/cmake)
 
   if (BUILD_FOR_MPI)
-    option(USE_CUDA_AWARE_MPI "Build library with CUDA-aware MPI" OFF)
-    option(USE_NCCL "Build library with NCCL for MPI comms" OFF)
-    find_package(MPI REQUIRED)
-    if (USE_NCCL)
-      find_package(NCCL)
-    endif ()
+    # MPI: use pure MPI communication
+
+    # CUDA_AWARE_MPI: use CUDA aware MPI communication, might save the cost of moving data from device to host
+
+    # NCCL: use NCCL library to send data
+    set(CUDA_COMMUNICATION_LIBRARY
+        "MPI"
+        CACHE STRING "Communication options")
+    set_property(
+      CACHE CUDA_COMMUNICATION_LIBRARY
+      PROPERTY STRINGS
+               MPI
+               CUDA_AWARE_MPI
+               NCCL)
 
     set(${PROJECT_NAME}_components "${${PROJECT_NAME}_components} tridcuda_mpi")
     set(${PROJECT_NAME}_components
@@ -82,20 +90,32 @@ if (BUILD_FOR_GPU)
     set_target_properties(tridcuda_mpi PROPERTIES COMPILE_FLAGS "${cuda_flags}")
     set_target_properties(tridcuda_mpi PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-    if (USE_CUDA_AWARE_MPI)
-      target_compile_definitions(tridcuda_mpi PRIVATE TRID_CUDA_AWARE_MPI)
-    endif (USE_CUDA_AWARE_MPI)
-
     target_link_libraries(
       tridcuda_mpi
       PRIVATE trid_common_options
       PUBLIC tridcuda trid_global_options MPI::MPI_CXX)
 
-    if (USE_NCCL AND NCCL_FOUND)
+    if (CUDA_COMMUNICATION_LIBRARY STREQUAL "NCCL")
+      find_package(NCCL REQUIRED)
       target_compile_definitions(tridcuda_mpi PUBLIC -DTRID_NCCL)
       target_include_directories(tridcuda_mpi PUBLIC ${NCCL_INCLUDE_DIR})
       target_link_libraries(tridcuda_mpi PUBLIC ${NCCL_LIBRARY})
-    endif (USE_NCCL AND NCCL_FOUND)
+    elseif (CUDA_COMMUNICATION_LIBRARY STREQUAL "CUDA_AWARE_MPI")
+      target_compile_definitions(tridcuda_mpi PRIVATE TRID_CUDA_AWARE_MPI)
+    elseif (
+      NOT
+      CUDA_COMMUNICATION_LIBRARY
+      STREQUAL
+      "MPI")
+      get_property(
+        COMM_MODES
+        CACHE CUDA_COMMUNICATION_LIBRARY
+        PROPERTY STRINGS)
+      message(
+        FATAL_ERROR
+          "Unknown communication mode for CUDA: ${CUDA_COMMUNICATION_LIBRARY}. CUDA_COMMUNICATION_LIBRARY must be one of the folowing: ${COMM_MODES}"
+      )
+    endif ()
 
     if (USE_PROFILING)
       target_link_libraries(tridcuda_mpi PUBLIC profiling_cuda)

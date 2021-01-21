@@ -123,4 +123,3 @@ configure_package_config_file(
 
 # install the configuration file
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake DESTINATION ${PROJECT_NAME}/lib/cmake/)
-# export(EXPORT tridcpuTarget FILE "${CMAKE_CURRENT_BINARY_DIR}/tridcpuTarget.cmake") endif (BUILD_FOR_CPU)
