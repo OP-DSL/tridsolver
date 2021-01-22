@@ -4,7 +4,7 @@ if (BUILD_FOR_GPU)
 
   set(cuda_flags "-m64 -Xptxas -dlcm=cg ")
 
-  set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG}   -g -G -O0 ")
+  set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG} -G -O0 ")
 
   if (USE_PROFILING)
     # PROFILE disables macros with the suffix 2 to achieve lower overhead to use with profiler
