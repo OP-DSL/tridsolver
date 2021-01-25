@@ -50,16 +50,12 @@ if (BUILD_FOR_CPU)
 endif (BUILD_FOR_CPU)
 
 if (BUILD_FOR_GPU)
-  set(CUDA_64_BIT_DEVICE_CODE ON) # -m64 compiler option
-  set(CUDA_PROPAGATE_HOST_FLAGS OFF)
+  set(cuda_flags -m64 -Xptxas -dlcm=cg)
+  set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG} -G -O0 -ftz=false -fmad=false")
 
-  set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS}         -arch sm_35 -Xptxas -dlcm=cg ")
-  set(CUDA_NVCC_FLAGS_DEBUG "${CUDA_NVCC_FLAGS_DEBUG}   -g -G -O0 -ftz=false -fmad=false ")
-  set(CUDA_NVCC_FLAGS_RELEASE "${CUDA_NVCC_FLAGS_RELEASE} -O3 ")
-
-  set(CUDA_LIBRARIES ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcudart.so)
   add_executable(cuda_tests ${PROJECT_SOURCE_DIR}/test/catch_main.cpp ${PROJECT_SOURCE_DIR}/test/test_cuda.cu)
-  # OPTIONS -Xcompiler -fPIC)
+  set_target_properties(cuda_tests PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  target_compile_options(cuda_tests PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:${cuda_flags}>)
 
   target_link_libraries(
     cuda_tests
@@ -73,27 +69,20 @@ if (BUILD_FOR_GPU)
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
   if (BUILD_FOR_MPI)
-    option(USE_NCCL "Build library with NCCL for MPI comms" OFF)
-    if (USE_NCCL)
-      find_package(NCCL)
-      if (NCCL_FOUND)
-        add_definitions(-DTRID_NCCL)
-        include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
-      endif ()
-    endif ()
     set(MPI_TEST_NUM_PROC
         "2"
         CACHE STRING "The number of processes to launch in MPI tests.")
     add_executable(cuda_mpi_tests catch_mpi_main.cpp test_cuda_mpi.cu)
+    set_target_properties(cuda_mpi_tests PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_include_directories(cuda_mpi_tests PRIVATE ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/test/
                                                       ${PROJECT_SOURCE_DIR}/src/cuda)
+    target_compile_options(cuda_mpi_tests PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:${cuda_flags}>)
     target_link_libraries(
       cuda_mpi_tests
       Catch
       tridcuda_mpi
       OpenMP::OpenMP_CXX
-      MPI::MPI_CXX
-      ${NCCL_LIBRARY})
+      MPI::MPI_CXX)
     add_test(
       NAME catch_cuda_mpi_test
       COMMAND "mpirun" -np ${MPI_TEST_NUM_PROC} $<TARGET_FILE:cuda_mpi_tests>
@@ -111,8 +100,7 @@ if (BUILD_FOR_GPU)
         tridcuda_mpi
         profiling_cuda
         OpenMP::OpenMP_CXX
-        MPI::MPI_CXX
-        ${NCCL_LIBRARY})
+        MPI::MPI_CXX)
     endif (USE_PROFILING)
   endif (BUILD_FOR_MPI)
 endif (BUILD_FOR_GPU)

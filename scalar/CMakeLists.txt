@@ -87,24 +87,34 @@ endif (BUILD_FOR_MPI)
 if (BUILD_FOR_GPU)
   include(CheckLanguage)
   # use dynamic linking to CUDA runtime to avoid error with CUDA aware MPI
-  set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
   check_language(CUDA)
-  if (CMAKE_CUDA_COMPILER)
-    enable_language(CUDA)
-    set(CMAKE_CUDA_STANDARD 11)
-    # architecture
-    set(ARCHITECTURE
-        "AUTO"
-        CACHE STRING "Your target CUDA architecture")
-    include(cmake/CUDA_ARCH.cmake)
-    select_cuda_architectures("${ARCHITECTURE}" ARCH_LIST)
-    message(STATUS "CUDA_ARCH: ${ARCH_LIST}")
-    set(CMAKE_CUDA_ARCHITECTURES
-        "${ARCH_LIST}"
-        CACHE STRING "CUDA architectures" FORCE)
-  else (CMAKE_CUDA_COMPILER)
+  if (NOT CMAKE_CUDA_COMPILER)
     message(ERROR "Couldn't find CUDA compiler")
-  endif (CMAKE_CUDA_COMPILER)
+  endif (NOT CMAKE_CUDA_COMPILER)
+  set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
+  enable_language(CUDA)
+  set(CMAKE_CUDA_STANDARD 11)
+  # architecture
+  set(ARCHITECTURE
+      "AUTO"
+      CACHE STRING "Your target CUDA architecture")
+  include(cmake/CUDA_ARCH.cmake)
+  select_cuda_architectures("${ARCHITECTURE}" ARCH_LIST)
+  message(STATUS "CUDA_ARCH: ${ARCH_LIST}")
+  set(CMAKE_CUDA_ARCHITECTURES
+      "${ARCH_LIST}"
+      CACHE STRING "CUDA architectures" FORCE)
+
+  if (BUILD_FOR_MPI)
+    # cmake-format: off
+    # MPI: use pure MPI communication
+    # CUDA_AWARE_MPI: use CUDA aware MPI communication, might save the cost of moving data from device to host
+    # NCCL: use NCCL library to send data
+    # cmake-format: on
+    set(CUDA_COMMUNICATION_LIBRARY
+        "MPI"
+        CACHE STRING "Communication options")
+  endif (BUILD_FOR_MPI)
 endif (BUILD_FOR_GPU)
 
 set(libtrid_components "trid_common")

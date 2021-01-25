@@ -2,7 +2,7 @@ if (BUILD_FOR_GPU)
   # find cublas, nvToolsExt, etc.
   find_package(CUDAToolkit)
 
-  set(cuda_flags "-m64 -Xptxas -dlcm=cg ")
+  set(cuda_flags -m64 -Xptxas -dlcm=cg)
 
   set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG} -G -O0 ")
 
@@ -39,7 +39,7 @@ if (BUILD_FOR_GPU)
     tridcuda
     PRIVATE trid_common_options
     PUBLIC trid_global_options CUDA::cublas)
-  set_target_properties(tridcuda PROPERTIES COMPILE_FLAGS "${cuda_flags}")
+  target_compile_options(tridcuda PRIVATE ${cuda_flags})
   set_target_properties(tridcuda PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
   target_include_directories(tridcuda PRIVATE ${PROJECT_SOURCE_DIR}/src/cuda/ ${PROJECT_SOURCE_DIR}/src/cuda/generics/)
@@ -64,14 +64,6 @@ if (BUILD_FOR_GPU)
     DESTINATION ${PROJECT_NAME}/lib/cmake)
 
   if (BUILD_FOR_MPI)
-    # MPI: use pure MPI communication
-
-    # CUDA_AWARE_MPI: use CUDA aware MPI communication, might save the cost of moving data from device to host
-
-    # NCCL: use NCCL library to send data
-    set(CUDA_COMMUNICATION_LIBRARY
-        "MPI"
-        CACHE STRING "Communication options")
     set_property(
       CACHE CUDA_COMMUNICATION_LIBRARY
       PROPERTY STRINGS
@@ -87,7 +79,7 @@ if (BUILD_FOR_GPU)
     add_library(${PROJECT_NAME}::tridcuda_mpi ALIAS tridcuda_mpi)
     target_include_directories(tridcuda_mpi PRIVATE ${PROJECT_SOURCE_DIR}/src/cuda/
                                                     ${PROJECT_SOURCE_DIR}/src/cuda/generics/)
-    set_target_properties(tridcuda_mpi PROPERTIES COMPILE_FLAGS "${cuda_flags}")
+    target_compile_options(tridcuda_mpi PRIVATE ${cuda_flags})
     set_target_properties(tridcuda_mpi PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
     target_link_libraries(

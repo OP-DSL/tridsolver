@@ -136,7 +136,7 @@ if (BUILD_FOR_GPU)
 
   if (BUILD_FOR_MPI)
     find_package(MPI REQUIRED)
-    # set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
+    set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
 
     if (USE_NCCL)
       list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
