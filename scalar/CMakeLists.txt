@@ -86,6 +86,8 @@ endif (BUILD_FOR_MPI)
 
 if (BUILD_FOR_GPU)
   include(CheckLanguage)
+  # use dynamic linking to CUDA runtime to avoid error with CUDA aware MPI
+  set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
   check_language(CUDA)
   if (CMAKE_CUDA_COMPILER)
     enable_language(CUDA)

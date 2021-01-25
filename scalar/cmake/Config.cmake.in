@@ -23,5 +23,5 @@ set(TRIDSOLVER_N_MAX
           FORCE)
 
 set(TRIDSOLVER_N_MPI_MAX
-    @N_MPI_MA
+    @N_MPI_MAX@
     CACHE STRING "Maximum number of MPI processes in a dimension" FORCE)

@@ -54,14 +54,15 @@ if (BUILD_FOR_CPU)
     REQUIRED
     PATHS
     ${LIBTRID_PATH})
-  # the tridsolver config file should set TRIDSOLVER_N_MAX value
-  add_definitions(-DN_MAX=${TRIDSOLVER_N_MAX})
   add_executable(adi_cpu src/adi_cpu.cpp)
+  # the tridsolver config file should set TRIDSOLVER_N_MAX value
+  target_compile_definitions(adi_cpu PUBLIC -DN_MAX=${TRIDSOLVER_N_MAX})
   target_include_directories(adi_cpu PRIVATE ${PROJECT_SOURCE_DIR}/include)
   target_link_libraries(adi_cpu PRIVATE libtrid::tridcpu OpenMP::OpenMP_CXX)
 
   # cmake-format: off
   add_executable(adi_mkl src/adi_cpu.cpp)
+  target_compile_definitions(adi_mkl PUBLIC -DN_MAX=${TRIDSOLVER_N_MAX})
   target_compile_definitions(adi_mkl PRIVATE -D__MKL__)
   target_compile_options(adi_mkl PRIVATE -xAVX -parallel -qopenmp -no-offload)
   target_include_directories(adi_mkl PRIVATE ${INTEL_PATH}/mkl/include ${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include)
@@ -71,6 +72,7 @@ if (BUILD_FOR_CPU)
   if (BUILD_FOR_MPI)
     find_package(MPI REQUIRED)
     add_executable(adi_mpi_cpu src/adi_mpi_cpu.cpp)
+    target_compile_definitions(adi_mpi_cpu PUBLIC -DN_MAX=${TRIDSOLVER_N_MAX} -DN_MPI_MAX=${TRIDSOLVER_N_MPI_MAX})
     target_include_directories(adi_mpi_cpu PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(adi_mpi_cpu PRIVATE libtrid::tridcpu_mpi OpenMP::OpenMP_CXX MPI::MPI_CXX)
   endif (BUILD_FOR_MPI)
@@ -128,28 +130,28 @@ if (BUILD_FOR_GPU)
   set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG}   -g -G -O0 ")
 
   add_executable(adi_cuda src/adi_cuda.cu src/preproc.cu)
+  target_compile_definitions(adi_cuda PUBLIC -DN_MAX=${TRIDSOLVER_N_MAX})
   target_include_directories(adi_cuda PRIVATE ${PROJECT_SOURCE_DIR}/include)
   target_link_libraries(adi_cuda libtrid::tridcuda CUDA::cublas)
 
-  find_package(MPI REQUIRED)
+  if (BUILD_FOR_MPI)
+    find_package(MPI REQUIRED)
+    # set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
 
-  if (USE_NCCL)
-    list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
-    find_package(NCCL)
-
-    if (NCCL_FOUND)
-      # add_definitions(-DTRID_NCCL)
-      # include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
+    if (USE_NCCL)
+      list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+      find_package(NCCL)
     endif ()
-  endif ()
-  add_executable(adi_mpi_cuda src/adi_mpi_cuda.cu)
-  target_include_directories(adi_mpi_cuda PRIVATE ${PROJECT_SOURCE_DIR}/include)
-  target_link_libraries(
-    adi_mpi_cuda
-    libtrid::tridcuda_mpi
-    MPI::MPI_CXX
-    CUDA::cublas
-    ${NCCL_LIBRARY})
+    add_executable(adi_mpi_cuda src/adi_mpi_cuda.cu)
+    target_compile_definitions(adi_mpi_cuda PUBLIC -DN_MAX=${TRIDSOLVER_N_MAX} -DN_MPI_MAX=${TRIDSOLVER_N_MPI_MAX})
+    target_include_directories(adi_mpi_cuda PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(
+      adi_mpi_cuda
+      libtrid::tridcuda_mpi
+      MPI::MPI_CXX
+      CUDA::cublas
+      ${NCCL_LIBRARY})
+  endif (BUILD_FOR_MPI)
 endif (BUILD_FOR_GPU)
 
 # cmake-format: off
@@ -169,19 +171,17 @@ endif (BUILD_FOR_GPU)
 #LIBS_PHI_LAPACKE = -L./libtrid/lib -limf -lintlc -lsvml -lirng -L$(INTEL_PATH)/mkl/lib/mic -lmkl_core -lmkl_rt -lmkl_lapack95_ilp64 -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -lgfortran #-ltrid_phi
 #LIBS_PHI_LAPACKE = -L./libtrid/lib -limf -lintlc -lsvml -lirng -L$(INTEL_PATH)/mkl/lib/mic -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_rt -liomp5 -lpthread -lm -lgfortran #-ltrid_phi
 #LIBS_PHI_LAPACKE = -L./libtrid/lib -limf -lintlc -lsvml -lirng #-L$(INTEL_PATH)/mkl/lib/mic -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_rt -liomp5 -lpthread -lm -lgfortran #-ltrid_phi
+# cmake-format: on
 
-
-
-
-
-#target_link_libraries(adi_cpu tridcpu)
 add_executable(adi_orig ${PROJECT_SOURCE_DIR}/src/adi_orig.c)
+target_compile_definitions(adi_orig PUBLIC -DN_MAX=$<IF:$<BOOL:${TRIDSOLVER_N_MAX}>,${TRIDSOLVER_N_MAX},1024>)
 
-add_executable(compare ${PROJECT_SOURCE_DIR}/src/compare.c)
-target_link_libraries(compare PRIVATE libtrid::tridcpu) # uses trid_common.h
+if (BUILD_FOR_CPU)
+  add_executable(compare ${PROJECT_SOURCE_DIR}/src/compare.c)
+  target_link_libraries(compare PRIVATE libtrid::tridcpu) # uses trid_common.h
+endif (BUILD_FOR_CPU)
 
-
-
+# cmake-format: off
 #install(TARGETS libtridcuda DESTINATION lib)
 #install(FILES src/cuda/trid_cuda.h DESTINATION include)
 # cmake-format: on
