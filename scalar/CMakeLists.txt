@@ -37,13 +37,13 @@ else (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
                                                                       # noalias-global
 
   # cmake-format: off
-  set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS}       ${FLAGS_GCC_DEFAULT}")
-  set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} -O0")
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_RELEASE}     ${FLAGS_GCC_RELEASE}")
+  set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS}         ${FLAGS_GCC_DEFAULT}")
+  set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG}   -O0")
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${FLAGS_GCC_RELEASE}")
 
   set(CMAKE_C_FLAGS           "${CMAKE_C_FLAGS}         ${FLAGS_GCC_DEFAULT}")
   set(CMAKE_C_FLAGS_DEBUG     "${CMAKE_C_FLAGS_DEBUG}   -O0")
-  set(CMAKE_C_FLAGS_RELEASE   "${CMAKE_C_RELEASE}       ${FLAGS_GCC_RELEASE}")
+  set(CMAKE_C_FLAGS_RELEASE   "${CMAKE_C_FLAGS_RELEASE} ${FLAGS_GCC_RELEASE}")
   # cmake-format: on
 endif (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
 
