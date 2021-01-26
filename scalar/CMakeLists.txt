@@ -86,7 +86,6 @@ endif (BUILD_FOR_MPI)
 
 if (BUILD_FOR_GPU)
   include(CheckLanguage)
-  # use dynamic linking to CUDA runtime to avoid error with CUDA aware MPI
   check_language(CUDA)
   if (NOT CMAKE_CUDA_COMPILER)
     message(ERROR "Couldn't find CUDA compiler")
@@ -99,6 +98,7 @@ if (BUILD_FOR_GPU)
       "AUTO"
       CACHE STRING "Your target CUDA architecture")
   include(cmake/CUDA_ARCH.cmake)
+  # use dynamic linking to CUDA runtime to avoid error with CUDA aware MPI
   select_cuda_architectures("${ARCHITECTURE}" ARCH_LIST)
   message(STATUS "CUDA_ARCH: ${ARCH_LIST}")
   set(CMAKE_CUDA_ARCHITECTURES
