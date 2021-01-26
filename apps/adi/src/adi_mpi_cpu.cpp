@@ -285,11 +285,17 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
   // Allocate memory for local section of problem
   int mem_size = app.pads[0] * app.pads[1] * app.pads[2];
 
-  app.a = (FP *) _mm_malloc(mem_size * sizeof(FP), SIMD_WIDTH);
-  app.b = (FP *) _mm_malloc(mem_size * sizeof(FP), SIMD_WIDTH);
-  app.c = (FP *) _mm_malloc(mem_size * sizeof(FP), SIMD_WIDTH);
-  app.d = (FP *) _mm_malloc(mem_size * sizeof(FP), SIMD_WIDTH);
-  app.u = (FP *) _mm_malloc(mem_size * sizeof(FP), SIMD_WIDTH);
+  // app.a = (FP *) _mm_malloc(mem_size * sizeof(FP), SIMD_WIDTH);
+  // app.b = (FP *) _mm_malloc(mem_size * sizeof(FP), SIMD_WIDTH);
+  // app.c = (FP *) _mm_malloc(mem_size * sizeof(FP), SIMD_WIDTH);
+  // app.d = (FP *) _mm_malloc(mem_size * sizeof(FP), SIMD_WIDTH);
+  // app.u = (FP *) _mm_malloc(mem_size * sizeof(FP), SIMD_WIDTH);
+
+  posix_memalign((void **)&app.a, SIMD_WIDTH, mem_size * sizeof(FP));
+  posix_memalign((void **)&app.b, SIMD_WIDTH, mem_size * sizeof(FP));
+  posix_memalign((void **)&app.c, SIMD_WIDTH, mem_size * sizeof(FP));
+  posix_memalign((void **)&app.d, SIMD_WIDTH, mem_size * sizeof(FP));
+  posix_memalign((void **)&app.u, SIMD_WIDTH, mem_size * sizeof(FP));
 
   // Initialize
   for(int k = 0; k < app.size[2]; k++) {
@@ -311,12 +317,19 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
   }
 
   // Allocate memory used in each iteration's preprocessing
-  pre_handle.halo_snd_x = (FP*) _mm_malloc(2 * app.size[1] * app.size[2] * sizeof(FP), SIMD_WIDTH);
-  pre_handle.halo_rcv_x = (FP*) _mm_malloc(2 * app.size[1] * app.size[2] * sizeof(FP), SIMD_WIDTH);
-  pre_handle.halo_snd_y = (FP*) _mm_malloc(2 * app.size[0] * app.size[2] * sizeof(FP), SIMD_WIDTH);
-  pre_handle.halo_rcv_y = (FP*) _mm_malloc(2 * app.size[0] * app.size[2] * sizeof(FP), SIMD_WIDTH);
-  pre_handle.halo_snd_z = (FP*) _mm_malloc(2 * app.size[1] * app.size[0] * sizeof(FP), SIMD_WIDTH);
-  pre_handle.halo_rcv_z = (FP*) _mm_malloc(2 * app.size[1] * app.size[0] * sizeof(FP), SIMD_WIDTH);
+  // pre_handle.halo_snd_x = (FP*) _mm_malloc(2 * app.size[1] * app.size[2] * sizeof(FP), SIMD_WIDTH);
+  // pre_handle.halo_rcv_x = (FP*) _mm_malloc(2 * app.size[1] * app.size[2] * sizeof(FP), SIMD_WIDTH);
+  // pre_handle.halo_snd_y = (FP*) _mm_malloc(2 * app.size[0] * app.size[2] * sizeof(FP), SIMD_WIDTH);
+  // pre_handle.halo_rcv_y = (FP*) _mm_malloc(2 * app.size[0] * app.size[2] * sizeof(FP), SIMD_WIDTH);
+  // pre_handle.halo_snd_z = (FP*) _mm_malloc(2 * app.size[1] * app.size[0] * sizeof(FP), SIMD_WIDTH);
+  // pre_handle.halo_rcv_z = (FP*) _mm_malloc(2 * app.size[1] * app.size[0] * sizeof(FP), SIMD_WIDTH);
+
+  posix_memalign((void **)&pre_handle.halo_snd_x, SIMD_WIDTH, 2 * app.size[1] * app.size[2] * sizeof(FP));
+  posix_memalign((void **)&pre_handle.halo_rcv_x, SIMD_WIDTH, 2 * app.size[1] * app.size[2] * sizeof(FP));
+  posix_memalign((void **)&pre_handle.halo_snd_y, SIMD_WIDTH, 2 * app.size[0] * app.size[2] * sizeof(FP));
+  posix_memalign((void **)&pre_handle.halo_rcv_y, SIMD_WIDTH, 2 * app.size[0] * app.size[2] * sizeof(FP));
+  posix_memalign((void **)&pre_handle.halo_snd_z, SIMD_WIDTH, 2 * app.size[1] * app.size[0] * sizeof(FP));
+  posix_memalign((void **)&pre_handle.halo_rcv_z, SIMD_WIDTH, 2 * app.size[1] * app.size[0] * sizeof(FP));
 
   return 0;
 
@@ -324,18 +337,31 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
 
 // Free memory used
 void finalize(app_handle &app, preproc_handle<FP> &pre_handle) {
-  _mm_free(pre_handle.halo_snd_x);
-  _mm_free(pre_handle.halo_rcv_x);
-  _mm_free(pre_handle.halo_snd_y);
-  _mm_free(pre_handle.halo_rcv_y);
-  _mm_free(pre_handle.halo_snd_z);
-  _mm_free(pre_handle.halo_rcv_z);
+  // _mm_free(pre_handle.halo_snd_x);
+  // _mm_free(pre_handle.halo_rcv_x);
+  // _mm_free(pre_handle.halo_snd_y);
+  // _mm_free(pre_handle.halo_rcv_y);
+  // _mm_free(pre_handle.halo_snd_z);
+  // _mm_free(pre_handle.halo_rcv_z);
+  //
+  // _mm_free(app.a);
+  // _mm_free(app.b);
+  // _mm_free(app.c);
+  // _mm_free(app.d);
+  // _mm_free(app.u);
 
-  _mm_free(app.a);
-  _mm_free(app.b);
-  _mm_free(app.c);
-  _mm_free(app.d);
-  _mm_free(app.u);
+  free(pre_handle.halo_snd_x);
+  free(pre_handle.halo_rcv_x);
+  free(pre_handle.halo_snd_y);
+  free(pre_handle.halo_rcv_y);
+  free(pre_handle.halo_snd_z);
+  free(pre_handle.halo_rcv_z);
+
+  free(app.a);
+  free(app.b);
+  free(app.c);
+  free(app.d);
+  free(app.u);
 
   free(app.size_g);
   free(app.size);
