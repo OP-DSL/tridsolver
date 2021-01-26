@@ -36,9 +36,10 @@
 #ifndef __TRID_MPI_CPU_HPP
 #define __TRID_MPI_CPU_HPP
 
-#include "trid_simd.h"
-#include "transpose.hpp"
+// #include "trid_simd.h"
+// #include "transpose.hpp"
 #include "math.h"
+#include "trid_mpi_simd_constants.h"
 
 //#define N_MPI_MAX 128
 
@@ -214,7 +215,12 @@ inline void thomas_forward_vec_strip(
 
   for(int i = 0; i < 2; i++) {
     base = i * stride;
-    #pragma omp simd
+    // Compiler seems to have an issue with #pragma omp simd aligned(aa, cc, dd: SIMD_WIDTH)
+    #if SIMD_WIDTH == 32
+    #pragma omp simd aligned(aa, cc, dd: 32)
+    #else
+    #pragma omp simd aligned(aa, cc, dd: 64)
+    #endif
     for(int j = 0; j < strip_len; j++) {
       ind = base + j;
       bbi   = static_cast<REAL>(1.0) / b[ind];
@@ -227,7 +233,11 @@ inline void thomas_forward_vec_strip(
 
   for(int i = 2; i < N; i++) {
     base = i * stride;
-    #pragma omp simd
+    #if SIMD_WIDTH == 32
+    #pragma omp simd aligned(aa, cc, dd: 32)
+    #else
+    #pragma omp simd aligned(aa, cc, dd: 64)
+    #endif
     for(int j = 0; j < strip_len; j++) {
       ind = base + j;
       bbi   = static_cast<REAL>(1.0) / (b[ind] - a[ind] * cc[ind - stride]);
@@ -240,7 +250,11 @@ inline void thomas_forward_vec_strip(
 
   for(int i = N - 3; i > 0; i--) {
     base = i * stride;
-    #pragma omp simd
+    #if SIMD_WIDTH == 32
+    #pragma omp simd aligned(aa, cc, dd: 32)
+    #else
+    #pragma omp simd aligned(aa, cc, dd: 64)
+    #endif
     for(int j = 0; j < strip_len; j++) {
       ind = base + j;
       dd[ind] = dd[ind] - cc[ind]*dd[ind + stride];
@@ -249,7 +263,11 @@ inline void thomas_forward_vec_strip(
     }
   }
 
-  #pragma omp simd
+  #if SIMD_WIDTH == 32
+  #pragma omp simd aligned(aa, cc, dd: 32)
+  #else
+  #pragma omp simd aligned(aa, cc, dd: 64)
+  #endif
   for(int j = 0; j < strip_len; j++) {
     bbi = static_cast<REAL>(1.0) / (static_cast<REAL>(1.0) - cc[j]*aa[stride + j]);
     dd[j] =  bbi * ( dd[j] - cc[j]*dd[stride + j] );
@@ -267,7 +285,11 @@ inline void thomas_backward_vec_strip(const REAL *__restrict__ aa,
                                       const int stride, const int strip_len) {
   int base = 0;
 
-  #pragma omp simd
+  #if SIMD_WIDTH == 32
+  #pragma omp simd aligned(dd: 32)
+  #else
+  #pragma omp simd aligned(dd: 64)
+  #endif
   for (int j = 0; j < strip_len; j++) {
     if (INC) {
       u[j] += dd[j];
@@ -278,7 +300,11 @@ inline void thomas_backward_vec_strip(const REAL *__restrict__ aa,
 
   for (int i = 1; i < N - 1; i++) {
     base = i * stride;
-    #pragma omp simd
+    #if SIMD_WIDTH == 32
+    #pragma omp simd aligned(aa, cc, dd: 32)
+    #else
+    #pragma omp simd aligned(aa, cc, dd: 64)
+    #endif
     for (int j = 0; j < strip_len; j++) {
       if (INC) {
         u[base + j] += dd[base + j] - aa[base + j] * dd[j] -
@@ -290,7 +316,11 @@ inline void thomas_backward_vec_strip(const REAL *__restrict__ aa,
     }
   }
 
-  #pragma omp simd
+  #if SIMD_WIDTH == 32
+  #pragma omp simd aligned(dd: 32)
+  #else
+  #pragma omp simd aligned(dd: 64)
+  #endif
   for (int j = 0; j < strip_len; j++) {
     if (INC) {
       u[(N - 1) * stride + j] += dd[(N - 1) * stride + j];
@@ -310,7 +340,11 @@ thomas_backward(const REAL *__restrict__ aa, const REAL *__restrict__ cc,
   } else {
     d[0] = dd[0];
   }
-#pragma omp simd
+  #if SIMD_WIDTH == 32
+  #pragma omp simd aligned(aa, cc, dd: 32)
+  #else
+  #pragma omp simd aligned(aa, cc, dd: 64)
+  #endif
   for (int i = 1; i < N - 1; i++) {
     int ind = i * stride;
     if (INC) {

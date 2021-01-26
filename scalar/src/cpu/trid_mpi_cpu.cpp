@@ -36,7 +36,8 @@
 
 #include "trid_common.h"
 #include "trid_mpi_cpu.hpp"
-#include "trid_simd.h"
+// #include "trid_simd.h"
+#include "trid_mpi_simd_constants.h"
 #include "math.h"
 #include "omp.h"
 
@@ -941,24 +942,40 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
   }
 
   // Allocate memory for aa, cc and dd arrays
-  REAL *aa = (REAL *)_mm_malloc(mem_size * sizeof(REAL), SIMD_WIDTH);
-  REAL *cc = (REAL *)_mm_malloc(mem_size * sizeof(REAL), SIMD_WIDTH);
-  REAL *dd = (REAL *)_mm_malloc(mem_size * sizeof(REAL), SIMD_WIDTH);
+  // REAL *aa = (REAL *)_mm_malloc(mem_size * sizeof(REAL), SIMD_WIDTH);
+  // REAL *cc = (REAL *)_mm_malloc(mem_size * sizeof(REAL), SIMD_WIDTH);
+  // REAL *dd = (REAL *)_mm_malloc(mem_size * sizeof(REAL), SIMD_WIDTH);
+  REAL *aa;
+  posix_memalign((void **)&aa, SIMD_WIDTH, mem_size * sizeof(REAL));
+  REAL *cc;
+  posix_memalign((void **)&cc, SIMD_WIDTH, mem_size * sizeof(REAL));
+  REAL *dd;
+  posix_memalign((void **)&dd, SIMD_WIDTH, mem_size * sizeof(REAL));
 
   // Length of a reduced system
   int len_r_local = 2 * 3;
   int sys_len_r   = 2 * params.num_mpi_procs[solvedim];
 
   // Allocate memory for send and receive buffers
-  REAL *sndbuf =
-      (REAL *)_mm_malloc(MAX(n_sys * len_r_local, n_sys * sys_len_r) * sizeof(REAL), SIMD_WIDTH);
-  REAL *rcvbuf =
-      (REAL *)_mm_malloc(n_sys * sys_len_r * 3 * sizeof(REAL), SIMD_WIDTH);
+  // REAL *sndbuf =
+  //     (REAL *)_mm_malloc(MAX(n_sys * len_r_local, n_sys * sys_len_r) * sizeof(REAL), SIMD_WIDTH);
+  // REAL *rcvbuf =
+  //     (REAL *)_mm_malloc(n_sys * sys_len_r * 3 * sizeof(REAL), SIMD_WIDTH);
+  REAL *sndbuf;
+  posix_memalign((void **)&sndbuf, SIMD_WIDTH, MAX(n_sys * len_r_local, n_sys * sys_len_r) * sizeof(REAL));
+  REAL *rcvbuf;
+  posix_memalign((void **)&rcvbuf, SIMD_WIDTH, n_sys * sys_len_r * 3 * sizeof(REAL));
 
   // Allocate memory for reduced solve
-  REAL *aa_r = (REAL *)_mm_malloc(sizeof(REAL) * sys_len_r * n_sys, SIMD_WIDTH);
-  REAL *cc_r = (REAL *)_mm_malloc(sizeof(REAL) * sys_len_r * n_sys, SIMD_WIDTH);
-  REAL *dd_r = (REAL *)_mm_malloc(sizeof(REAL) * sys_len_r * n_sys, SIMD_WIDTH);
+  // REAL *aa_r = (REAL *)_mm_malloc(sizeof(REAL) * sys_len_r * n_sys, SIMD_WIDTH);
+  // REAL *cc_r = (REAL *)_mm_malloc(sizeof(REAL) * sys_len_r * n_sys, SIMD_WIDTH);
+  // REAL *dd_r = (REAL *)_mm_malloc(sizeof(REAL) * sys_len_r * n_sys, SIMD_WIDTH);
+  REAL *aa_r;
+  posix_memalign((void **)&aa_r, SIMD_WIDTH, sys_len_r * n_sys * sizeof(REAL));
+  REAL *cc_r;
+  posix_memalign((void **)&cc_r, SIMD_WIDTH, sys_len_r * n_sys * sizeof(REAL));
+  REAL *dd_r;
+  posix_memalign((void **)&dd_r, SIMD_WIDTH, sys_len_r * n_sys * sizeof(REAL));
 
   END_PROFILING("memalloc");
 
@@ -988,14 +1005,22 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
 
   // Free memory used in solve
   BEGIN_PROFILING("memfree");
-  _mm_free(aa);
-  _mm_free(cc);
-  _mm_free(dd);
-  _mm_free(sndbuf);
-  _mm_free(rcvbuf);
-  _mm_free(aa_r);
-  _mm_free(cc_r);
-  _mm_free(dd_r);
+  // _mm_free(aa);
+  // _mm_free(cc);
+  // _mm_free(dd);
+  free(aa);
+  free(cc);
+  free(dd);
+  // _mm_free(sndbuf);
+  // _mm_free(rcvbuf);
+  free(sndbuf);
+  free(rcvbuf);
+  // _mm_free(aa_r);
+  // _mm_free(cc_r);
+  // _mm_free(dd_r);
+  free(aa_r);
+  free(cc_r);
+  free(dd_r);
   END_PROFILING("memfree");
 }
 

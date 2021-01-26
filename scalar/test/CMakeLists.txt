@@ -4,21 +4,22 @@ target_include_directories(Catch INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 
 if (BUILD_FOR_CPU)
-  set(TEST_SOURCES catch_main.cpp test_cpu.cpp)
+  if (BUILD_FOR_SN)
+    set(TEST_SOURCES catch_main.cpp test_cpu.cpp)
 
-  add_executable(tests ${TEST_SOURCES})
-  target_link_libraries(
-    tests
-    Catch
-    tridcpu
-    OpenMP::OpenMP_CXX)
-  target_include_directories(tests PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
+    add_executable(tests ${TEST_SOURCES})
+    target_link_libraries(
+      tests
+      Catch
+      tridcpu
+      OpenMP::OpenMP_CXX)
+    target_include_directories(tests PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
 
-  add_test(
-    NAME catch_test
-    COMMAND tests
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-
+    add_test(
+      NAME catch_test
+      COMMAND tests
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+  endif (BUILD_FOR_SN)
   if (BUILD_FOR_MPI)
     set(MPI_TEST_NUM_PROC
         "2"
