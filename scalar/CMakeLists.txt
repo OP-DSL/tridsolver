@@ -90,15 +90,15 @@ if (BUILD_FOR_GPU)
   if (NOT CMAKE_CUDA_COMPILER)
     message(ERROR "Couldn't find CUDA compiler")
   endif (NOT CMAKE_CUDA_COMPILER)
-  set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
   enable_language(CUDA)
   set(CMAKE_CUDA_STANDARD 11)
+  # use dynamic linking to CUDA runtime to avoid error with CUDA aware MPI
+  set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
   # architecture
   set(ARCHITECTURE
       "AUTO"
       CACHE STRING "Your target CUDA architecture")
   include(cmake/CUDA_ARCH.cmake)
-  # use dynamic linking to CUDA runtime to avoid error with CUDA aware MPI
   select_cuda_architectures("${ARCHITECTURE}" ARCH_LIST)
   message(STATUS "CUDA_ARCH: ${ARCH_LIST}")
   set(CMAKE_CUDA_ARCHITECTURES
