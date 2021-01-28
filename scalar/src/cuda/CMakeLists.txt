@@ -14,7 +14,7 @@ if (BUILD_FOR_GPU)
         "DETAILED"
         CACHE STRING "Level of details for profiling")
     set_property(CACHE PROFILING_LEVEL PROPERTY STRINGS PROFILE DETAILED)
-    add_library(profiling_cuda SHARED ./cuda_timing.cu)
+    add_library(profiling_cuda ${BUILD_TYPE} ./cuda_timing.cu)
     set_target_properties(profiling_cuda PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_include_directories(profiling_cuda PRIVATE ${PROJECT_SOURCE_DIR}/include/)
     if (BUILD_FOR_MPI)
@@ -33,7 +33,7 @@ if (BUILD_FOR_GPU)
   set(${PROJECT_NAME}_components
       ${${PROJECT_NAME}_components}
       PARENT_SCOPE)
-  add_library(tridcuda SHARED ./trid_cuda.cu)
+  add_library(tridcuda ${BUILD_TYPE} ./trid_cuda.cu)
   add_library(${PROJECT_NAME}::tridcuda ALIAS tridcuda)
   target_link_libraries(
     tridcuda
@@ -75,7 +75,7 @@ if (BUILD_FOR_GPU)
     set(${PROJECT_NAME}_components
         ${${PROJECT_NAME}_components}
         PARENT_SCOPE)
-    add_library(tridcuda_mpi SHARED ./trid_cuda_mpi.cu)
+    add_library(tridcuda_mpi ${BUILD_TYPE} ./trid_cuda_mpi.cu)
     add_library(${PROJECT_NAME}::tridcuda_mpi ALIAS tridcuda_mpi)
     target_include_directories(tridcuda_mpi PRIVATE ${PROJECT_SOURCE_DIR}/src/cuda/
                                                     ${PROJECT_SOURCE_DIR}/src/cuda/generics/)
