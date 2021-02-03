@@ -46,11 +46,6 @@
 
 #include "timing.h"
 
-
-#include <iostream>
-#include <chrono>
-#include <unistd.h>
-using namespace std;
 #define ROUND_DOWN(N,step) (((N)/(step))*step)
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
@@ -689,37 +684,23 @@ inline void tridMultiDimBatchSolve_allgather(
     const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, REAL *aa_r,
     REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r, int n_sys) {
   BEGIN_PROFILING("forward");
-  //forward(a, b, c, d, aa, cc, dd, sndbuf, dims, pads, ndim, solvedim, n_sys);
+  forward(a, b, c, d, aa, cc, dd, sndbuf, dims, pads, ndim, solvedim, n_sys);
   END_PROFILING("forward");
   BEGIN_PROFILING("mpi_communication");
   // Communicate reduced systems
-  int rank, size;
-  MPI_Comm_rank(params.communicators[solvedim], &rank);
-  MPI_Comm_size(params.communicators[solvedim], &size);
-  if (rank == 0) printf("0/%d send count %d recv bytes %d\n",size,n_sys * len_r_local,n_sys * sys_len_r * 3 * sizeof(REAL));
-  for (int i = 0; i < n_sys * len_r_local * size; i++) rcvbuf[i] = i;
-  for (int i = 0; i < n_sys * len_r_local ; i++) sndbuf[i] = i;
-  MPI_Barrier(params.communicators[solvedim]);
-  auto start = chrono::steady_clock::now();
   MPI_Allgather(sndbuf, n_sys * len_r_local, MPI_DATATYPE(REAL), rcvbuf,
                 n_sys * len_r_local, MPI_DATATYPE(REAL),
                 params.communicators[solvedim]);
-  auto end = chrono::steady_clock::now();
-  cout << "Elapsed time in milliseconds : "
-        << chrono::duration_cast<chrono::milliseconds>(end - start).count()
-        << " ms" << endl;
 
   END_PROFILING("mpi_communication");
-  
   BEGIN_PROFILING("pcr_on_reduced");
   // Solve reduced systems on each node
-  //solve_reduced(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads, ndim,
-  //              solvedim, sys_len_r, n_sys);
+  solve_reduced(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads, ndim,
+                solvedim, sys_len_r, n_sys);
   END_PROFILING("pcr_on_reduced");
   BEGIN_PROFILING("backward");
- // backward<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim, n_sys);
+  backward<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim, n_sys);
   END_PROFILING("backward");
-  
 }
 
 template <typename REAL, int INC>

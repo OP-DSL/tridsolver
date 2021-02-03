@@ -56,10 +56,6 @@
 #include <type_traits>
 
 #include <iostream>
-#include <iostream>
-#include <chrono>
-#include <unistd.h>
-using namespace std;
 
 // define MPI_datatype
 #if __cplusplus >= 201402L
@@ -512,21 +508,9 @@ void tridMultiDimBatchSolveMPI_allgather(
                           ncclChar, params.ncclComms[solvedim], 0));
 #else
   // Communicate boundary results
-//  int rank,size;
-//  MPI_Comm_size(params.communicators[solvedim], &size);
-//  MPI_Comm_rank(params.communicators[solvedim], &rank);
-//  if (rank == 0) printf("0/%d send count %d recv bytes %d\n",size,comm_buf_size,comm_buf_size * params.num_mpi_procs[solvedim] * sizeof(REAL));
-//  for (int i = 0; i < comm_buf_size * size; i++) recv_buf_h[i] = i;
-//  for (int i = 0; i <  comm_buf_size; i++) send_buf_h[i] = i;
-//  MPI_Barrier(params.communicators[solvedim]);
-  auto start = chrono::steady_clock::now();
   MPI_Allgather(send_buf_h, comm_buf_size, MPI_DATATYPE(REAL), recv_buf_h,
                 comm_buf_size, MPI_DATATYPE(REAL),
                 params.communicators[solvedim]);
-  auto end = chrono::steady_clock::now();
-  cout << "Elapsed time in milliseconds : "
-        << chrono::duration_cast<chrono::milliseconds>(end - start).count()
-        << " ms" << endl;
   // copy the results of the reduced systems to the beginning of the boundaries
   // array
   cudaMemcpyAsync(recv_buf, recv_buf_h,
