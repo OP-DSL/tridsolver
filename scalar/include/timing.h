@@ -36,6 +36,7 @@ public:
   static void startTimer(const std::string &_name);
   static void stopTimer(const std::string &_name);
   static void report();
+  static void reset();
 };
 
 #if PROFILING
