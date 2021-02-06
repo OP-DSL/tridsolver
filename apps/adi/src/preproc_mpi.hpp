@@ -32,8 +32,6 @@
 
 // Written by Toby Flynn, University of Warwick, T.Flynn@warwick.ac.uk, 2020
 
-#include "trid_mpi_simd_constants.h"
-
 #include "mpi.h"
 #include "trid_mpi_cpu.h"
 #include "adi_mpi.h"

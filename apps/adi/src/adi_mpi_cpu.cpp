@@ -56,6 +56,9 @@
 
 #include "adi_mpi.h"
 
+#define SIMD_VEC 8
+#define SIMD_WIDTH 64
+
 #define ROUND_DOWN(N,step) (((N)/(step))*step)
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X,Y) ((X) > (Y) ? (X) : (Y))

@@ -80,7 +80,6 @@ if (BUILD_FOR_CPU)
       ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
     install(
       FILES ${PROJECT_SOURCE_DIR}/include/trid_common.h
-            ${PROJECT_SOURCE_DIR}/include/trid_mpi_simd_constants.h
             ${PROJECT_SOURCE_DIR}/include/trid_mpi_cpu.h
             ${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
       DESTINATION ${PROJECT_NAME}/include)

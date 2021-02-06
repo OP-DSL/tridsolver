@@ -36,8 +36,6 @@
 
 #include "trid_common.h"
 #include "trid_mpi_cpu.hpp"
-// #include "trid_simd.h"
-#include "trid_mpi_simd_constants.h"
 #include "math.h"
 #include "omp.h"
 
@@ -131,16 +129,14 @@ inline void forward_batched(const REAL *a, const REAL *b, const REAL *c, const R
    #pragma omp parallel for
        for (int id = start_sys; id < end_sys; id++) {
          int ind = id * pads[0];
-         thomas_forward<REAL>(&a[ind], &b[ind], &c[ind], &d[ind], &aa[ind],
-                              &cc[ind], &dd[ind], dims[0], 1);
+         thomas_forward<REAL>(a, b, c, d, aa, cc, dd, ind, dims[0], 1);
        }
     } else {
       // Do modified thomas forward pass
    #pragma omp parallel for
        for (int id = start_sys; id < end_sys; id++) {
          int ind = (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
-         thomas_forward<REAL>(&a[ind], &b[ind], &c[ind], &d[ind], &aa[ind],
-                              &cc[ind], &dd[ind], dims[0], 1);
+         thomas_forward<REAL>(a, b, c, d, aa, cc, dd, ind, dims[0], 1);
        }
     }
   } else if (solvedim == 1) {
@@ -154,20 +150,18 @@ inline void forward_batched(const REAL *a, const REAL *b, const REAL *c, const R
     if (ndim == 2) {
       // Do modified thomas forward pass
       int batch_size =
-          std::max(1, ROUND_DOWN(n_sys / omp_get_max_threads(), SIMD_VEC));
+          std::max(1, ROUND_DOWN(n_sys / omp_get_max_threads(), 8));
 #pragma omp parallel for
       for (int ind = start_sys; ind < start_sys + ROUND_DOWN(n_sys, batch_size);
            ind += batch_size) {
-        thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                       &aa[ind], &cc[ind], &dd[ind], dims[1],
+        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, ind, dims[1],
                                        pads[0], batch_size);
       }
       // Do final strip if number of systems isn't a multiple of batch_size
       if (n_sys != ROUND_DOWN(n_sys, batch_size)) {
         int ind    = start_sys + ROUND_DOWN(n_sys, batch_size);
         int length = end_sys - ind;
-        thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                       &aa[ind], &cc[ind], &dd[ind], dims[1],
+        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, ind, dims[1],
                                        pads[0], length);
       }
     } else {
@@ -185,8 +179,7 @@ inline void forward_batched(const REAL *a, const REAL *b, const REAL *c, const R
         strip_len -= strip_start;
         //ind += strip_start * pads[0];
         ind += strip_start;
-        thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                       &aa[ind], &cc[ind], &dd[ind], dims[1],
+        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, ind, dims[1],
                                        pads[0], strip_len);
       }
     }
@@ -207,33 +200,9 @@ inline void forward_batched(const REAL *a, const REAL *b, const REAL *c, const R
       strip_len -= strip_start;
       //ind += strip_start * pads[0];
       ind += strip_start;
-      thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                     &aa[ind], &cc[ind], &dd[ind], dims[2],
+      thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, ind, dims[2],
                                      pads[0] * pads[1], strip_len);
     }
-    // Do modified thomas forward pass
-    /*int start_ind = (start_sys / dims[0]) * pads[0] + (start_sys % dims[0]);
-    int end_ind = (end_sys / dims[0]) * pads[0] + (end_sys % dims[0]);
-    n_sys = end_ind - start_ind;
-    int batch_size =
-        std::max(1, ROUND_DOWN(n_sys / omp_get_max_threads(), SIMD_VEC));
-#pragma omp parallel for
-    for (int sys = 0; sys < ROUND_DOWN(n_sys, batch_size);
-         sys += batch_size) {
-      int ind = start_ind + sys;
-      thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                     &aa[ind], &cc[ind], &dd[ind], dims[2],
-                                     pads[0] * pads[1], batch_size);
-    }
-
-    // Do final strip if number of systems isn't a multiple of batch_size
-    if (n_sys != ROUND_DOWN(n_sys, batch_size)) {
-      int ind    = start_ind + ROUND_DOWN(n_sys, batch_size);
-      int length = end_ind - ind;
-      thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                     &aa[ind], &cc[ind], &dd[ind], dims[2],
-                                     pads[0] * pads[1], length);
-    }*/
   }
   // Pack reduced systems (boundaries of each tridiagonal system)
   copy_boundaries_strided(aa, cc, dd, sndbuf, dims, pads, ndim, solvedim, start_sys,
@@ -258,16 +227,14 @@ inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
   #pragma omp parallel for
       for (int id = 0; id < n_sys; id++) {
         int ind = id * pads[0];
-        thomas_forward<REAL>(&a[ind], &b[ind], &c[ind], &d[ind], &aa[ind],
-                             &cc[ind], &dd[ind], dims[0], 1);
+        thomas_forward<REAL>(a, b, c, d, aa, cc, dd, ind, dims[0], 1);
       }
    } else {
      // Do modified thomas forward pass
   #pragma omp parallel for
       for (int id = 0; id < n_sys; id++) {
         int ind = (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
-        thomas_forward<REAL>(&a[ind], &b[ind], &c[ind], &d[ind], &aa[ind],
-                             &cc[ind], &dd[ind], dims[0], 1);
+        thomas_forward<REAL>(a, b, c, d, aa, cc, dd, ind, dims[0], 1);
       }
    }
   } else if (solvedim == 1) {
@@ -280,20 +247,18 @@ inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
     if (ndim == 2) {
       // Do modified thomas forward pass
       int batch_size =
-          std::max(1, ROUND_DOWN(n_sys / omp_get_max_threads(), SIMD_VEC));
+          std::max(1, ROUND_DOWN(n_sys / omp_get_max_threads(), 8));
 #pragma omp parallel for
       for (int ind = 0; ind < ROUND_DOWN(n_sys, batch_size);
            ind += batch_size) {
-        thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                       &aa[ind], &cc[ind], &dd[ind], dims[1],
+        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, ind, dims[1],
                                        pads[0], batch_size);
       }
       // Do final strip if number of systems isn't a multiple of batch_size
       if (n_sys != ROUND_DOWN(n_sys, batch_size)) {
         int ind    = ROUND_DOWN(n_sys, batch_size);
         int length = n_sys - ind;
-        thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                       &aa[ind], &cc[ind], &dd[ind], dims[1],
+        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, ind, dims[1],
                                        pads[0], length);
       }
     } else {
@@ -303,8 +268,7 @@ inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
 #pragma omp parallel for
       for (int z = 0; z < dims[2]; z++) {
         int ind = z * pads[0] * pads[1];
-        thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                       &aa[ind], &cc[ind], &dd[ind], dims[1],
+        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, ind, dims[1],
                                        pads[0], dims[0]);
       }
     }
@@ -318,27 +282,9 @@ inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
   // Do modified thomas forward pass
   #pragma omp parallel for
       for (int ind = 0; ind < dims[1] * pads[0]; ind += pads[0]) {
-        thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                       &aa[ind], &cc[ind], &dd[ind], dims[2],
+        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, ind, dims[2],
                                        pads[0] * pads[1], dims[0]);
       }
-/*
-#pragma omp parallel for
-    for (int ind = 0; ind < ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
-         ind += Z_BATCH) {
-      thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                     &aa[ind], &cc[ind], &dd[ind], dims[2],
-                                     pads[0] * pads[1], Z_BATCH);
-    }
-
-    // Do final strip if number of systems isn't a multiple of Z_BATCH
-    if (dims[1] * pads[0] != ROUND_DOWN(dims[1] * pads[0], Z_BATCH)) {
-      int ind    = ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
-      int length = (dims[1] * pads[0]) - ind;
-      thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                     &aa[ind], &cc[ind], &dd[ind], dims[2],
-                                     pads[0] * pads[1], length);
-    }*/
   }
 
   // Pack reduced systems (boundaries of each tridiagonal system)
@@ -461,8 +407,7 @@ inline void backward(const REAL *aa, const REAL *cc,
       for (int id = 0; id < n_sys; id++) {
         int ind = id * pads[0];
         //int ind = id * pads[0];
-        thomas_backward<REAL, INC>(&aa[ind], &cc[ind], &dd[ind], &d[ind], &u[ind],
-                                   dims[0], 1);
+        thomas_backward<REAL, INC>(aa, cc, dd, d, u, ind, dims[0], 1);
       }
     } else {
       // Do the backward pass to solve for remaining unknowns
@@ -470,8 +415,7 @@ inline void backward(const REAL *aa, const REAL *cc,
       for (int id = 0; id < n_sys; id++) {
         int ind = (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
         //int ind = id * pads[0];
-        thomas_backward<REAL, INC>(&aa[ind], &cc[ind], &dd[ind], &d[ind], &u[ind],
-                                   dims[0], 1);
+        thomas_backward<REAL, INC>(aa, cc, dd, d, u, ind, dims[0], 1);
       }
     }
   } else if(solvedim == 1) {
@@ -485,7 +429,7 @@ inline void backward(const REAL *aa, const REAL *cc,
     // Check if 2D solve
     if(ndim == 2) {
       // Do the backward pass to solve for remaining unknowns
-      thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, dims[1], pads[0],
+      thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, 0, dims[1], pads[0],
                                            pads[0]);
     } else {
       // Assume 3D solve
@@ -493,9 +437,8 @@ inline void backward(const REAL *aa, const REAL *cc,
       #pragma omp parallel for
       for (int z = 0; z < dims[2]; z++) {
         int ind = z * pads[0] * pads[1];
-        thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
-                                             &d[ind], &u[ind], dims[1], pads[0],
-                                             dims[0]);
+        thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, ind, dims[1],
+                                             pads[0], dims[0]);
       }
     }
   } else if(solvedim == 2) {
@@ -507,27 +450,9 @@ inline void backward(const REAL *aa, const REAL *cc,
 
 #pragma omp parallel for
      for (int ind = 0; ind < dims[1] * pads[0]; ind += pads[0]) {
-       thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
-                                            &d[ind], &u[ind], dims[2],
+       thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, ind, dims[2],
                                             pads[0] * pads[1], dims[0]);
      }
-/*
-    // Do the backward pass to solve for remaining unknowns
-    #pragma omp parallel for
-    for (int ind = 0; ind < ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
-         ind += Z_BATCH) {
-      thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
-                                           &d[ind], &u[ind], dims[2],
-                                           pads[0] * pads[1], Z_BATCH);
-    }
-
-    if (dims[1] * pads[0] != ROUND_DOWN(dims[1] * pads[0], Z_BATCH)) {
-      int ind    = ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
-      int length = (dims[1] * pads[0]) - ind;
-      thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
-                                           &d[ind], &u[ind], dims[2],
-                                           pads[0] * pads[1], length);
-    }*/
   }
 }
 
@@ -549,8 +474,7 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
        for (int id = start_sys; id < end_sys; id++) {
          int ind = id * pads[0];
          //int ind = id * pads[0];
-         thomas_backward<REAL, INC>(&aa[ind], &cc[ind], &dd[ind], &d[ind], &u[ind],
-                                    dims[0], 1);
+         thomas_backward<REAL, INC>(aa, cc, dd, d, u, ind, dims[0], 1);
        }
      } else {
        // Do the backward pass to solve for remaining unknowns
@@ -558,8 +482,7 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
        for (int id = start_sys; id < end_sys; id++) {
          int ind = (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
          //int ind = id * pads[0];
-         thomas_backward<REAL, INC>(&aa[ind], &cc[ind], &dd[ind], &d[ind], &u[ind],
-                                    dims[0], 1);
+         thomas_backward<REAL, INC>(aa, cc, dd, d, u, ind, dims[0], 1);
        }
      }
   } else if(solvedim == 1) {
@@ -573,21 +496,19 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
     if(ndim == 2) {
       // Do the backward pass to solve for remaining unknowns
       int batch_size =
-          std::max(1, ROUND_DOWN(n_sys / omp_get_max_threads(), SIMD_VEC));
+          std::max(1, ROUND_DOWN(n_sys / omp_get_max_threads(), 8));
 #pragma omp parallel for
       for (int ind = start_sys; ind < start_sys + ROUND_DOWN(n_sys, batch_size);
            ind += batch_size) {
-        thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
-                                             &d[ind], &u[ind], dims[1], pads[0],
-                                             batch_size);
+        thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, ind, dims[1],
+                                             pads[0], batch_size);
       }
       // Do final strip if number of systems isn't a multiple of batch_size
       if (n_sys != ROUND_DOWN(n_sys, batch_size)) {
         int ind    = start_sys + ROUND_DOWN(n_sys, batch_size);
         int length = end_sys - ind;
-        thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
-                                             &d[ind], &u[ind], dims[1], pads[0],
-                                             length);
+        thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, ind, dims[1],
+                                             pads[0], length);
       }
     } else {
       // Assume 3D solve
@@ -604,9 +525,8 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
         strip_len -= strip_start;
         //ind += strip_start * pads[0];
         ind += strip_start;
-        thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
-                                             &d[ind], &u[ind], dims[1], pads[0],
-                                             strip_len);
+        thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, ind, dims[1],
+                                             pads[0], strip_len);
       }
     }
   } else if(solvedim == 2) {
@@ -626,32 +546,9 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
        strip_len -= strip_start;
        //ind += strip_start * pads[0];
        ind += strip_start;
-       thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
-                                            &d[ind], &u[ind], dims[2],
+       thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, ind, dims[2],
                                             pads[0] * pads[1], strip_len);
      }
-    // Do the backward pass to solve for remaining unknowns
-    /*int start_ind = (start_sys / dims[0]) * pads[0] + (start_sys % dims[0]);
-    int end_ind = (end_sys / dims[0]) * pads[0] + (end_sys % dims[0]);
-    n_sys = end_ind - start_ind;
-    int batch_size =
-        std::max(1, ROUND_DOWN(n_sys / omp_get_max_threads(), SIMD_VEC));
-    #pragma omp parallel for
-    for (int sys = 0; sys < ROUND_DOWN(n_sys, batch_size);
-         sys += batch_size) {
-      int ind = start_ind + sys;
-      thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
-                                           &d[ind], &u[ind], dims[2],
-                                           pads[0] * pads[1], batch_size);
-    }
-
-    if (n_sys != ROUND_DOWN(n_sys, batch_size)) {
-      int ind    = start_ind + ROUND_DOWN(n_sys, batch_size);
-      int length = end_ind - ind;
-      thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
-                                           &d[ind], &u[ind], dims[2],
-                                           pads[0] * pads[1], length);
-    }*/
   }
 }
 
@@ -942,40 +839,30 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
   }
 
   // Allocate memory for aa, cc and dd arrays
-  // REAL *aa = (REAL *)_mm_malloc(mem_size * sizeof(REAL), SIMD_WIDTH);
-  // REAL *cc = (REAL *)_mm_malloc(mem_size * sizeof(REAL), SIMD_WIDTH);
-  // REAL *dd = (REAL *)_mm_malloc(mem_size * sizeof(REAL), SIMD_WIDTH);
   REAL *aa;
-  posix_memalign((void **)&aa, SIMD_WIDTH, mem_size * sizeof(REAL));
+  posix_memalign((void **)&aa, 64, mem_size * sizeof(REAL));
   REAL *cc;
-  posix_memalign((void **)&cc, SIMD_WIDTH, mem_size * sizeof(REAL));
+  posix_memalign((void **)&cc, 64, mem_size * sizeof(REAL));
   REAL *dd;
-  posix_memalign((void **)&dd, SIMD_WIDTH, mem_size * sizeof(REAL));
+  posix_memalign((void **)&dd, 64, mem_size * sizeof(REAL));
 
   // Length of a reduced system
   int len_r_local = 2 * 3;
   int sys_len_r   = 2 * params.num_mpi_procs[solvedim];
 
   // Allocate memory for send and receive buffers
-  // REAL *sndbuf =
-  //     (REAL *)_mm_malloc(MAX(n_sys * len_r_local, n_sys * sys_len_r) * sizeof(REAL), SIMD_WIDTH);
-  // REAL *rcvbuf =
-  //     (REAL *)_mm_malloc(n_sys * sys_len_r * 3 * sizeof(REAL), SIMD_WIDTH);
   REAL *sndbuf;
-  posix_memalign((void **)&sndbuf, SIMD_WIDTH, MAX(n_sys * len_r_local, n_sys * sys_len_r) * sizeof(REAL));
+  posix_memalign((void **)&sndbuf, 64, MAX(n_sys * len_r_local, n_sys * sys_len_r) * sizeof(REAL));
   REAL *rcvbuf;
-  posix_memalign((void **)&rcvbuf, SIMD_WIDTH, n_sys * sys_len_r * 3 * sizeof(REAL));
+  posix_memalign((void **)&rcvbuf, 64, n_sys * sys_len_r * 3 * sizeof(REAL));
 
   // Allocate memory for reduced solve
-  // REAL *aa_r = (REAL *)_mm_malloc(sizeof(REAL) * sys_len_r * n_sys, SIMD_WIDTH);
-  // REAL *cc_r = (REAL *)_mm_malloc(sizeof(REAL) * sys_len_r * n_sys, SIMD_WIDTH);
-  // REAL *dd_r = (REAL *)_mm_malloc(sizeof(REAL) * sys_len_r * n_sys, SIMD_WIDTH);
   REAL *aa_r;
-  posix_memalign((void **)&aa_r, SIMD_WIDTH, sys_len_r * n_sys * sizeof(REAL));
+  posix_memalign((void **)&aa_r, 64, sys_len_r * n_sys * sizeof(REAL));
   REAL *cc_r;
-  posix_memalign((void **)&cc_r, SIMD_WIDTH, sys_len_r * n_sys * sizeof(REAL));
+  posix_memalign((void **)&cc_r, 64, sys_len_r * n_sys * sizeof(REAL));
   REAL *dd_r;
-  posix_memalign((void **)&dd_r, SIMD_WIDTH, sys_len_r * n_sys * sizeof(REAL));
+  posix_memalign((void **)&dd_r, 64, sys_len_r * n_sys * sizeof(REAL));
 
   END_PROFILING("memalloc");
 
@@ -1005,19 +892,11 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
 
   // Free memory used in solve
   BEGIN_PROFILING("memfree");
-  // _mm_free(aa);
-  // _mm_free(cc);
-  // _mm_free(dd);
   free(aa);
   free(cc);
   free(dd);
-  // _mm_free(sndbuf);
-  // _mm_free(rcvbuf);
   free(sndbuf);
   free(rcvbuf);
-  // _mm_free(aa_r);
-  // _mm_free(cc_r);
-  // _mm_free(dd_r);
   free(aa_r);
   free(cc_r);
   free(dd_r);
