@@ -86,7 +86,7 @@
 #ifdef __AVX__
 #ifdef __INTEL_COMPILER
 #  include "dvec.h"
-#elif defined(__GNUC__)
+#else //if defined(__GNUC__)
 #  include "immintrin.h"
 #    define __assume_aligned __builtin_assume_aligned
 #endif
@@ -94,7 +94,7 @@
 // AVX float
 #ifdef __INTEL_COMPILER
 #    define VECTOR F32vec8
-#elif defined(__GNUC__)
+#else //if defined(__GNUC__)
 #    define VECTOR __m256
 #endif
 #    define SIMD_REG __m256            // Name of Packed REGister
@@ -112,7 +112,7 @@
 // AVX double
 #ifdef __INTEL_COMPILER
 #    define VECTOR F64vec4
-#elif defined(__GNUC__)
+#else //if defined(__GNUC__)
 #    define VECTOR __m256d
 #endif
 #    define SIMD_REG __m256d             // Name of Packed REGister

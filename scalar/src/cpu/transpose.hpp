@@ -40,7 +40,11 @@
 
 #ifdef __AVX__
 // void transpose8x8_intrinsic(__m256 *ymm ) {
+#if defined(__clang__)
+inline void transpose8x8_intrinsic(__m256 ymm[8]) {
+#else
 inline void transpose8x8_intrinsic(__m256 __restrict__ ymm[8]) {
+#endif
   __m256 tmp[8];
 
   tmp[0] = _mm256_unpacklo_ps(ymm[0], ymm[1]);
@@ -81,7 +85,11 @@ inline void transpose8x8_intrinsic(__m256 __restrict__ ymm[8]) {
 }
 
 // void transpose4x4_intrinsic(__m256d *ymm ) {
+#if defined(__clang__)
+inline void transpose4x4_intrinsic(__m256d ymm[4]) {
+#else
 inline void transpose4x4_intrinsic(__m256d __restrict__ ymm[4]) {
+#endif
   __m256d tmp[4];
   tmp[0] = _mm256_permute2f128_pd(ymm[0], ymm[2], 0b00100000);
   tmp[1] = _mm256_permute2f128_pd(ymm[1], ymm[3], 0b00100000);
