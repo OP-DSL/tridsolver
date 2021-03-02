@@ -47,11 +47,9 @@
 
 #include "timing.h"
 
-#define ROUND_DOWN(N,step) (((N)/(step))*step)
-#define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
-#define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
-
-//#define Z_BATCH 56
+#define ROUND_DOWN(N, step) (((N) / (step)) * step)
+#define MIN(X, Y)           ((X) < (Y) ? (X) : (Y))
+#define MAX(X, Y)           ((X) > (Y) ? (X) : (Y))
 
 // define MPI_datatype
 #if __cplusplus >= 201402L
@@ -60,9 +58,10 @@ template <typename REAL>
 const MPI_Datatype mpi_datatype =
     std::is_same<REAL, double>::value ? MPI_DOUBLE : MPI_FLOAT;
 }
-#define MPI_DATATYPE(REAL) mpi_datatype<REAL>
+#  define MPI_DATATYPE(REAL) mpi_datatype<REAL>
 #else
-#define MPI_DATATYPE(REAL) (std::is_same<REAL, double>::value ? MPI_DOUBLE : MPI_FLOAT)
+#  define MPI_DATATYPE(REAL)                                                   \
+    (std::is_same<REAL, double>::value ? MPI_DOUBLE : MPI_FLOAT)
 #endif
 
 // Version that accounts for positive and negative padding
@@ -321,23 +320,6 @@ inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
                                        &aa[ind], &cc[ind], &dd[ind], dims[2],
                                        pads[0] * pads[1], dims[0]);
       }
-/*
-#pragma omp parallel for
-    for (int ind = 0; ind < ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
-         ind += Z_BATCH) {
-      thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                     &aa[ind], &cc[ind], &dd[ind], dims[2],
-                                     pads[0] * pads[1], Z_BATCH);
-    }
-
-    // Do final strip if number of systems isn't a multiple of Z_BATCH
-    if (dims[1] * pads[0] != ROUND_DOWN(dims[1] * pads[0], Z_BATCH)) {
-      int ind    = ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
-      int length = (dims[1] * pads[0]) - ind;
-      thomas_forward_vec_strip<REAL>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                     &aa[ind], &cc[ind], &dd[ind], dims[2],
-                                     pads[0] * pads[1], length);
-    }*/
   }
 
   // Pack reduced systems (boundaries of each tridiagonal system)
@@ -510,23 +492,6 @@ inline void backward(const REAL *aa, const REAL *cc,
                                             &d[ind], &u[ind], dims[2],
                                             pads[0] * pads[1], dims[0]);
      }
-/*
-    // Do the backward pass to solve for remaining unknowns
-    #pragma omp parallel for
-    for (int ind = 0; ind < ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
-         ind += Z_BATCH) {
-      thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
-                                           &d[ind], &u[ind], dims[2],
-                                           pads[0] * pads[1], Z_BATCH);
-    }
-
-    if (dims[1] * pads[0] != ROUND_DOWN(dims[1] * pads[0], Z_BATCH)) {
-      int ind    = ROUND_DOWN(dims[1] * pads[0], Z_BATCH);
-      int length = (dims[1] * pads[0]) - ind;
-      thomas_backward_vec_strip<REAL, INC>(&aa[ind], &cc[ind], &dd[ind],
-                                           &d[ind], &u[ind], dims[2],
-                                           pads[0] * pads[1], length);
-    }*/
   }
 }
 
