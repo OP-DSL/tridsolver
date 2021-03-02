@@ -115,9 +115,8 @@ inline void copy_boundaries_strided(const REAL *aa, const REAL *cc,
 template <typename REAL>
 inline void forward_batched(const REAL *a, const REAL *b, const REAL *c,
                             const REAL *d, REAL *aa, REAL *cc, REAL *dd,
-                            REAL *sndbuf, const int *dims, const int *pads,
-                            int ndim, int solvedim, int start_sys,
-                            int end_sys) {
+                            const int *dims, const int *pads, int ndim,
+                            int solvedim, int start_sys, int end_sys) {
   int n_sys = end_sys - start_sys;
   if (solvedim == 0) {
     /*********************
@@ -211,16 +210,13 @@ inline void forward_batched(const REAL *a, const REAL *b, const REAL *c,
                                      pads[0] * pads[1], strip_len);
     }
   }
-  // Pack reduced systems (boundaries of each tridiagonal system)
-  copy_boundaries_strided(aa, cc, dd, sndbuf, dims, pads, ndim, solvedim,
-                          start_sys, end_sys);
 }
 
 // Positive and negative padding version
 // TODO generalize padding caclulations (not just hardcode the 3D case)
 template <typename REAL>
 inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
-                    REAL *aa, REAL *cc, REAL *dd, REAL *sndbuf, const int *dims,
+                    REAL *aa, REAL *cc, REAL *dd, const int *dims,
                     const int *pads, int ndim, int solvedim, int n_sys) {
 
   if (solvedim == 0) {
@@ -299,10 +295,6 @@ inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
                                      pads[0] * pads[1], dims[0]);
     }
   }
-
-  // Pack reduced systems (boundaries of each tridiagonal system)
-  copy_boundaries_strided(aa, cc, dd, sndbuf, dims, pads, ndim, solvedim, 0,
-                          n_sys);
 }
 
 template <typename REAL>
@@ -597,8 +589,11 @@ inline void tridMultiDimBatchSolve_simple(
     int batch_start = bidx * batch_size;
     int bsize = bidx == num_batches - 1 ? n_sys - batch_start : batch_size;
     BEGIN_PROFILING("forward");
-    forward_batched(a, b, c, d, aa, cc, dd, sndbuf, dims, pads, ndim, solvedim,
+    forward_batched(a, b, c, d, aa, cc, dd, dims, pads, ndim, solvedim,
                     batch_start, batch_start + bsize);
+    // Pack reduced systems (boundaries of each tridiagonal system)
+    copy_boundaries_strided(aa, cc, dd, sndbuf, dims, pads, ndim, solvedim,
+                            batch_start, batch_start + bsize);
     END_PROFILING("forward");
     BEGIN_PROFILING("mpi_communication");
     // Send boundaries of the current batch
@@ -653,8 +648,11 @@ inline void tridMultiDimBatchSolve_LH(
     int batch_start = bidx * batch_size;
     int bsize = bidx == num_batches - 1 ? n_sys - batch_start : batch_size;
     BEGIN_PROFILING("forward");
-    forward_batched(a, b, c, d, aa, cc, dd, sndbuf, dims, pads, ndim, solvedim,
+    forward_batched(a, b, c, d, aa, cc, dd, dims, pads, ndim, solvedim,
                     batch_start, batch_start + bsize);
+    // Pack reduced systems (boundaries of each tridiagonal system)
+    copy_boundaries_strided(aa, cc, dd, sndbuf, dims, pads, ndim, solvedim,
+                            batch_start, batch_start + bsize);
     END_PROFILING("forward");
     BEGIN_PROFILING("mpi_communication");
     // wait for the previous MPI transaction to finish
@@ -714,7 +712,10 @@ inline void tridMultiDimBatchSolve_allgather(
     const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, REAL *aa_r,
     REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r, int n_sys) {
   BEGIN_PROFILING("forward");
-  forward(a, b, c, d, aa, cc, dd, sndbuf, dims, pads, ndim, solvedim, n_sys);
+  forward(a, b, c, d, aa, cc, dd, dims, pads, ndim, solvedim, n_sys);
+  // Pack reduced systems (boundaries of each tridiagonal system)
+  copy_boundaries_strided(aa, cc, dd, sndbuf, dims, pads, ndim, solvedim, 0,
+                          n_sys);
   END_PROFILING("forward");
   BEGIN_PROFILING("mpi_communication");
   // Communicate reduced systems
@@ -741,7 +742,10 @@ inline void tridMultiDimBatchSolve_gather_scatter(
     REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r, int n_sys) {
 
   BEGIN_PROFILING("forward");
-  forward(a, b, c, d, aa, cc, dd, sndbuf, dims, pads, ndim, solvedim, n_sys);
+  forward(a, b, c, d, aa, cc, dd, dims, pads, ndim, solvedim, n_sys);
+  // Pack reduced systems (boundaries of each tridiagonal system)
+  copy_boundaries_strided(aa, cc, dd, sndbuf, dims, pads, ndim, solvedim, 0,
+                          n_sys);
   END_PROFILING("forward");
   BEGIN_PROFILING("mpi_communication");
 
