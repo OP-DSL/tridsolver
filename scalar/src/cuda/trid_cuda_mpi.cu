@@ -211,13 +211,13 @@ void reduced_and_backward(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
       reduced_len_g * 3 * bsize * sizeof(REAL), cudaMemcpyHostToDevice, stream);
 #endif
   // Finish the solve for batch
-  BEGIN_PROFILING_CUDA2("pcr_on_reduced", stream);
+  BEGIN_PROFILING_CUDA2("reduced", stream);
   int buf_offset       = 3 * reduced_len_g * batch_start;
   int bound_buf_offset = 2 * batch_start;
   pcr_on_reduced_batched<REAL>(recv_buf + buf_offset,
                                boundaries + bound_buf_offset, bsize, mpi_coord,
                                reduced_len_g, stream);
-  END_PROFILING_CUDA2("pcr_on_reduced", stream);
+  END_PROFILING_CUDA2("reduced", stream);
   // Perform the backward run of the modified thomas algorithm
   BEGIN_PROFILING_CUDA2("thomas_backward", stream);
   backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd,
@@ -520,10 +520,10 @@ void tridMultiDimBatchSolveMPI_allgather(
   END_PROFILING2("mpi_communication");
 
   // Solve the reduced system
-  BEGIN_PROFILING_CUDA2("pcr_on_reduced", 0);
+  BEGIN_PROFILING_CUDA2("reduced", 0);
   pcr_on_reduced_batched<REAL>(recv_buf, boundaries, sys_n,
                                params.mpi_coords[solvedim], reduced_len_g);
-  END_PROFILING_CUDA2("pcr_on_reduced", 0);
+  END_PROFILING_CUDA2("reduced", 0);
   // Do the backward pass to solve for remaining unknowns
   BEGIN_PROFILING_CUDA2("thomas_backward", 0);
   backward_batched<REAL, INC>(dimGrid_x, dimBlock_x, aa, a_pads, cc, c_pads, dd,
