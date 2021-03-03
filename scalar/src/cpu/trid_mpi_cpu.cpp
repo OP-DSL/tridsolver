@@ -64,51 +64,59 @@ const MPI_Datatype mpi_datatype =
     (std::is_same<REAL, double>::value ? MPI_DOUBLE : MPI_FLOAT)
 #endif
 
+// retruns the index of the first element of the sys_idx-th system
+inline int get_sys_start_idx(int sys_idx, int solvedim, const int *dims,
+                             const int *pads, int ndim) {
+  static_assert(MAXDIM == 3,
+                "Index calculation onlz implemented for at most 3D problems");
+  assert(solvedim < ndim && ndim <= MAXDIM);
+  int start_pad = pads[0];
+  if (solvedim == 1) start_pad *= pads[1];
+  int start;
+  if (solvedim == 0) {
+    if (ndim == 1) {
+      start = sys_idx * pads[0];
+    } else {
+      start = (sys_idx / dims[1]) * pads[1] * pads[0] +
+              (sys_idx % dims[1]) * pads[0];
+    }
+  } else {
+    start = (sys_idx / dims[0]) * start_pad + (sys_idx % dims[0]);
+  }
+  return start;
+}
+
+
+// return the difference between the index of the first and the index of the
+// last element of a system s.t. get_sys_start_idx + get_sys_span gives the
+// index of the last element of the system
+inline int get_sys_span(int solvedim, const int *dims, const int *pads) {
+  int result_stride = dims[solvedim] - 1;
+  for (int i = 0; i < solvedim; ++i) {
+    result_stride *= pads[i];
+  }
+  return result_stride;
+}
+
 // Version that accounts for positive and negative padding
 template <typename REAL>
 inline void copy_boundaries_strided(const REAL *aa, const REAL *cc,
                                     const REAL *dd, REAL *sndbuf,
                                     const int *dims, const int *pads, int ndim,
                                     int solvedim, int start_sys, int end_sys) {
+  int result_stride = get_sys_span(solvedim, dims, pads);
 
-  int result_stride = dims[solvedim] - 1;
-  for (int i = 0; i < solvedim; ++i) {
-    result_stride *= pads[i];
-  }
-
-  if (ndim == 1) {
 #pragma omp parallel for
-    for (int id = start_sys; id < end_sys; id++) {
-      int start           = id * pads[0];
-      int end             = start + result_stride;
-      int buf_ind         = id * 6;
-      sndbuf[buf_ind]     = aa[start];
-      sndbuf[buf_ind + 1] = aa[end];
-      sndbuf[buf_ind + 2] = cc[start];
-      sndbuf[buf_ind + 3] = cc[end];
-      sndbuf[buf_ind + 4] = dd[start];
-      sndbuf[buf_ind + 5] = dd[end];
-    }
-  } else {
-#pragma omp parallel for
-    for (int id = start_sys; id < end_sys; id++) {
-      int start;
-      if (solvedim == 0) {
-        start = (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
-      } else if (solvedim == 1) {
-        start = (id / dims[0]) * pads[1] * pads[0] + (id % dims[0]);
-      } else {
-        start = (id / dims[0]) * pads[0] + (id % dims[0]);
-      }
-      int end             = start + result_stride;
-      int buf_ind         = id * 6;
-      sndbuf[buf_ind]     = aa[start];
-      sndbuf[buf_ind + 1] = aa[end];
-      sndbuf[buf_ind + 2] = cc[start];
-      sndbuf[buf_ind + 3] = cc[end];
-      sndbuf[buf_ind + 4] = dd[start];
-      sndbuf[buf_ind + 5] = dd[end];
-    }
+  for (int id = start_sys; id < end_sys; id++) {
+    int start       = get_sys_start_idx(id, solvedim, dims, pads, ndim);
+    int end         = start + result_stride;
+    int buf_ind     = id * 6;
+    sndbuf[buf_ind] = aa[start];
+    sndbuf[buf_ind + 1] = aa[end];
+    sndbuf[buf_ind + 2] = cc[start];
+    sndbuf[buf_ind + 3] = cc[end];
+    sndbuf[buf_ind + 4] = dd[start];
+    sndbuf[buf_ind + 5] = dd[end];
   }
 }
 
@@ -304,12 +312,8 @@ inline void solve_reduced_batched(const MpiSolverParams &params,
                                   const int *pads, int ndim, int solvedim,
                                   int sys_len_r, int start_sys, int end_sys) {
   int n_sys         = end_sys - start_sys;
-  int result_stride = dims[solvedim] - 1;
-  for (int i = 0; i < solvedim; ++i) {
-    result_stride *= pads[i];
-  }
-  int start_pad = pads[0];
-  if (solvedim == 1) start_pad *= pads[1];
+  int result_stride = get_sys_span(solvedim, dims, pads);
+
   // shift buffer
   rcvbuf += start_sys * params.num_mpi_procs[solvedim] * 6;
 
@@ -332,17 +336,10 @@ inline void solve_reduced_batched(const MpiSolverParams &params,
                             dd_r + id * sys_len_r, sys_len_r, 1);
 
     // Write result back
-    int p = params.mpi_coords[solvedim];
-    int start;
-    int g_id = id + start_sys;
-    if (solvedim != 0) {
-      start = (g_id / dims[0]) * start_pad + (g_id % dims[0]);
-    } else if (ndim > 1) {
-      start = (g_id / dims[1]) * pads[1] * pads[0] + (g_id % dims[1]) * pads[0];
-    } else {
-      start = g_id * pads[0];
-    }
-    dd[start]                 = dd_r[id * sys_len_r + p * 2];
+    int p     = params.mpi_coords[solvedim];
+    int g_id  = id + start_sys;
+    int start = get_sys_start_idx(g_id, solvedim, dims, pads, ndim);
+    dd[start] = dd_r[id * sys_len_r + p * 2];
     dd[start + result_stride] = dd_r[id * sys_len_r + p * 2 + 1];
   }
 }
@@ -352,12 +349,7 @@ inline void solve_reduced(const MpiSolverParams &params, const REAL *rcvbuf,
                           REAL *aa_r, REAL *cc_r, REAL *dd_r, REAL *dd,
                           const int *dims, const int *pads, int ndim,
                           int solvedim, int sys_len_r, int n_sys) {
-  int result_stride = dims[solvedim] - 1;
-  for (int i = 0; i < solvedim; ++i) {
-    result_stride *= pads[i];
-  }
-  int start_pad = pads[0];
-  if (solvedim == 1) start_pad *= pads[1];
+  int result_stride = get_sys_span(solvedim, dims, pads);
 
 // Iterate over each reduced system
 #pragma omp parallel for
@@ -378,16 +370,9 @@ inline void solve_reduced(const MpiSolverParams &params, const REAL *rcvbuf,
                             dd_r + id * sys_len_r, sys_len_r, 1);
 
     // Write result back
-    int p = params.mpi_coords[solvedim];
-    int start;
-    if (solvedim != 0) {
-      start = (id / dims[0]) * start_pad + (id % dims[0]);
-    } else if (ndim > 1) {
-      start = (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
-    } else {
-      start = id * pads[0];
-    }
-    dd[start]                 = dd_r[id * sys_len_r + p * 2];
+    int p     = params.mpi_coords[solvedim];
+    int start = get_sys_start_idx(id, solvedim, dims, pads, ndim);
+    dd[start] = dd_r[id * sys_len_r + p * 2];
     dd[start + result_stride] = dd_r[id * sys_len_r + p * 2 + 1];
   }
 }
@@ -424,25 +409,13 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, const REAL *aa,
                 params.communicators[solvedim]);
   END_PROFILING("mpi_communication");
 
-  int result_stride = dims[solvedim] - 1;
-  for (int i = 0; i < solvedim; ++i) {
-    result_stride *= pads[i];
-  }
-  int start_pad = pads[0];
-  if (solvedim == 1) start_pad *= pads[1];
+  int result_stride = get_sys_span(solvedim, dims, pads);
 
 // write initial guess to dd_r, note: b == 1
 #pragma omp parallel for
   for (int id = 0; id < n_sys; ++id) {
-    int start;
-    if (solvedim != 0) {
-      start = (id / dims[0]) * start_pad + (id % dims[0]);
-    } else if (ndim > 1) {
-      start = (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
-    } else {
-      start = id * pads[0];
-    }
-    dd_r[id * sys_len_l_r]                     = dd[start];
+    int start              = get_sys_start_idx(id, solvedim, dims, pads, ndim);
+    dd_r[id * sys_len_l_r] = dd[start];
     dd_r[id * sys_len_l_r + (sys_len_l_r - 1)] = dd[start + result_stride];
   }
 
@@ -480,26 +453,20 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, const REAL *aa,
     double local_norm = 0;
     assert(sys_len_l_r == 2 && "1 need less comp more need nonboundary comp");
     for (int id = 0; id < n_sys; id++) {
-      int start;
-      if (solvedim != 0) {
-        start = (id / dims[0]) * start_pad + (id % dims[0]);
-      } else if (ndim > 1) {
-        start = (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
-      } else {
-        start = id * pads[0];
-      }
+      int start = get_sys_start_idx(id, solvedim, dims, pads, ndim);
       // norm += (a_{0} * x_{-1}  + b_0 * x_0 + c_{0} * x_{1} - d_0)^2
       double diff = dd_r[id * sys_len_l_r] +
                     cc[start] * dd_r[id * sys_len_l_r + 1] - dd[start];
       if (rank) diff += aa[start] * rcvbufL[id];
-      local_norm += diff * diff;
+      double sys_norm = diff * diff;
       // norm += (a_{1} * x_{0}  + b_1 * x_1 + c_{1} * x_{2} - d_1)^2
       diff = aa[start + result_stride] *
                  dd_r[id * sys_len_l_r + (sys_len_l_r - 2)] +
              dd_r[id * sys_len_l_r + (sys_len_l_r - 1)] -
              dd[start + result_stride];
       if (rank != nproc - 1) diff += cc[start + result_stride] * rcvbufR[id];
-      local_norm += diff * diff;
+      sys_norm += diff * diff;
+      local_norm = std::max(local_norm, sys_norm);
     }
     /* sum over all processes */
     BEGIN_PROFILING("mpi_communication");
@@ -513,14 +480,7 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, const REAL *aa,
     assert(sys_len_l_r == 2);
 #pragma omp parallel for
     for (int id = 0; id < n_sys; ++id) {
-      int start;
-      if (solvedim != 0) {
-        start = (id / dims[0]) * start_pad + (id % dims[0]);
-      } else if (ndim > 1) {
-        start = (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
-      } else {
-        start = id * pads[0];
-      }
+      int start = get_sys_start_idx(id, solvedim, dims, pads, ndim);
       // x_0 = (d_0 - a_{0} * x_{-1} - c_{0} * x_{1}) / b_0
       dd_r[id * sys_len_l_r] =
           dd[start] - cc[start] * dd_r[id * sys_len_l_r + 1];
@@ -534,8 +494,9 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, const REAL *aa,
         dd_r[id * sys_len_l_r + (sys_len_l_r - 1)] -=
             cc[start + result_stride] * rcvbufR[id];
     }
-    std::cout << global_norm << " " << global_norm / norm0 << " "
-              << params.jacobi_atol << " " << params.jacobi_rtol << "\n";
+    if (!rank)
+      std::cout << global_norm << " " << global_norm / norm0 << " "
+                << params.jacobi_atol << " " << params.jacobi_rtol << "\n";
     // iter++;
   } while (iter < maxiter && (params.jacobi_atol < global_norm ||
                               params.jacobi_rtol < global_norm / norm0));
@@ -543,15 +504,8 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, const REAL *aa,
 #pragma omp parallel for
   for (int id = 0; id < n_sys; id++) {
     // Write result back
-    int start;
-    if (solvedim != 0) {
-      start = (id / dims[0]) * start_pad + (id % dims[0]);
-    } else if (ndim > 1) {
-      start = (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
-    } else {
-      start = id * pads[0];
-    }
-    dd[start]                 = dd_r[id * sys_len_r];
+    int start = get_sys_start_idx(id, solvedim, dims, pads, ndim);
+    dd[start] = dd_r[id * sys_len_r];
     dd[start + result_stride] = dd_r[id * sys_len_r + (sys_len_l_r - 1)];
   }
 }
@@ -959,59 +913,16 @@ inline void tridMultiDimBatchSolve_gather_scatter(
   BEGIN_PROFILING("backward");
   // Unpack reduced solution
 
-  int result_stride = dims[solvedim] - 1;
-  for (int i = 0; i < solvedim; ++i) {
-    result_stride *= pads[i];
-  }
+  int result_stride = get_sys_span(solvedim, dims, pads);
 
-  if (solvedim == 0) {
-    if (ndim == 1) {
+
 #pragma omp parallel for
-      for (int id = 0; id < n_sys; id++) {
-        // Gather coefficients of a,c,d
-        int data_ind                 = id * pads[0];
-        int buf_ind                  = id * 2;
-        dd[data_ind]                 = rcvbuf[buf_ind];
-        dd[data_ind + result_stride] = rcvbuf[buf_ind + 1];
-      }
-    } else {
-#pragma omp parallel for
-      for (int id = 0; id < n_sys; id++) {
-        // Gather coefficients of a,c,d
-        int data_ind =
-            (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
-        int buf_ind                  = id * 2;
-        dd[data_ind]                 = rcvbuf[buf_ind];
-        dd[data_ind + result_stride] = rcvbuf[buf_ind + 1];
-      }
-    }
-  } else if (solvedim == 1) {
-    // Check if 2D solve
-    if (ndim == 2) {
-#pragma omp parallel for
-      for (int id = 0; id < n_sys; id++) {
-        int start                 = id;
-        int buf_ind               = id * 2;
-        dd[start]                 = rcvbuf[buf_ind];
-        dd[start + result_stride] = rcvbuf[buf_ind + 1];
-      }
-    } else {
-#pragma omp parallel for
-      for (int id = 0; id < n_sys; id++) {
-        int start   = (id / dims[0]) * pads[0] * pads[1] + (id % dims[0]);
-        int buf_ind = id * 2;
-        dd[start]   = rcvbuf[buf_ind];
-        dd[start + result_stride] = rcvbuf[buf_ind + 1];
-      }
-    }
-  } else if (solvedim == 2) {
-#pragma omp parallel for
-    for (int id = 0; id < n_sys; id++) {
-      int start                 = (id / dims[0]) * pads[0] + (id % dims[0]);
-      int buf_ind               = id * 2;
-      dd[start]                 = rcvbuf[buf_ind];
-      dd[start + result_stride] = rcvbuf[buf_ind + 1];
-    }
+  for (int id = 0; id < n_sys; id++) {
+    // Gather coefficients of d
+    int data_ind = get_sys_start_idx(id, solvedim, dims, pads, ndim);
+    int buf_ind  = id * 2;
+    dd[data_ind] = rcvbuf[buf_ind];
+    dd[data_ind + result_stride] = rcvbuf[buf_ind + 1];
   }
 
   backward<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim, n_sys);
