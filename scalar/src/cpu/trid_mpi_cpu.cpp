@@ -108,10 +108,10 @@ inline void copy_boundaries_strided(const REAL *aa, const REAL *cc,
 
 #pragma omp parallel for
   for (int id = start_sys; id < end_sys; id++) {
-    int start       = get_sys_start_idx(id, solvedim, dims, pads, ndim);
-    int end         = start + result_stride;
-    int buf_ind     = id * 6;
-    sndbuf[buf_ind] = aa[start];
+    int start           = get_sys_start_idx(id, solvedim, dims, pads, ndim);
+    int end             = start + result_stride;
+    int buf_ind         = id * 6;
+    sndbuf[buf_ind]     = aa[start];
     sndbuf[buf_ind + 1] = aa[end];
     sndbuf[buf_ind + 2] = cc[start];
     sndbuf[buf_ind + 3] = cc[end];
@@ -505,8 +505,8 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, const REAL *aa,
   for (int id = 0; id < n_sys; id++) {
     // Write result back
     int start = get_sys_start_idx(id, solvedim, dims, pads, ndim);
-    dd[start] = dd_r[id * sys_len_r];
-    dd[start + result_stride] = dd_r[id * sys_len_r + (sys_len_l_r - 1)];
+    dd[start] = dd_r[id * sys_len_l_r];
+    dd[start + result_stride] = dd_r[id * sys_len_l_r + (sys_len_l_r - 1)];
   }
 }
 

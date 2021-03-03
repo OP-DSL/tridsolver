@@ -101,6 +101,8 @@ void test_solver_from_file_padded(const std::string &file_name) {
 
   MpiSolverParams params(cart_comm, mesh.dims().size(), mpi_dims.data(), 32,
                          strategy);
+  params.jacobi_atol = abs_tolerance<Float>;
+  params.jacobi_rtol = rel_tolerance<Float>;
 
   // The size of the local domain.
   std::vector<int> local_sizes(mesh.dims().size());

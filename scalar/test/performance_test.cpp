@@ -16,7 +16,8 @@
 #  include "cpu_mpi_wrappers.hpp"
 
 template <typename Float>
-void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh, int num_iters) {
+void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh,
+                    int num_iters) {
   AlignedArray<Float, 1> d(mesh.d());
 
   // Solve the equations
@@ -35,7 +36,8 @@ void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh, int n
 #  include "cuda_mpi_wrappers.hpp"
 
 template <typename Float>
-void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh, int num_iters) {
+void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh,
+                    int num_iters) {
   GPUMesh<Float> mesh_d(mesh.a(), mesh.b(), mesh.c(), mesh.d(), mesh.dims());
 
   // Solve the equations
@@ -78,7 +80,8 @@ template <typename Float>
 void test_solver_with_generated(const std::vector<int> global_dims,
                                 int solvedim,
                                 MpiSolverParams::MPICommStrategy strategy,
-                                int batch_size, int mpi_parts_in_s, int num_iters) {
+                                int batch_size, int mpi_parts_in_s,
+                                int num_iters) {
   int num_proc, rank;
   MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -96,6 +99,8 @@ void test_solver_with_generated(const std::vector<int> global_dims,
 
   MpiSolverParams params(cart_comm, global_dims.size(), mpi_dims.data(),
                          batch_size, strategy);
+  params.jacobi_atol = abs_tolerance<Float>;
+  params.jacobi_rtol = rel_tolerance<Float>;
 
   // The size of the local domain.
   std::vector<int> local_sizes(global_dims.size());
@@ -104,8 +109,8 @@ void test_solver_with_generated(const std::vector<int> global_dims,
     const int global_dim = global_dims[i];
     size_t domain_offset = params.mpi_coords[i] * (global_dim / mpi_dims[i]);
     local_sizes[i]       = params.mpi_coords[i] == mpi_dims[i] - 1
-                         ? global_dim - domain_offset
-                         : global_dim / mpi_dims[i];
+                               ? global_dim - domain_offset
+                               : global_dim / mpi_dims[i];
   }
 
   print_local_sizes(rank, num_proc, params.num_mpi_procs, params.mpi_coords,
@@ -167,8 +172,8 @@ int main(int argc, char *argv[]) {
       break;
     }
   }
-  assert(ndims < 4 && "ndims must be smaller than MAXDIM");
-  assert(mpi_strat_idx < 4 && mpi_strat_idx > 0 &&
+  assert(ndims < 4 && "ndims must be smaller or equal than MAXDIM");
+  assert(mpi_strat_idx < 5 && mpi_strat_idx > 0 &&
          "No such communication strategy");
   MpiSolverParams::MPICommStrategy strategy =
       MpiSolverParams::MPICommStrategy(mpi_strat_idx);
