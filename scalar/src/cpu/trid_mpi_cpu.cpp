@@ -405,13 +405,13 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, const REAL *aa,
                                  REAL *rcvbuf, REAL *sndbuf, const int *dims,
                                  const int *pads, int ndim, int solvedim,
                                  int sys_len_r, int n_sys) {
-  assert(params.strategy == JACOBI);
+  assert(params.strategy == MpiSolverParams::JACOBI);
   int rank      = params.mpi_coords[solvedim];
   int nproc     = params.num_mpi_procs[solvedim];
   REAL *rcvbufL = rcvbuf;
-  REAL *rcvbufR = rcvbuf + n_sys * sizeof(REAL);
+  REAL *rcvbufR = rcvbuf + n_sys;
   REAL *sndbufL = sndbuf;
-  REAL *sndbufR = sndbuf + n_sys * sizeof(REAL);
+  REAL *sndbufR = sndbuf + n_sys;
   // local length of the system
   constexpr int sys_len_l_r = 2;
 
@@ -446,6 +446,7 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, const REAL *aa,
     dd_r[id * sys_len_l_r + (sys_len_l_r - 1)] = dd[start + result_stride];
   }
 
+  int iter = 0, maxiter = 10;
   do {
     BEGIN_PROFILING("mpi_communication");
 #pragma omp parallel for
@@ -495,7 +496,7 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, const REAL *aa,
       // norm += (a_{1} * x_{0}  + b_1 * x_1 + c_{1} * x_{2} - d_1)^2
       diff = aa[start + result_stride] *
                  dd_r[id * sys_len_l_r + (sys_len_l_r - 2)] +
-             dd_r[id * sys_len_l_r + (sys_len_l_r - 1)] +
+             dd_r[id * sys_len_l_r + (sys_len_l_r - 1)] -
              dd[start + result_stride];
       if (rank != nproc - 1) diff += cc[start + result_stride] * rcvbufR[id];
       local_norm += diff * diff;
@@ -533,8 +534,11 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, const REAL *aa,
         dd_r[id * sys_len_l_r + (sys_len_l_r - 1)] -=
             cc[start + result_stride] * rcvbufR[id];
     }
-  } while (global_norm < params.jacobi_atol ||
-           global_norm / norm0 < params.jacobi_rtol);
+    std::cout << global_norm << " " << global_norm / norm0 << " "
+              << params.jacobi_atol << " " << params.jacobi_rtol << "\n";
+    // iter++;
+  } while (iter < maxiter && (params.jacobi_atol < global_norm ||
+                              params.jacobi_rtol < global_norm / norm0));
 // Iterate over each reduced system
 #pragma omp parallel for
   for (int id = 0; id < n_sys; id++) {

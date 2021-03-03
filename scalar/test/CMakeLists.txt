@@ -2,6 +2,8 @@ add_library(Catch INTERFACE)
 target_include_directories(Catch INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
+add_library(test_common_options INTERFACE)
+target_compile_features(test_common_options INTERFACE cxx_std_17)
 
 if (BUILD_FOR_CPU)
   set(TEST_SOURCES catch_main.cpp test_cpu.cpp)
@@ -11,7 +13,8 @@ if (BUILD_FOR_CPU)
     tests
     Catch
     tridcpu
-    OpenMP::OpenMP_CXX)
+    OpenMP::OpenMP_CXX
+    test_common_options)
   target_include_directories(tests PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
 
   add_test(
@@ -29,7 +32,8 @@ if (BUILD_FOR_CPU)
       Catch
       tridcpu_mpi
       MPI::MPI_CXX
-      OpenMP::OpenMP_CXX)
+      OpenMP::OpenMP_CXX
+      test_common_options)
     target_include_directories(mpi_tests PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
     add_test(
       NAME catch_mpi_test
@@ -44,7 +48,8 @@ if (BUILD_FOR_CPU)
         tridcpu_mpi
         profiling
         MPI::MPI_CXX
-        OpenMP::OpenMP_CXX)
+        OpenMP::OpenMP_CXX
+        test_common_options)
     endif (USE_PROFILING)
   endif (BUILD_FOR_MPI)
 endif (BUILD_FOR_CPU)
@@ -61,7 +66,8 @@ if (BUILD_FOR_GPU)
     cuda_tests
     Catch
     tridcuda
-    OpenMP::OpenMP_CXX)
+    OpenMP::OpenMP_CXX
+    test_common_options)
   target_include_directories(cuda_tests PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
   add_test(
     NAME catch_test_cuda
@@ -82,7 +88,8 @@ if (BUILD_FOR_GPU)
       Catch
       tridcuda_mpi
       OpenMP::OpenMP_CXX
-      MPI::MPI_CXX)
+      MPI::MPI_CXX
+      test_common_options)
     add_test(
       NAME catch_cuda_mpi_test
       COMMAND "mpirun" -np ${MPI_TEST_NUM_PROC} $<TARGET_FILE:cuda_mpi_tests>
@@ -100,7 +107,8 @@ if (BUILD_FOR_GPU)
         tridcuda_mpi
         profiling_cuda
         OpenMP::OpenMP_CXX
-        MPI::MPI_CXX)
+        MPI::MPI_CXX
+        test_common_options)
     endif (USE_PROFILING)
   endif (BUILD_FOR_MPI)
 endif (BUILD_FOR_GPU)

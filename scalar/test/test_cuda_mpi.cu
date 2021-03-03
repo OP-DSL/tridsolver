@@ -22,161 +22,6 @@
 #include <sstream>
 #include <thread>
 
-// Print routine for debugging
-template <typename Container>
-void print_array(const std::string &prompt, const Container &array) {
-  Catch::cout() << prompt << ": [";
-  for (size_t i = 0; i < array.size(); ++i) {
-    Catch::cout() << (i == 0 ? "" : ", ") << std::setprecision(2) << array[i];
-  }
-  Catch::cout() << "]\n";
-}
-
-template <typename Float, unsigned Align>
-void require_allclose(const AlignedArray<Float, Align> &expected,
-                      const AlignedArray<Float, Align> &actual, size_t N = 0,
-                      int stride = 1) {
-  if (N == 0) {
-    assert(expected.size() == actual.size());
-    N = expected.size();
-  }
-  for (size_t j = 0, i = 0; j < N; ++j, i += stride) {
-    CAPTURE(i);
-    CAPTURE(N);
-    CAPTURE(expected[i]);
-    CAPTURE(actual[i]);
-    Float min_val = std::min(std::abs(expected[i]), std::abs(actual[i]));
-    const double abs_tolerance =
-        std::is_same<Float, float>::value ? ABS_TOLERANCE_FLOAT : ABS_TOLERANCE;
-    const double rel_tolerance =
-        std::is_same<Float, float>::value ? REL_TOLERANCE_FLOAT : REL_TOLERANCE;
-    const double tolerance = abs_tolerance + rel_tolerance * min_val;
-    CAPTURE(tolerance);
-    const double diff = std::abs(static_cast<double>(expected[i]) - actual[i]);
-    CAPTURE(diff);
-    REQUIRE(diff <= tolerance);
-  }
-}
-
-template <typename Float>
-void require_allclose(const Float *expected, const Float *actual, size_t N,
-                      int stride = 1, std::string value = "") {
-  for (size_t j = 0, i = 0; j < N; ++j, i += stride) {
-    CAPTURE(value);
-    CAPTURE(N);
-    CAPTURE(i);
-    CAPTURE(expected[i]);
-    CAPTURE(actual[i]);
-    Float min_val = std::min(std::abs(expected[i]), std::abs(actual[i]));
-    const double abs_tolerance =
-        std::is_same<Float, float>::value ? ABS_TOLERANCE_FLOAT : ABS_TOLERANCE;
-    const double rel_tolerance =
-        std::is_same<Float, float>::value ? REL_TOLERANCE_FLOAT : REL_TOLERANCE;
-    const double tolerance = abs_tolerance + rel_tolerance * min_val;
-    CAPTURE(tolerance);
-    const double diff = std::abs(static_cast<double>(expected[i]) - actual[i]);
-    CAPTURE(diff);
-    REQUIRE(diff <= tolerance);
-  }
-}
-
-template <typename Float>
-void require_allclose_padded(const std::vector<Float> &expected,
-                           const std::vector<Float> &actual, size_t N = 0,
-                           int stride = 1) {
-  if (N == 0) {
-    assert(expected.size() == actual.size());
-    N = expected.size();
-  }
-
-  for (size_t j = 0, i = 0; j < N; ++j, i += stride) {
-    CAPTURE(i);
-    CAPTURE(expected[i]);
-    CAPTURE(actual[i]);
-    Float min_val = std::min(std::abs(expected[i]), std::abs(actual[i]));
-    const double abs_tolerance =
-        std::is_same<Float, float>::value ? ABS_TOLERANCE_FLOAT : ABS_TOLERANCE;
-    const double rel_tolerance =
-        std::is_same<Float, float>::value ? REL_TOLERANCE_FLOAT : REL_TOLERANCE;
-    const double tolerance = abs_tolerance + rel_tolerance * min_val;
-    CAPTURE(tolerance);
-    const double diff = std::abs(static_cast<double>(expected[i]) - actual[i]);
-    CAPTURE(diff);
-    REQUIRE(diff <= tolerance);
-  }
-}
-
-// Adds 1 depth of padding to all dimensions
-template <typename Float, unsigned Align>
-void copy_to_padded_array(const AlignedArray<Float, Align> &original,
-                        std::vector<Float> &padded,
-                        std::vector<int> &dims) {
-  assert(dims.size() == 3);
-  std::vector<int> padded_dims = dims;
-  for(int i = 0; i < padded_dims.size(); i++) {
-    // -1 and 1 padding
-    padded_dims[i] += 2;
-  }
-  assert(padded.size() == padded_dims[0] * padded_dims[1] * padded_dims[2]);
-
-  for(int z = -1; z < dims[2] + 1; z++) {
-    for(int y = -1; y < dims[1] + 1; y++) {
-      for(int x = -1; x < dims[0] + 1; x++) {
-        int array_index = (z + 1) * padded_dims[1] * padded_dims[0]
-                          + (y + 1) * padded_dims[0] + (x + 1);
-        if(x == -1 || x == dims[0] || y == -1 || y == dims[1]
-           || z == -1 || z == dims[2]) {
-          padded[array_index] = 0.0;
-        } else {
-          int aligned_array_index = z * dims[1] * dims[0] + y * dims[0] + x;
-          padded[array_index] = original[aligned_array_index];
-        }
-      }
-    }
-  }
-}
-
-template <typename Float> struct ToMpiDatatype {};
-
-template <> struct ToMpiDatatype<double> {
-  static const MPI_Datatype value; // = MPI_DOUBLE;
-};
-const MPI_Datatype ToMpiDatatype<double>::value = MPI_DOUBLE;
-
-template <> struct ToMpiDatatype<float> {
-  static const MPI_Datatype value; // = MPI_FLOAT;
-};
-const MPI_Datatype ToMpiDatatype<float>::value = MPI_FLOAT;
-
-// Copies the local domain defined by `local_sizes` and `offsets` from the mesh.
-//
-// The 0th dimension is the contiguous one. The function is recursive; `dim` is
-// current dimension, should equal one less than the number of dimensions when
-// called from outside.
-//
-// `global_strides` is the product of the all global sizes in the lower
-// dimensions (e.g. `global_strides[0] == 1`).
-template <typename Float, unsigned Alignment>
-void copy_strided(const AlignedArray<Float, Alignment> &src,
-                  AlignedArray<Float, Alignment> &dest,
-                  const std::vector<int> &local_sizes,
-                  const std::vector<int> &offsets,
-                  const std::vector<int> &global_strides, size_t dim,
-                  int global_offset = 0) {
-  if (dim == 0) {
-    for (int i = 0; i < local_sizes[dim]; ++i) {
-      dest.push_back(src[global_offset + offsets[dim] + i]);
-    }
-  } else {
-    for (int i = 0; i < local_sizes[dim]; ++i) {
-      const int new_global_offset =
-          global_offset + (offsets[dim] + i) * global_strides[dim];
-      copy_strided(src, dest, local_sizes, offsets, global_strides, dim - 1,
-                   new_global_offset);
-    }
-  }
-}
-
 template <typename Float, int INC, MpiSolverParams::MPICommStrategy strategy>
 void test_solver_from_file(const std::string &file_name) {
   // The dimension of the MPI decomposition is the same as solve_dim
@@ -211,8 +56,8 @@ void test_solver_from_file(const std::string &file_name) {
     const int global_dim = mesh.dims()[i];
     domain_offsets[i]    = params.mpi_coords[i] * (global_dim / mpi_dims[i]);
     local_sizes[i]       = params.mpi_coords[i] == mpi_dims[i] - 1
-                         ? global_dim - domain_offsets[i]
-                         : global_dim / mpi_dims[i];
+                               ? global_dim - domain_offsets[i]
+                               : global_dim / mpi_dims[i];
     global_strides[i] = i == 0 ? 1 : global_strides[i - 1] * mesh.dims()[i - 1];
     domain_size *= local_sizes[i];
   }
@@ -287,8 +132,8 @@ void test_solver_from_file_padded(const std::string &file_name) {
     const int global_dim = mesh.dims()[i];
     domain_offsets[i]    = params.mpi_coords[i] * (global_dim / mpi_dims[i]);
     local_sizes[i]       = params.mpi_coords[i] == mpi_dims[i] - 1
-                         ? global_dim - domain_offsets[i]
-                         : global_dim / mpi_dims[i];
+                               ? global_dim - domain_offsets[i]
+                               : global_dim / mpi_dims[i];
     global_strides[i] = i == 0 ? 1 : global_strides[i - 1] * mesh.dims()[i - 1];
     domain_size *= local_sizes[i];
   }
@@ -308,8 +153,8 @@ void test_solver_from_file_padded(const std::string &file_name) {
                local_sizes.size() - 1);
 
   std::vector<int> padded_dims = local_sizes;
-  int padded_size = 1;
-  for(int i = 0; i < padded_dims.size(); i++) {
+  int padded_size              = 1;
+  for (int i = 0; i < padded_dims.size(); i++) {
     padded_dims[i] += 2;
     padded_size *= padded_dims[i];
   }
@@ -327,8 +172,8 @@ void test_solver_from_file_padded(const std::string &file_name) {
   copy_to_padded_array(d, d_p, local_sizes);
   copy_to_padded_array(u, u_p, local_sizes);
 
-  int offset_to_first_element = padded_dims[1] * padded_dims[0]
-                                + padded_dims[0] + 1;
+  int offset_to_first_element =
+      padded_dims[1] * padded_dims[0] + padded_dims[0] + 1;
 
   Float *a_d, *b_d, *c_d, *d_d, *u_d;
   cudaMalloc((void **)&a_d, padded_size * sizeof(Float));
@@ -337,11 +182,16 @@ void test_solver_from_file_padded(const std::string &file_name) {
   cudaMalloc((void **)&d_d, padded_size * sizeof(Float));
   cudaMalloc((void **)&u_d, padded_size * sizeof(Float));
 
-  cudaMemcpy(a_d, a_p.data(), a_p.size() * sizeof(Float), cudaMemcpyHostToDevice);
-  cudaMemcpy(b_d, b_p.data(), b_p.size() * sizeof(Float), cudaMemcpyHostToDevice);
-  cudaMemcpy(c_d, c_p.data(), c_p.size() * sizeof(Float), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_d, d_p.data(), d_p.size() * sizeof(Float), cudaMemcpyHostToDevice);
-  cudaMemcpy(u_d, u_zero.data(), d_p.size() * sizeof(Float), cudaMemcpyHostToDevice);
+  cudaMemcpy(a_d, a_p.data(), a_p.size() * sizeof(Float),
+             cudaMemcpyHostToDevice);
+  cudaMemcpy(b_d, b_p.data(), b_p.size() * sizeof(Float),
+             cudaMemcpyHostToDevice);
+  cudaMemcpy(c_d, c_p.data(), c_p.size() * sizeof(Float),
+             cudaMemcpyHostToDevice);
+  cudaMemcpy(d_d, d_p.data(), d_p.size() * sizeof(Float),
+             cudaMemcpyHostToDevice);
+  cudaMemcpy(u_d, u_zero.data(), d_p.size() * sizeof(Float),
+             cudaMemcpyHostToDevice);
 
   tridmtsvStridedBatchMPIWrapper<Float, INC>(
       params, a_d + offset_to_first_element, b_d + offset_to_first_element,
@@ -350,9 +200,11 @@ void test_solver_from_file_padded(const std::string &file_name) {
       local_sizes.data(), padded_dims.data(), offset_to_first_element);
 
   if (!INC) {
-    cudaMemcpy(d_p.data(), d_d, sizeof(Float) * d_p.size(), cudaMemcpyDeviceToHost);
+    cudaMemcpy(d_p.data(), d_d, sizeof(Float) * d_p.size(),
+               cudaMemcpyDeviceToHost);
   } else {
-    cudaMemcpy(d_p.data(), u_d, sizeof(Float) * d_p.size(), cudaMemcpyDeviceToHost);
+    cudaMemcpy(d_p.data(), u_d, sizeof(Float) * d_p.size(),
+               cudaMemcpyDeviceToHost);
   }
   // Check result
   require_allclose_padded(u_p, d_p);
@@ -513,17 +365,21 @@ TEMPLATE_TEST_CASE_SIG("cuda solver mpi: solveZ", "[solver][solvedim:2]",
 
 TEMPLATE_TEST_CASE_SIG("cuda: padded", "[padded]",
                        ((typename TestType, ResDest INC,
-                       MpiSolverParams::MPICommStrategy strategy),
-                       TestType, INC, strategy), PARAM_COMBOS) {
+                         MpiSolverParams::MPICommStrategy strategy),
+                        TestType, INC, strategy),
+                       PARAM_COMBOS) {
   SECTION("ndims: 3") {
     SECTION("solvedim: 0") {
-      test_solver_from_file_padded<TestType, INC, strategy>("files/three_dim_large_solve0");
+      test_solver_from_file_padded<TestType, INC, strategy>(
+          "files/three_dim_large_solve0");
     }
     SECTION("solvedim: 1") {
-      test_solver_from_file_padded<TestType, INC, strategy>("files/three_dim_large_solve1");
+      test_solver_from_file_padded<TestType, INC, strategy>(
+          "files/three_dim_large_solve1");
     }
     SECTION("solvedim: 2") {
-      test_solver_from_file_padded<TestType, INC, strategy>("files/three_dim_large_solve2");
+      test_solver_from_file_padded<TestType, INC, strategy>(
+          "files/three_dim_large_solve2");
     }
   }
 }

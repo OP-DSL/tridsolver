@@ -1,35 +1,11 @@
 #include "catch.hpp"
 #include "utils.hpp"
+#include "catch_utils.hpp"
 
 #include <trid_cpu.h>
 #include <trid_simd.h>
 
 #include <memory>
-
-template <typename Float, unsigned Align>
-void require_allclose(const AlignedArray<Float, Align> &expected,
-                      const AlignedArray<Float, Align> &actual, size_t N = 0,
-                      int stride = 1) {
-  if (N == 0) {
-    assert(expected.size() == actual.size());
-    N = expected.size();
-  }
-  for (size_t j = 0, i = 0; j < N; ++j, i += stride) {
-    CAPTURE(i);
-    CAPTURE(expected[i]);
-    CAPTURE(actual[i]);
-    Float min_val = std::min(std::abs(expected[i]), std::abs(actual[i]));
-    const double abs_tolerance =
-        std::is_same<Float, float>::value ? ABS_TOLERANCE_FLOAT : ABS_TOLERANCE;
-    const double rel_tolerance =
-        std::is_same<Float, float>::value ? REL_TOLERANCE_FLOAT : REL_TOLERANCE;
-    const double tolerance = abs_tolerance + rel_tolerance * min_val;
-    CAPTURE(tolerance);
-    const double diff = std::abs(static_cast<double>(expected[i]) - actual[i]);
-    CAPTURE(diff);
-    REQUIRE(diff <= tolerance);
-  }
-}
 
 template <typename Float>
 tridStatus_t tridStridedBatchWrapper(const Float *a, const Float *b,

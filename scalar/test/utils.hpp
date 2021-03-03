@@ -16,6 +16,13 @@ constexpr double REL_TOLERANCE       = 1e-11;
 constexpr double ABS_TOLERANCE_FLOAT = 1e-6;
 constexpr double REL_TOLERANCE_FLOAT = 1e-5;
 
+template <typename REAL>
+double abs_tolerance =
+    std::is_same<REAL, double>::value ? ABS_TOLERANCE : ABS_TOLERANCE_FLOAT;
+template <typename REAL>
+double rel_tolerance =
+    std::is_same<REAL, double>::value ? REL_TOLERANCE : REL_TOLERANCE_FLOAT;
+
 template <typename T, unsigned Align> class AlignedArray {
   char *padded_data;
   size_t _size, _capacity;
@@ -59,7 +66,6 @@ public:
   size_t size() const { return _size; }
 
   size_t capacity() const { return _capacity; }
-
 };
 
 template <typename Float, unsigned Align = 1> class MeshLoader {
