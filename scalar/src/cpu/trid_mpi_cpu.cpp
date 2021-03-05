@@ -98,6 +98,287 @@ inline int get_sys_span(int solvedim, const int *dims, const int *pads) {
   return result_stride;
 }
 
+// Transform the reduced system arise from forward pass s.t. the start row for
+// each node gives a tridiagonal system. Basically performs half of the first
+// iteration of the PCR.
+// \begin{equation}
+//   \left[\begin{array}{cccccc|c}
+//      1   & c_0 &     &        &        &        &  d_0   \\
+//      a_1 &  1  & c_1 &        &        &        &  d_1   \\\hline
+//          & a_2 &  1  & c_2    &        &        &  d_2   \\
+//          &     & a_3 &  1     & c_3    &        &  d_3   \\\hline
+//          &     &     & \ddots & \ddots & \ddots & \vdots \\
+//   \end{array}\right]
+//   \Rightarrow
+//   \left[\begin{array}{cccccc|c}
+//      1     &   & c_0^* &        &        &        &  d_0^* \\
+//      a_1   & 1 & c_1   &        &        &        &  d_1   \\\hline
+//      a_2^* &   &  1    &        & c_2^*  &        &  d_2^* \\
+//            &   & a_3   &  1     & c_3    &        &  d_3   \\\hline
+//            &   &       & \ddots & \ddots & \ddots & \vdots \\
+//   \end{array}\right]
+// \end{equation}
+template <typename REAL>
+void eliminate_row_from_reduced(const MpiSolverParams &params, REAL *aa,
+                                REAL *cc, REAL *dd, REAL *sndbuf, REAL *rcvbuf,
+                                const int *dims, const int *pads, int ndim,
+                                int solvedim, int start_sys, int end_sys,
+                                int result_stride = -1, int tag_ = -1) {
+  assert(start_sys < end_sys);
+  MPI_Request rcv_request, snd_request;
+  const int rank             = params.mpi_coords[solvedim];
+  const int nproc            = params.num_mpi_procs[solvedim];
+  const int n_sys            = end_sys - start_sys;
+  constexpr int nvar_per_sys = 3; // a, c, d
+  const int tag              = tag_ == -1 ? 1242 : tag_;
+  if (result_stride < 0) {
+    result_stride = get_sys_span(solvedim, dims, pads);
+  }
+  if (rank) {
+    MPI_Irecv(rcvbuf + start_sys * nvar_per_sys, n_sys * nvar_per_sys,
+              MPI_DATATYPE(REAL), rank - 1, tag, params.communicators[solvedim],
+              &rcv_request);
+  }
+  for (int id = start_sys; id < end_sys; ++id) {
+    int start           = get_sys_start_idx(id, solvedim, dims, pads, ndim);
+    int idx             = start + result_stride;
+    int buf_idx         = id * nvar_per_sys;
+    sndbuf[buf_idx]     = aa[idx];
+    sndbuf[buf_idx + 1] = cc[idx];
+    sndbuf[buf_idx + 2] = dd[idx];
+  }
+  if (rank != nproc - 1) {
+    MPI_Isend(sndbuf + start_sys * nvar_per_sys, n_sys * nvar_per_sys,
+              MPI_DATATYPE(REAL), rank + 1, tag, params.communicators[solvedim],
+              &snd_request);
+  }
+  // clang-format off
+  // 1st - c_1 * 2nd:
+  // \begin{equation}
+  //   \left[\begin{array}{cccc|c}
+  //     a_1 &  1  & c_1 &     & d_1 \\
+  //         & a_2 &  1  & c_2 & d_2 \\
+  //   \end{array}\right] =
+  //   \left[\begin{array}{cccc|c}
+  //     \frac{a_1}{1 - a_2c_1} &  1  &   & \frac{-c_2c_1}{1 - a_2c_1} & \frac{d_1-d_2c_1}{1 - a_2c_1} \\
+  //                            & a_2 & 1 &            c_2             & d_2 \\
+  // \end{array}\right]
+  // \end{equation}
+  // clang-format on
+  for (int id = start_sys; id < end_sys; ++id) {
+    int top    = get_sys_start_idx(id, solvedim, dims, pads, ndim);
+    int bottom = top + result_stride;
+    REAL bbi   = 1 / (1 - aa[bottom] * cc[top]);
+    dd[top]    = (dd[top] - dd[bottom] * cc[top]) * bbi;
+    if (rank) {
+      aa[top] = aa[top] * bbi;
+    }
+    if (rank != nproc - 1) {
+      cc[top] = -cc[bottom] * cc[top] * bbi;
+    } else {
+      cc[top] = 0.0;
+    }
+  }
+  if (rank) {
+    MPI_Status status;
+    MPI_Wait(&rcv_request, &status);
+    // clang-format off
+    // 1st - a_1 * row_from_prev_rank:
+    // \begin{equation}
+    //   \left[\begin{array}{ccccc|c}
+    //      a_0 &  1  & c_0 &     &     & d_0 \\
+    //          & a_1 &  1  &     & c_1 & d_1 \\
+    //          &     & a_2 &  1  & c_2 & d_2 \\
+    //   \end{array}\right] =
+    //   \left[\begin{array}{ccccc|c}
+    //                  a_0         &  1  & c_0 &     &                      & d_0 \\
+    //     \frac{-a_0a_1}{1-c_0a_1} &     &  1  &     & \frac{c_1}{1-c_0a_1} & \frac{d_1-d_0a_1}{1-c_0a_1} \\
+    //                              &     & a_2 &  1  &             c_2      & d_2 \
+    //   \end{array}\right]
+    // \end{equation}
+    // clang-format on
+    for (int id = start_sys; id < end_sys; ++id) {
+      int top     = get_sys_start_idx(id, solvedim, dims, pads, ndim);
+      int buf_idx = id * nvar_per_sys; // order: +0:a, +1:c, +2:d
+      REAL am1    = rcvbuf[buf_idx];
+      REAL cm1    = rcvbuf[buf_idx + 1];
+      REAL dm1    = rcvbuf[buf_idx + 2];
+      REAL bbi    = 1 / (1 - cm1 * aa[top]);
+      dd[top]     = (dd[top] - dm1 * aa[top]) * bbi;
+      aa[top]     = -aa[top] * am1 * bbi;
+      cc[top]     = cc[top] * bbi;
+    }
+  }
+  if (rank != nproc - 1) {
+    MPI_Status status;
+    MPI_Wait(&snd_request, &status);
+  }
+}
+
+// Variant for eliminate_row_from_reduced. This function saves the state of the
+// first row on the first rank and eliminates a_0 on the second rank. The new
+// tridiagonal system is on rank 1 - n.
+template <typename REAL>
+void eliminate_row_from_reduced_for_jacobi(
+    const MpiSolverParams &params, REAL *aa, REAL *cc, REAL *dd, REAL *sndbuf,
+    REAL *rcvbuf, const int *dims, const int *pads, int ndim, int solvedim,
+    int start_sys, int end_sys, int result_stride = -1) {
+  const int rank  = params.mpi_coords[solvedim];
+  const int nproc = params.num_mpi_procs[solvedim];
+  // we can reduce the size of the whole system by one since a_0 on rank = 1 can
+  // be 0 after elimination which reduce the number of required jacobi
+  // iterations.
+  constexpr int tag          = 1242;
+  constexpr int nvar_per_sys = 3;
+  if (result_stride < 0) {
+    result_stride = get_sys_span(solvedim, dims, pads);
+  }
+  if (!rank && nproc > 1) {
+#pragma omp parallel for
+    for (int id = start_sys; id < end_sys; ++id) {
+      int start           = get_sys_start_idx(id, solvedim, dims, pads, ndim);
+      int last            = start + result_stride;
+      REAL bbi            = 1 / (1 - aa[last] * cc[start]);
+      cc[last]            = cc[last] * bbi;
+      dd[last]            = (dd[last] - aa[last] * dd[start]) * bbi;
+      aa[last]            = 0;
+      int buf_idx         = id * nvar_per_sys;
+      sndbuf[buf_idx]     = aa[last];
+      sndbuf[buf_idx + 1] = cc[last];
+      sndbuf[buf_idx + 2] = dd[last];
+    }
+    MPI_Request snd_request;
+    int n_sys = end_sys - start_sys;
+    MPI_Isend(sndbuf + start_sys * nvar_per_sys, n_sys * nvar_per_sys,
+              MPI_DATATYPE(REAL), rank + 1, tag, params.communicators[solvedim],
+              &snd_request);
+    MPI_Status status;
+    MPI_Wait(&snd_request, &status);
+
+  } else {
+    eliminate_row_from_reduced(params, aa, cc, dd, sndbuf, rcvbuf, dims, pads,
+                               ndim, solvedim, start_sys, end_sys,
+                               result_stride, tag);
+  }
+}
+
+// Get the result for the last row on each node after reduced solve with
+// eliminate_row_from_reduced and reduced solver. The solution for the first row
+// is in dd_r, the solution for the first and last row is stored in dd on exit.
+// Each node receive one value from the next node to calculate last row.
+// iteration of the PCR. Note the new zeros in a, and c are not written to the
+// arrays. \begin{equation}
+//   \left[\begin{array}{cccccc|c}
+//      1   &     &     &        &        &        &  d_0   \\
+//      a_1 &  1  & c_1 &        &        &        &  d_1   \\\hline
+//          &     &  1  &        &        &        &  d_2   \\
+//          &     & a_3 &  1     & c_3    &        &  d_3   \\\hline
+//          &     &     & \ddots & \ddots & \ddots & \vdots \\
+//   \end{array}\right]
+//   \Rightarrow
+//   \left[\begin{array}{cccccc|c}
+//     1 &   &   &   &        & &  d_0   \\
+//       & 1 &   &   &        & &  d_1^* \\\hline
+//       &   & 1 &   &        & &  d_2   \\
+//       &   &   & 1 &        & &  d_3^* \\\hline
+//       &   &   &   & \ddots & & \vdots \\
+//   \end{array}\right]
+// \end{equation}
+template <typename REAL>
+void compute_last_for_reduced(const MpiSolverParams &params, const REAL *aa,
+                              const REAL *cc, REAL *dd, const REAL *dd_r,
+                              REAL *rcvbuf, const int *dims, const int *pads,
+                              int ndim, int solvedim, int start_sys,
+                              int end_sys, int result_stride = -1,
+                              int tag_ = -1) {
+  assert(start_sys < end_sys);
+  MPI_Request rcv_request, snd_request;
+  const int rank  = params.mpi_coords[solvedim];
+  const int nproc = params.num_mpi_procs[solvedim];
+  const int n_sys = end_sys - start_sys;
+  const int tag   = tag_ == -1 ? 1342 : tag_;
+  if (result_stride < 0) {
+    result_stride = get_sys_span(solvedim, dims, pads);
+  }
+  if (rank != nproc - 1) {
+    MPI_Irecv(rcvbuf + start_sys, n_sys, MPI_DATATYPE(REAL), rank + 1, tag,
+              params.communicators[solvedim], &rcv_request);
+  }
+  if (rank) {
+    MPI_Isend(dd_r + start_sys, n_sys, MPI_DATATYPE(REAL), rank - 1, tag,
+              params.communicators[solvedim], &snd_request);
+  }
+  if (rank != nproc - 1) {
+    MPI_Status status;
+    MPI_Wait(&rcv_request, &status);
+  }
+  // clang-format off
+  // 2nd - a_2 * 1st - c_2 * row_from_next_node:
+  // \begin{equation}
+  //   \left[\begin{array}{cccc|c}
+  //         &  1  &   &     & d_1 \\
+  //         & a_2 & 1 & c_2 & d_2 \\\hline
+  //         &     &   &  1  & d_3 \\
+  //   \end{array}\right] =
+  //   \left[\begin{array}{cccc|c}
+  //         &  1  &   &     & d_1 \\
+  //         &     & 1 &     & d_2 - a_2d_1 - c_2d_3 \\\hline
+  //         &     &   &  1  & d_3 \\
+  // \end{array}\right]
+  // \end{equation}
+  // clang-format on
+  for (int id = start_sys; id < end_sys; ++id) {
+    int top    = get_sys_start_idx(id, solvedim, dims, pads, ndim);
+    int bottom = top + result_stride;
+    dd[top]    = dd_r[id];
+    dd[bottom] = (dd[bottom] - aa[bottom] * dd[top]);
+    if (rank != nproc - 1) {
+      dd[bottom] = dd[bottom] - cc[bottom] * rcvbuf[id];
+    }
+  }
+  if (rank) {
+    MPI_Status status;
+    MPI_Wait(&snd_request, &status);
+  }
+}
+
+// Variant for compute_last_for_reduced, this function handles rank 0 as if it
+// was not part of the reduced solve.
+template <typename REAL>
+void compute_last_for_reduced_jacobi(const MpiSolverParams &params,
+                                     const REAL *aa, const REAL *cc, REAL *dd,
+                                     const REAL *dd_r, REAL *rcvbuf,
+                                     const int *dims, const int *pads, int ndim,
+                                     int solvedim, int start_sys, int end_sys,
+                                     int result_stride = -1) {
+  assert(start_sys < end_sys);
+  const int rank    = params.mpi_coords[solvedim];
+  const int nproc   = params.num_mpi_procs[solvedim];
+  constexpr int tag = 1342;
+  if (result_stride < 0) {
+    result_stride = get_sys_span(solvedim, dims, pads);
+  }
+  if (!rank && nproc > 1) {
+    MPI_Request rcv_request;
+    const int n_sys = end_sys - start_sys;
+    MPI_Irecv(rcvbuf + start_sys, n_sys, MPI_DATATYPE(REAL), rank + 1, tag,
+              params.communicators[solvedim], &rcv_request);
+    MPI_Status status;
+    MPI_Wait(&rcv_request, &status);
+#pragma omp parallel for
+    for (int id = start_sys; id < end_sys; ++id) {
+      int top    = get_sys_start_idx(id, solvedim, dims, pads, ndim);
+      int bottom = top + result_stride;
+      // dd[top]    = dd_r[id]; rank 0 does not compute solution
+      dd[bottom] = dd[bottom] - cc[bottom] * rcvbuf[id];
+      dd[top]    = dd[top] - cc[top] * dd[bottom];
+    }
+  } else {
+    compute_last_for_reduced(params, aa, cc, dd, dd_r, rcvbuf, dims, pads, ndim,
+                             solvedim, start_sys, end_sys, result_stride, tag);
+  }
+}
+
 // Version that accounts for positive and negative padding
 template <typename REAL>
 inline void copy_boundaries_strided(const REAL *aa, const REAL *cc,
@@ -315,7 +596,7 @@ inline void solve_reduced_batched(const MpiSolverParams &params,
   int result_stride = get_sys_span(solvedim, dims, pads);
 
   // shift buffer
-  rcvbuf += start_sys * params.num_mpi_procs[solvedim] * 6;
+  rcvbuf += start_sys * sys_len_r * 3;
 
 // Iterate over each reduced system
 #pragma omp parallel for
@@ -380,25 +661,20 @@ inline void solve_reduced(const MpiSolverParams &params, const REAL *rcvbuf,
 // Solve reduced system with jacobi iterations.
 // aa, cc, dd stores the result of the forward run. For each node for each
 // system the first and last row of aa, cc, dd will create the reduced system,
-// b_i = 1 everywhere. dd_r is an array with size at least 2 * n_sys will store
+// b_i = 1 everywhere. dd_r is an array with size at least n_sys will store
 // the intermediate result of the jacobi iteration for the node. sndbuf and
-// rcvbuf must be an array with size at least 2*n_sys.
-// the solution of the reduced system will be stored in dd
+// rcvbuf must be an array with size at least n_sys. the solution of the
+// reduced system will be stored in dd
 template <typename REAL>
-inline void solve_reduced_jacobi(const MpiSolverParams &params, const REAL *aa,
-                                 const REAL *cc, REAL *dd, REAL *dd_r,
-                                 REAL *rcvbuf, REAL *sndbuf, const int *dims,
-                                 const int *pads, int ndim, int solvedim,
-                                 int sys_len_r, int n_sys) {
+inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
+                                 REAL *cc, REAL *dd, REAL *dd_r, REAL *rcvbuf,
+                                 REAL *sndbuf, const int *dims, const int *pads,
+                                 int ndim, int solvedim, int n_sys) {
   assert(params.strategy == MpiSolverParams::JACOBI);
   int rank      = params.mpi_coords[solvedim];
   int nproc     = params.num_mpi_procs[solvedim];
   REAL *rcvbufL = rcvbuf;
   REAL *rcvbufR = rcvbuf + n_sys;
-  REAL *sndbufL = sndbuf;
-  REAL *sndbufR = sndbuf + n_sys;
-  // local length of the system
-  constexpr int sys_len_l_r = 2;
 
   // norm comp
   int global_sys_len = 0;
@@ -411,15 +687,24 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, const REAL *aa,
 
   int result_stride = get_sys_span(solvedim, dims, pads);
 
+
+  eliminate_row_from_reduced_for_jacobi(params, aa, cc, dd, rcvbuf, sndbuf,
+                                        dims, pads, ndim, solvedim, 0, n_sys,
+                                        result_stride);
+  // at this point rank 1 - nproc give a tridiagonal system. We will solve this
+  // with the jacobi iteration, rank 0 does not do anything but communication
+
 // write initial guess to dd_r, note: b == 1
 #pragma omp parallel for
   for (int id = 0; id < n_sys; ++id) {
-    int start              = get_sys_start_idx(id, solvedim, dims, pads, ndim);
-    dd_r[id * sys_len_l_r] = dd[start];
-    dd_r[id * sys_len_l_r + (sys_len_l_r - 1)] = dd[start + result_stride];
+    int start = get_sys_start_idx(id, solvedim, dims, pads, ndim);
+    if (rank)
+      dd_r[id] = dd[start];
+    else {
+      dd_r[id] = 0;
+    }
   }
 
-  int iter = 0, maxiter = 10;
   do {
     BEGIN_PROFILING("mpi_communication");
 #pragma omp parallel for
@@ -438,35 +723,31 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, const REAL *aa,
       // copy boundaries and send to negihbours
 #pragma omp parallel for
     for (int id = 0; id < n_sys; ++id) {
-      sndbufL[id] = dd_r[id * sys_len_l_r];
-      sndbufR[id] = dd_r[id * sys_len_l_r + (sys_len_l_r - 1)];
+      sndbuf[id] = dd_r[id];
     }
     if (rank)
-      MPI_Isend(sndbufL, n_sys, MPI_DATATYPE(REAL), rank - 1, 3,
+      MPI_Isend(sndbuf, n_sys, MPI_DATATYPE(REAL), rank - 1, 3,
                 params.communicators[solvedim], &req[2]);
     if (rank != nproc - 1)
-      MPI_Isend(sndbufR, n_sys, MPI_DATATYPE(REAL), rank + 1, 2,
+      MPI_Isend(sndbuf, n_sys, MPI_DATATYPE(REAL), rank + 1, 2,
                 params.communicators[solvedim], &req[3]);
     MPI_Waitall(4, req, MPI_STATUS_IGNORE);
     END_PROFILING("mpi_communication");
     /* calculate error norm - boundary */
     double local_norm = 0;
-    assert(sys_len_l_r == 2 && "1 need less comp more need nonboundary comp");
-    for (int id = 0; id < n_sys; id++) {
-      int start = get_sys_start_idx(id, solvedim, dims, pads, ndim);
-      // norm += (a_{0} * x_{-1}  + b_0 * x_0 + c_{0} * x_{1} - d_0)^2
-      double diff = dd_r[id * sys_len_l_r] +
-                    cc[start] * dd_r[id * sys_len_l_r + 1] - dd[start];
-      if (rank) diff += aa[start] * rcvbufL[id];
-      double sys_norm = diff * diff;
-      // norm += (a_{1} * x_{0}  + b_1 * x_1 + c_{1} * x_{2} - d_1)^2
-      diff = aa[start + result_stride] *
-                 dd_r[id * sys_len_l_r + (sys_len_l_r - 2)] +
-             dd_r[id * sys_len_l_r + (sys_len_l_r - 1)] -
-             dd[start + result_stride];
-      if (rank != nproc - 1) diff += cc[start + result_stride] * rcvbufR[id];
-      sys_norm += diff * diff;
-      local_norm = std::max(local_norm, sys_norm);
+    if (rank) {
+      for (int id = 0; id < n_sys; id++) {
+        int start = get_sys_start_idx(id, solvedim, dims, pads, ndim);
+        REAL dm1  = rcvbufL[id];
+        REAL dp1  = rcvbufR[id];
+        // norm += (a_{0} * x_{-1}  + b_0 * x_0 + c_{0} * x_{1} - d_0)^2
+        double diff = dd_r[id] - dd[start];
+        if (rank) diff += aa[start] * dm1;
+        if (rank != nproc - 1) diff += cc[start] * dp1;
+
+        double sys_norm = diff * diff;
+        local_norm      = std::max(local_norm, sys_norm);
+      }
     }
     /* sum over all processes */
     BEGIN_PROFILING("mpi_communication");
@@ -476,38 +757,25 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, const REAL *aa,
     if (norm0 < 0) norm0 = global_norm;
     END_PROFILING("mpi_communication");
     /* correct the solution for this iteration */
-    /* only implemented on boundaries */
-    assert(sys_len_l_r == 2);
+    if (rank) {
 #pragma omp parallel for
-    for (int id = 0; id < n_sys; ++id) {
-      int start = get_sys_start_idx(id, solvedim, dims, pads, ndim);
-      // x_0 = (d_0 - a_{0} * x_{-1} - c_{0} * x_{1}) / b_0
-      dd_r[id * sys_len_l_r] =
-          dd[start] - cc[start] * dd_r[id * sys_len_l_r + 1];
-      if (rank) dd_r[id * sys_len_l_r] -= aa[start] * rcvbufL[id];
-      // x_1 = (d_1 - a_{1} * x_{0} - c_{1} * x_{2}) / b_1
-      dd_r[id * sys_len_l_r + (sys_len_l_r - 1)] =
-          dd[start + result_stride] -
-          aa[start + result_stride] *
-              dd_r[id * sys_len_l_r + (sys_len_l_r - 2)];
-      if (rank != nproc - 1)
-        dd_r[id * sys_len_l_r + (sys_len_l_r - 1)] -=
-            cc[start + result_stride] * rcvbufR[id];
+      for (int id = 0; id < n_sys; ++id) {
+        int start = get_sys_start_idx(id, solvedim, dims, pads, ndim);
+        // x_0 = (d_0 - a_{0} * x_{-1} - c_{0} * x_{1}) / b_0
+        dd_r[id] = dd[start];
+        if (rank != nproc - 1) dd_r[id] -= cc[start] * rcvbufR[id];
+        if (rank) dd_r[id] -= aa[start] * rcvbufL[id];
+      }
     }
     if (!rank)
-      std::cout << global_norm << " " << global_norm / norm0 << " "
-                << params.jacobi_atol << " " << params.jacobi_rtol << "\n";
-    // iter++;
-  } while (iter < maxiter && (params.jacobi_atol < global_norm ||
-                              params.jacobi_rtol < global_norm / norm0));
-// Iterate over each reduced system
-#pragma omp parallel for
-  for (int id = 0; id < n_sys; id++) {
-    // Write result back
-    int start = get_sys_start_idx(id, solvedim, dims, pads, ndim);
-    dd[start] = dd_r[id * sys_len_l_r];
-    dd[start + result_stride] = dd_r[id * sys_len_l_r + (sys_len_l_r - 1)];
-  }
+      std::cout << global_norm << " " << (norm0 > 0 ? global_norm / norm0 : 0)
+                << " " << params.jacobi_atol << " " << params.jacobi_rtol
+                << "\n";
+  } while ((params.jacobi_atol < global_norm &&
+            params.jacobi_rtol < global_norm / norm0));
+
+  compute_last_for_reduced_jacobi(params, aa, cc, dd, dd_r, rcvbuf, dims, pads,
+                                  ndim, solvedim, 0, n_sys, result_stride);
 }
 
 // Positive and negative padding version
@@ -942,7 +1210,7 @@ inline void tridMultiDimBatchSolve_jacobi(
   BEGIN_PROFILING("reduced");
   // Solve reduced systems on each node
   solve_reduced_jacobi(params, aa, cc, dd, dd_r, rcvbuf, sndbuf, dims, pads,
-                       ndim, solvedim, sys_len_r, n_sys);
+                       ndim, solvedim, n_sys);
   END_PROFILING("reduced");
   BEGIN_PROFILING("backward");
   backward<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim, n_sys);
