@@ -51,6 +51,7 @@ struct MpiSolverParams {
                         // and scatter results
     ALLGATHER,          // Gather boundaries and solve reduced on all nodes
     JACOBI,             // Use Jacobi iterations to solve the reduced system
+    PCR,                // Use PCR to solve the reduced system
     LATENCY_HIDING_INTERLEAVED, // Perform solves in mini-batches. Do forward
                                 // run of the current mini-batch start
                                 // communication and finish the previous

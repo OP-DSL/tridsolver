@@ -122,7 +122,10 @@ void test_solver_with_generated(const std::vector<int> global_dims,
 
 std::ostream &operator<<(std::ostream &o,
                          const MpiSolverParams::MPICommStrategy &s) {
-  const char *labels[] = {"Gather-scatter", "Allgather",
+  const char *labels[] = {"Gather-scatter",
+                          "Allgather",
+                          "Jacobi",
+                          "PCR",
                           "LatencyHiding-interleaved",
                           "LatencyHiding-two-step"};
   return o << labels[s];
@@ -173,7 +176,7 @@ int main(int argc, char *argv[]) {
     }
   }
   assert(ndims < 4 && "ndims must be smaller or equal than MAXDIM");
-  assert(mpi_strat_idx < 5 && mpi_strat_idx > 0 &&
+  assert(mpi_strat_idx < 6 && mpi_strat_idx > 0 &&
          "No such communication strategy");
   MpiSolverParams::MPICommStrategy strategy =
       MpiSolverParams::MPICommStrategy(mpi_strat_idx);

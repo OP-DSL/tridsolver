@@ -175,11 +175,13 @@ enum ResDest { assign = 0, increment };
   (double, assign, MpiSolverParams::GATHER_SCATTER),                           \
       (double, assign, MpiSolverParams::ALLGATHER),                            \
       (double, assign, MpiSolverParams::JACOBI),                               \
+      (double, assign, MpiSolverParams::PCR),                                  \
       (double, assign, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),           \
       (double, assign, MpiSolverParams::LATENCY_HIDING_TWO_STEP),              \
       (float, assign, MpiSolverParams::GATHER_SCATTER),                        \
       (float, assign, MpiSolverParams::ALLGATHER),                             \
       (float, assign, MpiSolverParams::JACOBI),                                \
+      (float, assign, MpiSolverParams::PCR),                                   \
       (float, assign, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),            \
       (float, assign, MpiSolverParams::LATENCY_HIDING_TWO_STEP)
 
