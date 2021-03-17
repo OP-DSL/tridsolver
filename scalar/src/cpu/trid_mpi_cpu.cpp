@@ -764,12 +764,12 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
         if (rank) dd_r[id] -= aa[start] * rcvbufL[id];
       }
     }
-    if (!rank) std::cout << "iter: " << iter << " " << global_norm << "\n";
+    // if (!rank) std::cout << "iter: " << iter << " " << global_norm << "\n";
     iter++;
     // TODO
-  } while (iter < maxiter);
-  /*} while ((params.jacobi_atol < global_norm &&
-            params.jacobi_rtol < global_norm / norm0));*/
+    global_norm += 1;
+  } while (iter < maxiter && (params.jacobi_atol < global_norm &&
+            params.jacobi_rtol < global_norm / norm0));
 
   compute_last_for_reduced_jacobi(params, aa, cc, dd, dd_r, rcvbuf, dims, pads,
                                   ndim, solvedim, 0, n_sys, result_stride);
