@@ -250,14 +250,22 @@ RandomMesh<Float, Align>::RandomMesh(const std::vector<int> dims,
     std::mt19937 gen(omp_get_thread_num());
     std::uniform_real_distribution<Float> dist;
 #pragma omp for
-    for (size_t i = 0; i < num_elements; i++)
-      _a[i] = -1 + 0.1 * dist(gen);
+    for (size_t i = 0; i < num_elements; i++) {
+      _a[i] = 0.3; //-1 + 0.1 * dist(gen);
+      // _a[i] = -1 + 0.1 * dist(gen);
+    }
+#pragma omp for
+    for (size_t i = 0; i < num_elements; i++) {
+      // _b[i] = 2 + dist(gen);
+      if (i % dims[solvedim] == 0 || i % dims[solvedim] == dims[solvedim] - 1) {
+        _b[i] = 1; //-1 + 0.1 * dist(gen);
+      } else {
+        _b[i] = 0.6; //-1 + 0.1 * dist(gen);
+      }
+    }
 #pragma omp for
     for (size_t i = 0; i < num_elements; i++)
-      _b[i] = 2 + dist(gen);
-#pragma omp for
-    for (size_t i = 0; i < num_elements; i++)
-      _c[i] = -1 + 0.1 * dist(gen);
+      _c[i] = 0.1; //-1 + 0.1 * dist(gen);
 #pragma omp for
     for (size_t i = 0; i < num_elements; i++)
       _d[i] = dist(gen);

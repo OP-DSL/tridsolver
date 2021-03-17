@@ -1,4 +1,5 @@
 #include "timing.h"
+#include <thread>
 
 #ifdef USE_MPI
 #  include <mpi.h>
@@ -63,6 +64,7 @@ void Timing::report() {
       reportWithParent(-1, "  ");
 #ifdef USE_MPI
     }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
     MPI_Barrier(MPI_COMM_WORLD);
   }
 #endif

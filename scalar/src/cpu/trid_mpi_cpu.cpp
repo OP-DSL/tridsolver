@@ -699,6 +699,9 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
     }
   }
 
+  // TODO add iter parameter to params
+  int iter    = 0;
+  int maxiter = 10;
   do {
     BEGIN_PROFILING("mpi_communication");
 #pragma omp parallel for
@@ -761,12 +764,12 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
         if (rank) dd_r[id] -= aa[start] * rcvbufL[id];
       }
     }
-    if (!rank)
-      std::cout << global_norm << " " << (norm0 > 0 ? global_norm / norm0 : 0)
-                << " " << params.jacobi_atol << " " << params.jacobi_rtol
-                << "\n";
-  } while ((params.jacobi_atol < global_norm &&
-            params.jacobi_rtol < global_norm / norm0));
+    if (!rank) std::cout << "iter: " << iter << " " << global_norm << "\n";
+    iter++;
+    // TODO
+  } while (iter < maxiter);
+  /*} while ((params.jacobi_atol < global_norm &&
+            params.jacobi_rtol < global_norm / norm0));*/
 
   compute_last_for_reduced_jacobi(params, aa, cc, dd, dd_r, rcvbuf, dims, pads,
                                   ndim, solvedim, 0, n_sys, result_stride);
