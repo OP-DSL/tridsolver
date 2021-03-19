@@ -88,7 +88,7 @@ void copy_to_padded_array(const AlignedArray<Float, Align> &original,
                           std::vector<Float> &padded, std::vector<int> &dims) {
   assert(dims.size() == 3);
   std::vector<int> padded_dims = dims;
-  for (int i = 0; i < padded_dims.size(); i++) {
+  for (size_t i = 0; i < padded_dims.size(); i++) {
     // -1 and 1 padding
     padded_dims[i] += 2;
   }

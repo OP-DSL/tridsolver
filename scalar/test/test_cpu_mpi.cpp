@@ -137,7 +137,7 @@ void test_solver_from_file_padded(const std::string &file_name) {
 
   std::vector<int> padded_dims = local_sizes;
   int padded_size              = 1;
-  for (int i = 0; i < padded_dims.size(); i++) {
+  for (size_t i = 0; i < padded_dims.size(); i++) {
     padded_dims[i] += 2;
     padded_size *= padded_dims[i];
   }

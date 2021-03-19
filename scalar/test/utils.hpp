@@ -176,7 +176,7 @@ template <typename T, unsigned Align>
 void AlignedArray<T, Align>::resize(size_t size, T default_val) {
   if (_capacity == 0) allocate(size);
   assert(_size == 0 && "Array has already been initialised");
-  for (int i = 0; i < size; ++i) {
+  for (size_t i = 0; i < size; ++i) {
     this->push_back(default_val);
   }
 }
@@ -257,7 +257,7 @@ RandomMesh<Float, Align>::RandomMesh(const std::vector<int> dims,
 #pragma omp for
     for (size_t i = 0; i < num_elements; i++) {
       // _b[i] = 2 + dist(gen);
-      if (i % dims[solvedim] == 0 || i % dims[solvedim] == dims[solvedim] - 1) {
+      if (i % dims[solvedim] == 0 || (int)i % dims[solvedim] == dims[solvedim] - 1) {
         _b[i] = 1; //-1 + 0.1 * dist(gen);
       } else {
         _b[i] = 0.6; //-1 + 0.1 * dist(gen);
