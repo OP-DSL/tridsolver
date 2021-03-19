@@ -47,6 +47,13 @@ void Timing::reportWithParent(int parent, const std::string &indentation) {
   }
 }
 
+void Timing::reset() {
+  for (auto &element : loops) {
+    LoopData &l = element.second;
+    l.time = 0.0;
+  }
+}
+
 void Timing::report() {
 #ifdef USE_MPI
   // For the debug prints

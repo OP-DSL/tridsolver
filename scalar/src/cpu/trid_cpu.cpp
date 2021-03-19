@@ -309,30 +309,24 @@ void trid_scalar_vec(const REAL *__restrict h_a, const REAL *__restrict h_b,
   int i, ind = 0;
   VECTOR aa, bb, cc, dd, c2[N_MAX], d2[N_MAX];
 
-  VECTOR *__restrict a = (VECTOR *)h_a;
-  VECTOR *__restrict b = (VECTOR *)h_b;
-  VECTOR *__restrict c = (VECTOR *)h_c;
-  VECTOR *__restrict d = (VECTOR *)h_d;
-  VECTOR *__restrict u = (VECTOR *)h_u;
-
-  VECTOR ones(1.0f);
+  VECTOR ones = SIMD_SET1_P(1.0f);
 
   //
   // forward pass
   //
-  bb = ones / b[0];
-  cc = bb * c[0];
-  dd = bb * d[0];
+  bb = ones / SIMD_LOAD_P(&h_b[0*SIMD_VEC]);
+  cc = bb * SIMD_LOAD_P(&h_c[0*SIMD_VEC]);
+  dd = bb * SIMD_LOAD_P(&h_d[0*SIMD_VEC]);
   c2[0] = cc;
   d2[0] = dd;
 
   for (i = 1; i < N; i++) {
     ind = ind + stride;
-    aa = a[ind];
-    bb = b[ind] - aa * cc;
-    dd = d[ind] - aa * dd;
+    aa = SIMD_LOAD_P(&h_a[ind*SIMD_VEC]);
+    bb = SIMD_LOAD_P(&h_b[ind*SIMD_VEC]) - aa * cc;
+    dd = SIMD_LOAD_P(&h_d[ind*SIMD_VEC]) - aa * dd;
     bb = ones / bb;
-    cc = bb * c[ind];
+    cc = bb * SIMD_LOAD_P(&h_c[ind*SIMD_VEC]);
     dd = bb * dd;
     c2[i] = cc;
     d2[i] = dd;
@@ -341,16 +335,16 @@ void trid_scalar_vec(const REAL *__restrict h_a, const REAL *__restrict h_b,
   // reverse pass
   //
   if (INC)
-    u[ind] += dd;
+    SIMD_STORE_P(&h_u[ind*SIMD_VEC], SIMD_LOAD_P(&h_u[ind*SIMD_VEC]) + dd);
   else
-    d[ind] = dd;
+    SIMD_STORE_P(&h_d[ind*SIMD_VEC], dd);
   for (i = N - 2; i >= 0; i--) {
     ind = ind - stride;
     dd = d2[i] - c2[i] * dd;
     if (INC)
-      u[ind] += dd;
+      SIMD_STORE_P(&h_u[ind*SIMD_VEC], SIMD_LOAD_P(&h_u[ind*SIMD_VEC]) + dd);
     else
-      d[ind] = dd;
+      SIMD_STORE_P(&h_d[ind*SIMD_VEC], dd);
   }
 }
 

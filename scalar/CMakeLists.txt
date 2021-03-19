@@ -5,8 +5,16 @@ option(BUILD_FOR_CPU "Build library for CPU architecture." OFF)
 option(BUILD_FOR_MIC "Build library for MIC architecture." OFF)
 option(BUILD_FOR_GPU "Build library for GPU architecture." OFF)
 option(BUILD_FOR_MPI "Build library for MPI combnied with the above architectures." OFF)
+option(BUILD_FOR_SN  "Build library for a single node combnied with the above architectures." OFF)
 option(BUILD_TESTING "Build tests for the library." OFF)
+option(BUILD_STATIC  "Build static library" OFF)
 option(USE_PROFILING "Build timing library for to measure timings." OFF)
+
+if (BUILD_STATIC)
+  set(BUILD_TYPE STATIC)
+else ()
+  set(BUILD_TYPE SHARED)
+endif ()
 
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE

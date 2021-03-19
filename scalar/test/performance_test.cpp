@@ -20,7 +20,15 @@ void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh,
                     int num_iters) {
   AlignedArray<Float, 1> d(mesh.d());
 
+  //Dry run
+  for (int i = 0; i < 3; i++) {
+    tridStridedBatchWrapper<Float>(params, mesh.a().data(), mesh.b().data(),
+                                   mesh.c().data(), d.data(), nullptr,
+                                   mesh.dims().size(), mesh.solve_dim(),
+                                   mesh.dims().data(), mesh.dims().data());
+  }
   // Solve the equations
+  MPI_Barrier(MPI_COMM_WORLD);
   while (num_iters--) {
     tridStridedBatchWrapper<Float>(params, mesh.a().data(), mesh.b().data(),
                                    mesh.c().data(), d.data(), nullptr,
@@ -40,7 +48,15 @@ void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh,
                     int num_iters) {
   GPUMesh<Float> mesh_d(mesh.a(), mesh.b(), mesh.c(), mesh.d(), mesh.dims());
 
+  //Dry run
+  for (int i = 0; i < 3; i++) {
+    tridmtsvStridedBatchMPIWrapper<Float>(
+        params, mesh_d.a().data(), mesh_d.b().data(), mesh_d.c().data(),
+        mesh_d.d().data(), nullptr, mesh_d.dims().size(), mesh.solve_dim(),
+        mesh_d.dims().data(), mesh_d.dims().data());
+  }
   // Solve the equations
+  MPI_Barrier(MPI_COMM_WORLD);
   while (num_iters--) {
     tridmtsvStridedBatchMPIWrapper<Float>(
         params, mesh_d.a().data(), mesh_d.b().data(), mesh_d.c().data(),
