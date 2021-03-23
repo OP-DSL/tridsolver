@@ -16,7 +16,7 @@
 #  include "cpu_mpi_wrappers.hpp"
 
 template <typename Float>
-void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh,
+void run_tridsolver(const MpiSolverParams &params, const RandomMesh<Float> &mesh,
                     int num_iters) {
   AlignedArray<Float, 1> d(mesh.d());
 
@@ -44,7 +44,7 @@ void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh,
 #  include "cuda_mpi_wrappers.hpp"
 
 template <typename Float>
-void run_tridsolver(const MpiSolverParams &params, RandomMesh<Float> mesh,
+void run_tridsolver(const MpiSolverParams &params, const RandomMesh<Float> &mesh,
                     int num_iters) {
   GPUMesh<Float> mesh_d(mesh.a(), mesh.b(), mesh.c(), mesh.d(), mesh.dims());
 
@@ -93,7 +93,7 @@ void print_local_sizes(int rank, int num_proc, const int *mpi_dims,
 }
 
 template <typename Float>
-void test_solver_with_generated(const std::vector<int> global_dims,
+void test_solver_with_generated(const std::vector<int> &global_dims,
                                 int solvedim,
                                 MpiSolverParams::MPICommStrategy strategy,
                                 int batch_size, int mpi_parts_in_s,

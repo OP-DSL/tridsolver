@@ -95,7 +95,7 @@ template <typename Float, unsigned Align = 1> class RandomMesh {
   AlignedArray<Float, Align> _a, _b, _c, _d;
 
 public:
-  RandomMesh(const std::vector<int> dims, size_t solvedim);
+  RandomMesh(const std::vector<int> &dims, size_t solvedim);
 
   size_t solve_dim() const { return _solve_dim; }
   const std::vector<int> &dims() const { return _dims; }
@@ -234,7 +234,7 @@ void MeshLoader<Float, Align>::load_array(std::ifstream &f, size_t num_elements,
 }
 
 template <typename Float, unsigned Align>
-RandomMesh<Float, Align>::RandomMesh(const std::vector<int> dims,
+RandomMesh<Float, Align>::RandomMesh(const std::vector<int> &dims,
                                      size_t solvedim)
     : _solve_dim(solvedim), _dims(dims), _a{}, _b{}, _c{}, _d{} {
   assert(_solve_dim < _dims.size() && "solve dim greater than number of dims");
@@ -257,7 +257,8 @@ RandomMesh<Float, Align>::RandomMesh(const std::vector<int> dims,
 #pragma omp for
     for (size_t i = 0; i < num_elements; i++) {
       // _b[i] = 2 + dist(gen);
-      if (i % dims[solvedim] == 0 || (int)i % dims[solvedim] == dims[solvedim] - 1) {
+      if (i % dims[solvedim] == 0 ||
+          (int)i % dims[solvedim] == dims[solvedim] - 1) {
         _b[i] = 1; //-1 + 0.1 * dist(gen);
       } else {
         _b[i] = 0.6; //-1 + 0.1 * dist(gen);
