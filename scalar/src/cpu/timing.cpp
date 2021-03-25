@@ -1,5 +1,6 @@
 #include "timing.h"
-#include <thread>
+#include <numeric>
+#include <cmath>
 
 #ifdef USE_MPI
 #  include <mpi.h>
@@ -40,8 +41,38 @@ void Timing::reportWithParent(int parent, const std::string &indentation) {
   for (const auto &element : loops) {
     const LoopData &l = element.second;
     if (l.parent == parent) {
-      std::cout << indentation + element.first + ": " + std::to_string(l.time) +
-                       " seconds\n";
+#ifdef USE_MPI
+      int rank, nproc;
+      MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+      MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+      std::vector<double> times(nproc, 0);
+      MPI_Gather(&l.time, 1, MPI_DOUBLE, times.data(), 1, MPI_DOUBLE, 0,
+                 MPI_COMM_WORLD);
+      if (!rank) {
+        double mean = 0.0;
+        double max  = times[0];
+        double min  = times[0];
+        for (double t : times) {
+          mean += t;
+          max = std::max(max, t);
+          min = std::min(min, t);
+        }
+        mean = mean / nproc;
+        double stddev =
+            std::accumulate(times.begin(), times.end(), 0.0,
+                            [&](const double &sum, const double &time) {
+                              return sum + (time - mean) * (time - mean);
+                            });
+        stddev = std::sqrt(stddev / nproc);
+
+        std::cout << indentation + element.first + ": ";
+        std::cout << min << "s; " << max << "s; " << mean << "s; " << stddev
+                  << "s;\n";
+      }
+#else
+      std::cout << indentation + element.first + ": "
+                << std::to_string(l.time) + " seconds\n";
+#endif
       reportWithParent(l.index, indentation + "  ");
     }
   }
@@ -50,29 +81,8 @@ void Timing::reportWithParent(int parent, const std::string &indentation) {
 void Timing::reset() {
   for (auto &element : loops) {
     LoopData &l = element.second;
-    l.time = 0.0;
+    l.time      = 0.0;
   }
 }
 
-void Timing::report() {
-#ifdef USE_MPI
-  // For the debug prints
-  int rank, num_proc;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
-  std::srand(rank);
-  for (int i = 0; i < num_proc; ++i) {
-    // Print the outputs
-    if (i == rank) {
-      std::cout << "##########################\n"
-                << "Rank " << i << "\n"
-                << "##########################\n";
-#endif
-      reportWithParent(-1, "  ");
-#ifdef USE_MPI
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    MPI_Barrier(MPI_COMM_WORLD);
-  }
-#endif
-}
+void Timing::report() { reportWithParent(-1, "  "); }
