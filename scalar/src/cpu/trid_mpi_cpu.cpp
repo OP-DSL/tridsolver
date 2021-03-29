@@ -608,27 +608,15 @@ inline void solve_reduced_batched(const MpiSolverParams &params,
 }
 
 template <typename REAL>
-inline void solve_reduced(const MpiSolverParams &params, const REAL *rcvbuf,
-                          REAL *aa_r, REAL *cc_r, REAL *dd_r, REAL *dd,
-                          const int *dims, const int *pads, int ndim,
-                          int solvedim, int sys_len_r, int n_sys) {
+inline void solve_reduced(const MpiSolverParams &params, REAL *aa_r, REAL *cc_r,
+                          REAL *dd_r, REAL *dd, const int *dims,
+                          const int *pads, int ndim, int solvedim,
+                          int sys_len_r, int n_sys) {
   int result_stride = get_sys_span(solvedim, dims, pads);
 
 // Iterate over each reduced system
 #pragma omp parallel for
   for (int id = 0; id < n_sys; id++) {
-    // Unpack this reduced system from receive buffer
-    // TODO transpose des this
-    // for (int p = 0; p < params.num_mpi_procs[solvedim]; p++) {
-    //   int buf_ind                      = p * n_sys * 2 * 3;
-    //   aa_r[id * sys_len_r + p * 2]     = rcvbuf[buf_ind + id * 6];
-    //   aa_r[id * sys_len_r + p * 2 + 1] = rcvbuf[buf_ind + id * 6 + 1];
-    //   cc_r[id * sys_len_r + p * 2]     = rcvbuf[buf_ind + id * 6 + 2];
-    //   cc_r[id * sys_len_r + p * 2 + 1] = rcvbuf[buf_ind + id * 6 + 3];
-    //   dd_r[id * sys_len_r + p * 2]     = rcvbuf[buf_ind + id * 6 + 4];
-    //   dd_r[id * sys_len_r + p * 2 + 1] = rcvbuf[buf_ind + id * 6 + 5];
-    // }
-
     // Solve reduced system
     thomas_on_reduced<REAL>(aa_r + id * sys_len_r, cc_r + id * sys_len_r,
                             dd_r + id * sys_len_r, sys_len_r, 1);
@@ -644,10 +632,10 @@ inline void solve_reduced(const MpiSolverParams &params, const REAL *rcvbuf,
 // Solve reduced system with jacobi iterations.
 // aa, cc, dd stores the result of the forward run. For each node for each
 // system the first and last row of aa, cc, dd will create the reduced system,
-// b_i = 1 everywhere. dd_r is an array with size at least n_sys will store
-// the intermediate result of the jacobi iteration for the node. sndbuf and
-// rcvbuf must be an array with size at least n_sys. the solution of the
-// reduced system will be stored in dd
+// b_i = 1 everywhere. sndbuf is an array with size at least n_sys will store
+// the intermediate result of the jacobi iteration for the node. rcvbuf must be
+// an array with size at least 2*n_sys. The solution of the reduced system will
+// be stored in dd
 template <typename REAL>
 inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
                                  REAL *cc, REAL *dd, REAL *rcvbuf, REAL *sndbuf,
@@ -706,11 +694,6 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
     if (rank != nproc - 1)
       MPI_Irecv(rcvbufR, n_sys, MPI_DATATYPE(REAL), rank + 1, 3,
                 params.communicators[solvedim], &req[1]);
-    // copy boundaries and send to negihbours
-    // #pragma omp parallel for
-    //     for (int id = 0; id < n_sys; ++id) {
-    //       sndbuf[id] = dd_r[id];
-    //     }
     if (rank)
       MPI_Isend(dd_r, n_sys, MPI_DATATYPE(REAL), rank - 1, 3,
                 params.communicators[solvedim], &req[2]);
@@ -768,16 +751,15 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
 // aa, cc, dd stores the result of the forward run. For each node for each
 // system the first and last row of aa, cc, dd will create the reduced system,
 // b_i = 1 everywhere.
-// TODO
-// dd_r is an array with size at least n_sys will store the intermediate result
-// of the jacobi iteration for the node. sndbuf and rcvbuf must be an array with
-// size at least n_sys. the solution of the reduced system will be stored in dd
+// sndbuf is an array with size at least 3*n_sys will store the intermediate
+// result of the jacobi iteration for the node. rcvbuf must be an array with
+// size at least 2 * 3 * n_sys. The solution of the reduced system will be
+// stored in dd.
 template <typename REAL>
 inline void solve_reduced_pcr(const MpiSolverParams &params, REAL *aa, REAL *cc,
-                              REAL *dd, /*REAL *aa_r, REAL *cc_r, REAL *dd_r,*/
-                              REAL *rcvbuf, REAL *sndbuf, const int *dims,
-                              const int *pads, int ndim, int solvedim,
-                              int n_sys) {
+                              REAL *dd, REAL *rcvbuf, REAL *sndbuf,
+                              const int *dims, const int *pads, int ndim,
+                              int solvedim, int n_sys) {
   int rank                   = params.mpi_coords[solvedim];
   int nproc                  = params.num_mpi_procs[solvedim];
   constexpr int tag          = 1242;
@@ -804,10 +786,6 @@ inline void solve_reduced_pcr(const MpiSolverParams &params, REAL *aa, REAL *cc,
     }
     cc_r[id] = cc[begin];
     dd_r[id] = dd[begin];
-    // TODO snd_buf conatins aa_r cc_r dd_r
-    // sndbuf[id * nvar_per_sys + 0] = aa_r[id];
-    // sndbuf[id * nvar_per_sys + 1] = cc_r[id];
-    // sndbuf[id * nvar_per_sys + 2] = dd_r[id];
   }
   int P = ceil(log2((double)params.num_mpi_procs[solvedim]));
   int s = 1;
@@ -866,17 +844,6 @@ inline void solve_reduced_pcr(const MpiSolverParams &params, REAL *aa, REAL *cc,
       REAL ap1 = 0.0;
       REAL cp1 = 0.0;
       REAL dp1 = 0.0;
-      // TODO transposed sndbuf -> transposed rcvbuf
-      // if (leftrank >= 0) {
-      //   am1 = rcvbufL[id * nvar_per_sys];
-      //   cm1 = rcvbufL[id * nvar_per_sys + 1];
-      //   dm1 = rcvbufL[id * nvar_per_sys + 2];
-      // }
-      // if (rightrank < nproc) {
-      //   ap1 = rcvbufR[id * nvar_per_sys];
-      //   cp1 = rcvbufR[id * nvar_per_sys + 1];
-      //   dp1 = rcvbufR[id * nvar_per_sys + 2];
-      // }
       if (leftrank >= 0) {
         am1 = rcvbufL[id];
         cm1 = rcvbufL[id + n_sys * 1];
@@ -891,10 +858,6 @@ inline void solve_reduced_pcr(const MpiSolverParams &params, REAL *aa, REAL *cc,
       dd_r[id] = (dd_r[id] - dm1 * aa_r[id] - dp1 * cc_r[id]) * bbi;
       aa_r[id] = -am1 * aa_r[id] * bbi;
       cc_r[id] = -cp1 * cc_r[id] * bbi;
-      // TODO snd_buf conatins aa_r cc_r dd_r
-      // sndbuf[id * nvar_per_sys + 0] = aa_r[id];
-      // sndbuf[id * nvar_per_sys + 1] = cc_r[id];
-      // sndbuf[id * nvar_per_sys + 2] = dd_r[id];
     }
 
     // done
@@ -1209,9 +1172,7 @@ template <typename REAL, int INC>
 inline void tridMultiDimBatchSolve_allgather(
     const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
     REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
-    const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, /* REAL *aa_r,
-     REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r,*/
-    int n_sys) {
+    const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, int n_sys) {
   constexpr int len_r_local = 2 * 3;
   const int sys_len_r       = 2 * params.num_mpi_procs[solvedim];
   BEGIN_PROFILING("forward");
@@ -1247,9 +1208,7 @@ template <typename REAL, int INC>
 inline void tridMultiDimBatchSolve_gather_scatter(
     const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
     REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
-    const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, /* REAL *aa_r,
-     REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r,*/
-    int n_sys) {
+    const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, int n_sys) {
   constexpr int len_r_local = 2 * 3;
   const int sys_len_r       = 2 * params.num_mpi_procs[solvedim];
   BEGIN_PROFILING("forward");
@@ -1279,20 +1238,7 @@ inline void tridMultiDimBatchSolve_gather_scatter(
     // Iterate over each reduced system
 #pragma omp parallel for
     for (int id = 0; id < n_sys; id++) {
-      // Unpack this reduced system from receive buffer
-      // TODO transpose des this
-      // for (int p = 0; p < params.num_mpi_procs[solvedim]; p++) {
-      //   int buf_ind     = p * n_sys * 2 * 3;
-      //   aa_r[p * 2]     = rcvbuf[buf_ind + id * 6];
-      //   aa_r[p * 2 + 1] = rcvbuf[buf_ind + id * 6 + 1];
-      //   cc_r[p * 2]     = rcvbuf[buf_ind + id * 6 + 2];
-      //   cc_r[p * 2 + 1] = rcvbuf[buf_ind + id * 6 + 3];
-      //   dd_r[p * 2]     = rcvbuf[buf_ind + id * 6 + 4];
-      //   dd_r[p * 2 + 1] = rcvbuf[buf_ind + id * 6 + 5];
-      // }
-
       // Solve reduced system
-      // thomas_on_reduced<REAL>(aa_r, cc_r, dd_r, sys_len_r, 1);
       thomas_on_reduced<REAL>(aa_r + id * sys_len_r, cc_r + id * sys_len_r,
                               dd_r + id * sys_len_r, sys_len_r, 1);
 
@@ -1335,13 +1281,7 @@ template <typename REAL, int INC>
 inline void tridMultiDimBatchSolve_jacobi(
     const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
     REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
-    const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, /* REAL *aa_r,
-     REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r, */
-    int n_sys) {
-  // (void)aa_r;
-  // (void)cc_r;
-  // (void)len_r_local;
-  // (void)sys_len_r;
+    const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, int n_sys) {
   BEGIN_PROFILING("forward");
   forward(a, b, c, d, aa, cc, dd, dims, pads, ndim, solvedim, n_sys);
   END_PROFILING("forward");
@@ -1359,18 +1299,14 @@ template <typename REAL, int INC>
 inline void tridMultiDimBatchSolve_pcr(
     const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
     REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
-    const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, /*REAL *aa_r,
-    REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r, */
-    int n_sys) {
-  // (void)len_r_local;
-  // (void)sys_len_r;
+    const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, int n_sys) {
   BEGIN_PROFILING("forward");
   forward(a, b, c, d, aa, cc, dd, dims, pads, ndim, solvedim, n_sys);
   END_PROFILING("forward");
   BEGIN_PROFILING("reduced");
   // Solve reduced systems on each node
-  solve_reduced_pcr(params, aa, cc, dd, /* aa_r, cc_r, dd_r,*/ rcvbuf, sndbuf,
-                    dims, pads, ndim, solvedim, n_sys);
+  solve_reduced_pcr(params, aa, cc, dd, rcvbuf, sndbuf, dims, pads, ndim,
+                    solvedim, n_sys);
   END_PROFILING("reduced");
   BEGIN_PROFILING("backward");
   backward<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim, n_sys);
@@ -1455,19 +1391,19 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
         rcvbuf, n_sys);
     break;
   case MpiSolverParams::ALLGATHER:
-    tridMultiDimBatchSolve_allgather<REAL, INC>(
-        params, a, b, c, d, u, aa, cc, dd, ndim, solvedim, dims, pads, sndbuf,
-        rcvbuf, /* aa_r, cc_r, dd_r, len_r_local, sys_len_r, */ n_sys);
+    tridMultiDimBatchSolve_allgather<REAL, INC>(params, a, b, c, d, u, aa, cc,
+                                                dd, ndim, solvedim, dims, pads,
+                                                sndbuf, rcvbuf, n_sys);
     break;
   case MpiSolverParams::JACOBI:
-    tridMultiDimBatchSolve_jacobi<REAL, INC>(
-        params, a, b, c, d, u, aa, cc, dd, ndim, solvedim, dims, pads, sndbuf,
-        rcvbuf, /* aa_r, cc_r, dd_r, len_r_local, sys_len_r, */ n_sys);
+    tridMultiDimBatchSolve_jacobi<REAL, INC>(params, a, b, c, d, u, aa, cc, dd,
+                                             ndim, solvedim, dims, pads, sndbuf,
+                                             rcvbuf, n_sys);
     break;
   case MpiSolverParams::PCR:
-    tridMultiDimBatchSolve_pcr<REAL, INC>(
-        params, a, b, c, d, u, aa, cc, dd, ndim, solvedim, dims, pads, sndbuf,
-        rcvbuf, /* aa_r, cc_r, dd_r, len_r_local, sys_len_r, */ n_sys);
+    tridMultiDimBatchSolve_pcr<REAL, INC>(params, a, b, c, d, u, aa, cc, dd,
+                                          ndim, solvedim, dims, pads, sndbuf,
+                                          rcvbuf, n_sys);
     break;
   case MpiSolverParams::LATENCY_HIDING_INTERLEAVED:
     tridMultiDimBatchSolve_LH<REAL, INC>(

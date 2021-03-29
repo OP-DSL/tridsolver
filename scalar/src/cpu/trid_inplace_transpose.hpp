@@ -1,7 +1,10 @@
 #ifndef INPLACE_TRANSPOSE
 #define INPLACE_TRANSPOSE
 #include <vector>
+
 // Non-square matrix transpose of matrix of size r x c and base address A
+// Transpose uses permutations. Transpose a 2D matrix with num_elems_per_point
+// value in each point in the matrix.
 template <typename T, int num_elems_per_point = 2>
 void rcv_buffer_inplace_transpose(T *A, int r, int c) {
   int size = r * c - 1;
@@ -43,6 +46,13 @@ void rcv_buffer_inplace_transpose(T *A, int r, int c) {
   }
 }
 
+// Transpose the rcv_buf of Gather operation. The input matrix is assumed to
+// store the boundary of each process. The innermost dimension is the a, c, d
+// values, the second is n_sys, and the outermost dimension is the processes.
+// In the output layout the outermost dimension is a, c, d (hence aa_r will be
+// equal to rcvbuf, cc_r = rcvbuf + ns * np * num_elems_per_proc, dd_r = rcvbuf
+// + ns*np*num_elems_per_proc*2) and the innermost dimension is the numproc,
+// hence each system will be contiguous in memory.
 template <typename T, int num_elems_per_proc = 2>
 void transpose_rcvbuf_to_reduced_allgather(T *rcvbuf, int ns, int numproc,
                                            T **aa_r, T **cc_r, T **dd_r) {
