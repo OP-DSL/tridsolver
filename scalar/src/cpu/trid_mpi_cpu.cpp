@@ -1196,8 +1196,8 @@ inline void tridMultiDimBatchSolve_allgather(
   transpose_rcvbuf_to_reduced_allgather<REAL, 2>(
       rcvbuf, n_sys, params.num_mpi_procs[solvedim], &aa_r, &cc_r, &dd_r);
   // Solve reduced systems on each node
-  solve_reduced(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads, ndim,
-                solvedim, sys_len_r, n_sys);
+  solve_reduced(params, aa_r, cc_r, dd_r, dd, dims, pads, ndim, solvedim,
+                sys_len_r, n_sys);
   END_PROFILING("reduced");
   BEGIN_PROFILING("backward");
   backward<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim, n_sys);
