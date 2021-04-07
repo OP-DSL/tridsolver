@@ -727,14 +727,15 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
     MPI_Wait(&norm_req, MPI_STATUS_IGNORE);
     norm_req = MPI_REQUEST_NULL;
     if (global_norm_recv >= 0) // skip until the first sum is ready
-      global_norm = sqrt(global_norm_recv / global_sys_len);
+      global_norm = sqrt(1 + global_norm_recv / global_sys_len);
     if (norm0 < 0) norm0 = global_norm;
     local_norm_send = local_norm;
     iter++;
     need_iter = global_norm < 0.0 || (params.jacobi_atol < global_norm &&
                                       params.jacobi_rtol < global_norm / norm0);
-    if ((params.jacobi_maxiter < 0 || iter + 1 < params.jacobi_maxiter) &&
-        need_iter) { // if norm is not enough and next is not last iteration
+    if (iter < 10 && need_iter) {
+      // if ((params.jacobi_maxiter < 0 || iter + 1 < params.jacobi_maxiter) &&
+      // need_iter) { // if norm is not enough and next is not last iteration
       MPI_Iallreduce(&local_norm_send, &global_norm_recv, 1, MPI_DOUBLE,
                      MPI_SUM, params.communicators[solvedim], &norm_req);
     }
@@ -752,8 +753,9 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
         if (rank) dd_r[id] -= aa[start] * rcvbufL[id];
       }
     }
-  } while ((params.jacobi_maxiter < 0 || iter < params.jacobi_maxiter) &&
-           need_iter);
+  } while (iter < 10 && need_iter);
+  // } while ((params.jacobi_maxiter < 0 || iter < params.jacobi_maxiter) &&
+  //          need_iter);
 
   compute_last_for_reduced_jacobi(params, aa, cc, dd, dd_r, rcvbuf, dims, pads,
                                   ndim, solvedim, 0, n_sys, result_stride);
@@ -931,8 +933,8 @@ inline void backward(const REAL *aa, const REAL *cc, REAL *d, REAL *u,
     // Check if 2D solve
     if (ndim == 2) {
       // Do the backward pass to solve for remaining unknowns
-      thomas_backward_vec_strip<REAL, INC>(aa, cc, d, u, 0, dims[1],
-                                           pads[0], pads[0]);
+      thomas_backward_vec_strip<REAL, INC>(aa, cc, d, u, 0, dims[1], pads[0],
+                                           pads[0]);
     } else {
       // Assume 3D solve
       // Do the backward pass to solve for remaining unknowns
@@ -1072,8 +1074,8 @@ inline void tridMultiDimBatchSolve_simple(
     int batch_start = bidx * batch_size;
     int bsize = bidx == num_batches - 1 ? n_sys - batch_start : batch_size;
     BEGIN_PROFILING("forward");
-    forward_batched(a, b, c, d, aa, cc, dims, pads, ndim, solvedim,
-                    batch_start, batch_start + bsize);
+    forward_batched(a, b, c, d, aa, cc, dims, pads, ndim, solvedim, batch_start,
+                    batch_start + bsize);
     // Pack reduced systems (boundaries of each tridiagonal system)
     copy_boundaries_strided(aa, cc, d, sndbuf, dims, pads, ndim, solvedim,
                             batch_start, batch_start + bsize);
@@ -1105,8 +1107,8 @@ inline void tridMultiDimBatchSolve_simple(
     // Finish the solve for batch
     BEGIN_PROFILING("reduced");
     // Solve reduced systems on each node
-    solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, d, dims, pads,
-                          ndim, solvedim, sys_len_r, batch_start,
+    solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, d, dims, pads, ndim,
+                          solvedim, sys_len_r, batch_start,
                           batch_start + bsize);
     END_PROFILING("reduced");
     // Perform the backward run of the modified thomas algorithm
@@ -1131,8 +1133,8 @@ inline void tridMultiDimBatchSolve_LH(
     int batch_start = bidx * batch_size;
     int bsize = bidx == num_batches - 1 ? n_sys - batch_start : batch_size;
     BEGIN_PROFILING("forward");
-    forward_batched(a, b, c, d, aa, cc, dims, pads, ndim, solvedim,
-                    batch_start, batch_start + bsize);
+    forward_batched(a, b, c, d, aa, cc, dims, pads, ndim, solvedim, batch_start,
+                    batch_start + bsize);
     // Pack reduced systems (boundaries of each tridiagonal system)
     copy_boundaries_strided(aa, cc, d, sndbuf, dims, pads, ndim, solvedim,
                             batch_start, batch_start + bsize);
@@ -1209,8 +1211,8 @@ inline void tridMultiDimBatchSolve_allgather(
   END_PROFILING("mpi_communication");
   BEGIN_PROFILING("reduced");
   // Solve reduced systems on each node
-  solve_reduced(params, rcvbuf, aa_r, cc_r, dd_r, d, dims, pads, ndim,
-                solvedim, sys_len_r, n_sys);
+  solve_reduced(params, rcvbuf, aa_r, cc_r, dd_r, d, dims, pads, ndim, solvedim,
+                sys_len_r, n_sys);
   END_PROFILING("reduced");
   BEGIN_PROFILING("backward");
   backward<REAL, INC>(aa, cc, d, u, dims, pads, ndim, solvedim, n_sys);
@@ -1286,7 +1288,7 @@ inline void tridMultiDimBatchSolve_gather_scatter(
     // Gather coefficients of d
     int data_ind = get_sys_start_idx(id, solvedim, dims, pads, ndim);
     int buf_ind  = id * 2;
-    d[data_ind] = rcvbuf[buf_ind];
+    d[data_ind]  = rcvbuf[buf_ind];
     d[data_ind + result_stride] = rcvbuf[buf_ind + 1];
   }
 
@@ -1430,9 +1432,9 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
                                              rcvbuf, n_sys);
     break;
   case MpiSolverParams::PCR:
-    tridMultiDimBatchSolve_pcr<REAL, INC>(params, a, b, c, d, u, aa, cc,
-                                          ndim, solvedim, dims, pads, sndbuf,
-                                          rcvbuf, n_sys);
+    tridMultiDimBatchSolve_pcr<REAL, INC>(params, a, b, c, d, u, aa, cc, ndim,
+                                          solvedim, dims, pads, sndbuf, rcvbuf,
+                                          n_sys);
     break;
   case MpiSolverParams::LATENCY_HIDING_INTERLEAVED:
     tridMultiDimBatchSolve_LH<REAL, INC>(
