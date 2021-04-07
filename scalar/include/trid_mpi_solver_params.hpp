@@ -88,12 +88,14 @@ struct MpiSolverParams {
   // Tolerance values for jacobi iteration on reduced system
   double jacobi_rtol = 1e-12;
   double jacobi_atol = 1e-11;
+  int jacobi_maxiter = -1;
 
   MpiSolverParams(MPI_Comm cartesian_communicator, int num_dims,
-                  int *num_mpi_procs_)
+                  int *num_mpi_procs_,
+                  MPICommStrategy _strategy = LATENCY_HIDING_INTERLEAVED)
       : communicators(num_dims), cart_groups(num_dims),
         neighbours_groups(num_dims), num_mpi_procs(num_mpi_procs_),
-        mpi_coords(num_dims) {
+        mpi_coords(num_dims), strategy(_strategy) {
     int cart_rank;
     MPI_Comm_rank(cartesian_communicator, &cart_rank);
     MPI_Cart_coords(cartesian_communicator, cart_rank, num_dims,
@@ -149,18 +151,20 @@ struct MpiSolverParams {
   MpiSolverParams(MPI_Comm cartesian_communicator, int num_dims,
                   int *num_mpi_procs_, int mpi_batch_size,
                   MPICommStrategy _strategy)
-      : MpiSolverParams(cartesian_communicator, num_dims, num_mpi_procs_) {
+      : MpiSolverParams(cartesian_communicator, num_dims, num_mpi_procs_,
+                        _strategy) {
     this->mpi_batch_size = mpi_batch_size;
-    this->strategy       = _strategy;
   }
 
   // Constructor for Jacobi iteration
   MpiSolverParams(MPI_Comm cartesian_communicator, int num_dims,
-                  int *num_mpi_procs_, double jacobi_atol_, double jacobi_rtol_)
-      : MpiSolverParams(cartesian_communicator, num_dims, num_mpi_procs_) {
-    strategy    = JACOBI;
-    jacobi_atol = jacobi_atol_;
-    jacobi_rtol = jacobi_rtol_;
+                  int *num_mpi_procs_, double jacobi_atol_, double jacobi_rtol_,
+                  int jacobi_maxiter_ = -1)
+      : MpiSolverParams(cartesian_communicator, num_dims, num_mpi_procs_,
+                        JACOBI) {
+    jacobi_atol    = jacobi_atol_;
+    jacobi_rtol    = jacobi_rtol_;
+    jacobi_maxiter = jacobi_maxiter_;
   }
 
   ~MpiSolverParams() {
