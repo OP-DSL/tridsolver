@@ -676,7 +676,6 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
     }
   }
 
-  // TODO add iter parameter to params
   int iter = 0;
   do {
     BEGIN_PROFILING("mpi_communication");
