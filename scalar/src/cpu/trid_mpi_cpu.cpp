@@ -1359,6 +1359,7 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
   case MpiSolverParams::JACOBI:
     posix_memalign((void **)&sndbuf, 64, n_sys * 3 * sizeof(REAL));
     posix_memalign((void **)&rcvbuf, 64, n_sys * 3 * sizeof(REAL));
+    break;
   case MpiSolverParams::PCR:
     posix_memalign((void **)&sndbuf, 64, n_sys * 3 * sizeof(REAL));
     posix_memalign((void **)&rcvbuf, 64, n_sys * 2 * 3 * sizeof(REAL));
