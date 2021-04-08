@@ -2,6 +2,7 @@
 #include "catch.hpp"
 #include "catch_mpi_outputs.hpp"
 #include "cuda_utils.hpp"
+#include "catch_utils.hpp"
 #include "cuda_mpi_wrappers.hpp"
 
 #include "trid_cuda_mpi_pcr.hpp"

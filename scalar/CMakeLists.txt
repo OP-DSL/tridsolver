@@ -99,7 +99,7 @@ if (BUILD_FOR_GPU)
     message(ERROR "Couldn't find CUDA compiler")
   endif (NOT CMAKE_CUDA_COMPILER)
   enable_language(CUDA)
-  set(CMAKE_CUDA_STANDARD 11)
+  set(CMAKE_CUDA_STANDARD 14)
   # use dynamic linking to CUDA runtime to avoid error with CUDA aware MPI
   set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
   # architecture
