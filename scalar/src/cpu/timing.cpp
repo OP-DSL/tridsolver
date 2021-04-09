@@ -8,9 +8,11 @@
 
 std::map<std::string, Timing::LoopData> Timing::loops;
 std::vector<int> Timing::stack;
-int Timing::counter = 0;
+int Timing::counter  = 0;
+bool Timing::measure = true;
 
 void Timing::startTimer(const std::string &_name) {
+  if (!measure) return;
   auto now = clock::now();
   if (loops.size() == 0) counter = 0;
   int parent           = stack.size() == 0 ? -1 : stack.back();
@@ -27,6 +29,7 @@ void Timing::startTimer(const std::string &_name) {
 }
 
 void Timing::stopTimer(const std::string &_name) {
+  if (!measure) return;
   stack.pop_back();
   int parent           = stack.empty() ? -1 : stack.back();
   std::string fullname = _name + "(" + std::to_string(parent) + ")";
@@ -79,10 +82,13 @@ void Timing::reportWithParent(int parent, const std::string &indentation) {
 }
 
 void Timing::reset() {
-  for (auto &element : loops) {
-    LoopData &l = element.second;
-    l.time      = 0.0;
-  }
+  loops.clear();
+  stack.clear();
+  counter = 0;
 }
+
+void Timing::suspend_prof() { measure = false; }
+void Timing::continue_prof() { measure = true; }
+
 
 void Timing::report() { reportWithParent(-1, "  "); }

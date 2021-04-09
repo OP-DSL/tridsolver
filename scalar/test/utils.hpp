@@ -96,6 +96,10 @@ template <typename Float, unsigned Align = 1> class RandomMesh {
 
 public:
   RandomMesh(const std::vector<int> &dims, size_t solvedim);
+  RandomMesh(const RandomMesh &) = delete;
+  RandomMesh &operator=(const RandomMesh &) = delete;
+  RandomMesh(RandomMesh &&)                 = delete;
+  RandomMesh &operator=(RandomMesh &&) = delete;
 
   size_t solve_dim() const { return _solve_dim; }
   const std::vector<int> &dims() const { return _dims; }
