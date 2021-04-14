@@ -90,5 +90,4 @@ void Timing::reset() {
 void Timing::suspend_prof() { measure = false; }
 void Timing::continue_prof() { measure = true; }
 
-
 void Timing::report() { reportWithParent(-1, "  "); }

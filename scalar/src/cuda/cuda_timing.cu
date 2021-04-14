@@ -9,16 +9,25 @@
 
 std::map<std::string, Timing::LoopData> Timing::loops;
 std::vector<int> Timing::stack;
-int Timing::counter = 0;
+int Timing::counter  = 0;
+bool Timing::measure = true;
 
 
 void Timing::pushRange(const std::string &_name) {
+  if (!measure) return;
   nvtxRangePushA(_name.c_str());
 }
-void Timing::popRange() { nvtxRangePop(); }
-void Timing::markStart(const std::string &_name) { nvtxMarkA(_name.c_str()); }
+void Timing::popRange() {
+  if (!measure) return;
+  nvtxRangePop();
+}
+void Timing::markStart(const std::string &_name) {
+  if (!measure) return;
+  nvtxMarkA(_name.c_str());
+}
 
 void Timing::startTimer(const std::string &_name) {
+  if (!measure) return;
   pushRange(_name);
   if (loops.size() == 0) counter = 0;
   int parent           = stack.size() == 0 ? -1 : stack.back();
@@ -38,6 +47,7 @@ void Timing::startTimer(const std::string &_name) {
 }
 
 void Timing::stopTimer(const std::string &_name) {
+  if (!measure) return;
   auto now = clock::now();
   stack.pop_back();
   int parent           = stack.empty() ? -1 : stack.back();
@@ -50,6 +60,7 @@ void Timing::stopTimer(const std::string &_name) {
 }
 
 void Timing::startTimerCUDA(const std::string &_name, cudaStream_t stream) {
+  if (!measure) return;
   markStart(_name);
   if (loops.size() == 0) counter = 0;
   int parent           = stack.size() == 0 ? -1 : stack.back();
@@ -75,6 +86,7 @@ void Timing::startTimerCUDA(const std::string &_name, cudaStream_t stream) {
 }
 
 void Timing::stopTimerCUDA(const std::string &_name, cudaStream_t stream) {
+  if (!measure) return;
   stack.pop_back();
   int parent           = stack.empty() ? -1 : stack.back();
   std::string fullname = _name + "(" + std::to_string(parent) + ")";
@@ -139,6 +151,15 @@ void Timing::sumCudaEvents() {
     loop.event_pairs.clear();
   }
 }
+
+void Timing::reset() {
+  loops.clear();
+  stack.clear();
+  counter = 0;
+}
+
+void Timing::suspend_prof() { measure = false; }
+void Timing::continue_prof() { measure = true; }
 
 void Timing::report() {
   sumCudaEvents();
