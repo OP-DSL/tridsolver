@@ -92,7 +92,7 @@ void trid_linear_reg(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *d_ax,
 //#endif
 
 //
-// Tridiagonal solver for linear (coniguous) system layout. Optimization options
+// Tridiagonal solver for linear (contiguous) system layout. Optimization options
 // may be used to select optimization algorithm
 //
 template <typename REAL, int INC>
