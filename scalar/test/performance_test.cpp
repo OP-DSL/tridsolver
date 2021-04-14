@@ -218,7 +218,7 @@ int main(int argc, char *argv[]) {
       break;
     }
   }
-  assert(ndims < MAXDIM && "ndims must be smaller or equal than MAXDIM");
+  assert(ndims <= MAXDIM && "ndims must be smaller or equal than MAXDIM");
   for (auto mpi_strat_idx : mpi_strat_idxs) {
     assert(mpi_strat_idx < 6 && mpi_strat_idx >= 0 &&
            "No such communication strategy");
