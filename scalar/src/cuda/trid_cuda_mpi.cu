@@ -539,11 +539,10 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
                                const int *c_pads, REAL *d, const int *d_pads,
                                REAL *u, const int *u_pads, int ndim,
                                int solvedim, const int *dims, int offset) {
-  // TODO paddings!!
   assert(solvedim < ndim);
-  assert((
-      (std::is_same<REAL, float>::value || std::is_same<REAL, double>::value) &&
-      "trid_solve_mpi: only double or float values are supported"));
+  static_assert(
+      (std::is_same<REAL, float>::value || std::is_same<REAL, double>::value),
+      "trid_solve_mpi: only double or float values are supported");
 
   // The size of the equations / our domain
   const size_t local_eq_size = dims[solvedim];
@@ -613,12 +612,23 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   switch (params.strategy) {
   case MpiSolverParams::GATHER_SCATTER:
     assert(false && "GATHER_SCATTER is not implemented for CUDA");
-    break;
+    // break; Release mode falls back to ALLGATHER
   case MpiSolverParams::ALLGATHER:
     tridMultiDimBatchSolveMPI_allgather<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
         solvedim, dims, aa + offset, cc + offset, dd + offset, boundaries,
         mpi_buf, sys_n, offset, send_buf, receive_buf);
+    break;
+  case MpiSolverParams::JACOBI:
+    // tridMultiDimBatchSolve_jacobi<REAL, INC>(params, a, b, c, d, u, aa, cc,
+    // dd,
+    //                                          ndim, solvedim, dims, pads,
+    //                                          sndbuf, rcvbuf, n_sys);
+    // break;
+  case MpiSolverParams::PCR:
+    // tridMultiDimBatchSolve_pcr<REAL, INC>(params, a, b, c, d, u, aa, cc, dd,
+    //                                       ndim, solvedim, dims, pads, sndbuf,
+    //                                       rcvbuf, n_sys);
     break;
   case MpiSolverParams::LATENCY_HIDING_INTERLEAVED:
     tridMultiDimBatchSolveMPI_interleaved<REAL, INC>(
