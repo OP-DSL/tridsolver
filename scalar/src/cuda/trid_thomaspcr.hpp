@@ -614,8 +614,8 @@ int solveBatchedTrid_contig(int numTrids, int length, int stride, const REAL *a,
   int nBlocks = (numTrids+(nThreads/32)-1) / (nThreads/32); 
   
   // There is probably a better way to do this
-  int canDiv2 = (numTrids & 1 == 0) && (length == stride);
-  int canDiv4 = (numTrids & 3 == 0) && (length == stride);
+  int canDiv2 = ((numTrids & 1) == 0) && (length == stride);
+  int canDiv4 = ((numTrids & 3) == 0) && (length == stride);
   
   if      (length <= 32)             cyclicRed_contig<REAL, 1,  128, 6, 32, INC>(x, a, b, c, d, length, stride, numTrids, nBlocks,nThreads);
   else if (length <= 48 && canDiv2)  cyclicRed_contig<REAL, 3,  128, 6, 32, INC>(x, a, b, c, d, length * 2, stride, numTrids / 2, (nBlocks + 1) / 2,nThreads);
