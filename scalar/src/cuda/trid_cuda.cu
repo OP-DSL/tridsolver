@@ -53,8 +53,7 @@
 #include "trid_linear_shared.hpp"
 //#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >=300) // Only compiler if
 //register shuffle intrinsics exist on the device
-#include "trid_linear_reg16_float4.hpp"
-#include "trid_linear_reg8_double2.hpp"
+#include "trid_linear_reg.hpp"
 #include "trid_thomaspcr.hpp"
 //#endif
 //#include "trid_cusparse.hpp"
@@ -68,28 +67,6 @@
 // cusparseHandle_t handle_sp; // Handle for cuSPARSE setup
 
 
-
-
-
-//#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >=300) // Only compiler if
-//register shuffle intrinsics exist on the device
-template <typename REAL>
-void trid_linear_reg(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *d_ax,
-                     const REAL *d_bx, const REAL *d_cx, REAL *d_du, REAL *d_u,
-                     int sys_size, int sys_pads, int sys_n) {
-  if (sizeof(REAL) == 4) {
-    trid_linear_reg16_float4<<<dimGrid_x, dimBlock_x>>>(
-        (float *)d_ax, (float *)d_bx, (float *)d_cx, (float *)d_du,
-        (float *)d_u, sys_size, sys_pads, sys_n);
-    cudaCheckMsg("trid_linear_reg16_float4 execution failed\n");
-  } else if (sizeof(REAL) == 8) {
-    trid_linear_reg8_double2<<<dimGrid_x, dimBlock_x>>>(
-        (double *)d_ax, (double *)d_bx, (double *)d_cx, (double *)d_du,
-        (double *)d_u, sys_size, sys_pads, sys_n);
-    cudaCheckMsg("trid_linear_reg8_double2 execution failed\n");
-  }
-}
-//#endif
 
 //
 // Tridiagonal solver for linear (contiguous) system layout. Optimization options
