@@ -41,11 +41,12 @@
 #define TRID_LINEAR_MPI_REG_HPP__
 
 #include "trid_linear_reg_common.hpp"
+#include "trid_mpi_helper.hpp"
 
 // Modified Thomas forward pass for X dimension.
 // Uses register shuffle optimization, can handle both aligned and unaligned
 // memory
-template <typename REAL>
+template <typename REAL, bool boundary_SOA = false>
 __global__ void trid_linear_forward_aligned(
     const REAL *__restrict__ a, const REAL *__restrict__ b,
     const REAL *__restrict__ c, const REAL *__restrict__ d,
@@ -207,13 +208,8 @@ __global__ void trid_linear_forward_aligned(
       store_array_reg(aa, &l_aa, n, woffset, sys_pads);
 
       // Store boundary values for communication
-      int i             = tid * 6;
-      boundaries[i + 0] = aa[ind];
-      boundaries[i + 1] = aa[ind + sys_size - 1];
-      boundaries[i + 2] = cc[ind];
-      boundaries[i + 3] = cc[ind + sys_size - 1];
-      boundaries[i + 4] = dd[ind];
-      boundaries[i + 5] = dd[ind + sys_size - 1];
+      copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, dd, boundaries, tid,
+                                                 ind, sys_size, sys_n);
     } else {
       // Normal modified Thomas if not optimized solve
 
@@ -247,13 +243,8 @@ __global__ void trid_linear_forward_aligned(
       }
 
       // Store boundary values for communication
-      int i             = tid * 6;
-      boundaries[i + 0] = aa[ind];
-      boundaries[i + 1] = aa[ind + sys_size - 1];
-      boundaries[i + 2] = cc[ind];
-      boundaries[i + 3] = cc[ind + sys_size - 1];
-      boundaries[i + 4] = dd[ind];
-      boundaries[i + 5] = dd[ind + sys_size - 1];
+      copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, dd, boundaries, tid,
+                                                 ind, sys_size, sys_n);
     }
   }
 }
@@ -412,13 +403,8 @@ __global__ void trid_linear_forward_unaligned(
       cc[ind] = bb * (-cc[ind] * c2);
 
       // Store boundary values for communication
-      int i             = tid * 6;
-      boundaries[i + 0] = aa[ind];
-      boundaries[i + 1] = aa[ind + sys_size - 1];
-      boundaries[i + 2] = cc[ind];
-      boundaries[i + 3] = cc[ind + sys_size - 1];
-      boundaries[i + 4] = dd[ind];
-      boundaries[i + 5] = dd[ind + sys_size - 1];
+      copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, dd, boundaries, tid,
+                                                 ind, sys_size, sys_n);
     } else {
       // Normal modified Thomas if not optimized solve
 
@@ -452,13 +438,8 @@ __global__ void trid_linear_forward_unaligned(
       }
 
       // Store boundary values for communication
-      int i             = tid * 6;
-      boundaries[i + 0] = aa[ind];
-      boundaries[i + 1] = aa[ind + sys_size - 1];
-      boundaries[i + 2] = cc[ind];
-      boundaries[i + 3] = cc[ind + sys_size - 1];
-      boundaries[i + 4] = dd[ind];
-      boundaries[i + 5] = dd[ind + sys_size - 1];
+      copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, dd, boundaries, tid,
+                                                 ind, sys_size, sys_n);
     }
   }
 }
@@ -502,8 +483,10 @@ __global__ void trid_linear_backward_aligned(
   // Check if active thread
   if (active_thread) {
     // Set start and end dd values
-    REAL dd0 = boundaries[2 * tid];
-    REAL ddn = boundaries[2 * tid + 1];
+    REAL dd0;
+    REAL ddn;
+    load_d_from_boundary_linear<REAL, boundary_SOA>(boundaries, dd0, ddn, tid,
+                                                    sys_n);
     // Check if optimized solve
     if (optimized_solve && sys_size >= 192 / sizeof(REAL)) {
       // If in padding, do dummy loads and stores without changing values in
@@ -643,8 +626,10 @@ __global__ void trid_linear_backward_unaligned(
   // Check if active thread
   if (active_thread) {
     // Set start and end dd values
-    REAL dd0 = boundaries[2 * tid];
-    REAL ddn = boundaries[2 * tid + 1];
+    REAL dd0;
+    REAL ddn;
+    load_d_from_boundary_linear<REAL, boundary_SOA>(boundaries, dd0, ddn, tid,
+                                                    sys_n);
     // Check if optimized solve
     if (optimized_solve && sys_size >= 192 / sizeof(REAL)) {
       // Unaligned memory
@@ -776,7 +761,7 @@ __global__ void trid_linear_backward_unaligned(
 //
 // Kernel launch wrapper for forward step with register blocking
 //
-template <typename REAL>
+template <typename REAL, bool boundary_SOA = false>
 void trid_linear_forward_reg(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *a,
                              const REAL *b, const REAL *c, const REAL *d,
                              REAL *aa, REAL *cc, REAL *dd, REAL *boundaries,
@@ -785,18 +770,22 @@ void trid_linear_forward_reg(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *a,
   const int aligned =
       (sys_pads % align<REAL>) == 0 && (offset % align<REAL>) == 0;
   if (aligned) {
-    trid_linear_forward_aligned<<<dimGrid_x, dimBlock_x, 0, stream>>>(
-        a, b, c, d, aa, cc, dd, boundaries, sys_size, sys_pads, sys_n, offset);
+    trid_linear_forward_aligned<REAL, boundary_SOA>
+        <<<dimGrid_x, dimBlock_x, 0, stream>>>(a, b, c, d, aa, cc, dd,
+                                               boundaries, sys_size, sys_pads,
+                                               sys_n, offset);
   } else {
-    trid_linear_forward_unaligned<<<dimGrid_x, dimBlock_x, 0, stream>>>(
-        a, b, c, d, aa, cc, dd, boundaries, sys_size, sys_pads, sys_n, offset);
+    trid_linear_forward_unaligned<REAL, boundary_SOA>
+        <<<dimGrid_x, dimBlock_x, 0, stream>>>(a, b, c, d, aa, cc, dd,
+                                               boundaries, sys_size, sys_pads,
+                                               sys_n, offset);
   }
 }
 
 //
 // Kernel launch wrapper for backward step with register blocking
 //
-template <typename REAL, int INC>
+template <typename REAL, int INC, bool boundary_SOA = false>
 void trid_linear_backward_reg(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
                               const REAL *cc, const REAL *dd, REAL *d, REAL *u,
                               const REAL *boundaries, int sys_size,
@@ -806,12 +795,12 @@ void trid_linear_backward_reg(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
   const int aligned =
       (sys_pads % align<REAL>) == 0 && (offset % align<REAL>) == 0;
   if (aligned) {
-    trid_linear_backward_aligned<REAL, INC>
+    trid_linear_backward_aligned<REAL, INC, boundary_SOA>
         <<<dimGrid_x, dimBlock_x, 0, stream>>>(
             aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
             start_sys, y_size, y_pads);
   } else {
-    trid_linear_backward_unaligned<REAL, INC>
+    trid_linear_backward_unaligned<REAL, INC, boundary_SOA>
         <<<dimGrid_x, dimBlock_x, 0, stream>>>(
             aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
             start_sys, y_size, y_pads);

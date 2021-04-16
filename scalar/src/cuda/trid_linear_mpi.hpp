@@ -37,13 +37,15 @@
 #ifndef TRID_LINEAR_GPU_MPI__
 #define TRID_LINEAR_GPU_MPI__
 
+#include "trid_mpi_helper.hpp"
+
 /*
  * Modified Thomas forwards pass in x direction
  * Each array should have a size of sys_size*sys_n, although the first element
  * of a (a[0]) in the first process and the last element of c in the last
  * process will not be used eventually
  */
-template <typename REAL>
+template <typename REAL, bool boundary_SOA = false>
 __global__ void
 trid_linear_forward(const REAL *__restrict__ a, const REAL *__restrict__ b,
                     const REAL *__restrict__ c, const REAL *__restrict__ d,
@@ -65,7 +67,7 @@ trid_linear_forward(const REAL *__restrict__ a, const REAL *__restrict__ b,
     // forward pass
     //
     for (i = 0; i < 2; ++i) {
-      bb = static_cast<REAL>(1.0) / b[ind + i];
+      bb          = static_cast<REAL>(1.0) / b[ind + i];
       dd[ind + i] = bb * d[ind + i];
       aa[ind + i] = bb * a[ind + i];
       cc[ind + i] = bb * c[ind + i];
@@ -75,7 +77,7 @@ trid_linear_forward(const REAL *__restrict__ a, const REAL *__restrict__ b,
       // eliminate lower off-diagonal
       for (i = 2; i < sys_size; i++) {
         int loc_ind = ind + i;
-        bb = static_cast<REAL>(1.0) /
+        bb          = static_cast<REAL>(1.0) /
              (b[loc_ind] - a[loc_ind] * cc[loc_ind - 1]);
         dd[loc_ind] = (d[loc_ind] - a[loc_ind] * dd[loc_ind - 1]) * bb;
         aa[loc_ind] = (-a[loc_ind] * aa[loc_ind - 1]) * bb;
@@ -95,20 +97,15 @@ trid_linear_forward(const REAL *__restrict__ a, const REAL *__restrict__ b,
       cc[ind] = bb * (-cc[ind] * cc[ind + 1]);
     }
     // prepare boundaries for communication
-    i = tid * 6;
-    boundaries[i + 0] = aa[ind];
-    boundaries[i + 1] = aa[ind + sys_size - 1];
-    boundaries[i + 2] = cc[ind];
-    boundaries[i + 3] = cc[ind + sys_size - 1];
-    boundaries[i + 4] = dd[ind];
-    boundaries[i + 5] = dd[ind + sys_size - 1];
+    copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, dd, boundaries, tid, ind,
+                                               sys_size, sys_n);
   }
 }
 
 //
 // Modified Thomas backward pass
 //
-template <typename REAL, int INC>
+template <typename REAL, int INC, bool boundary_SOA = false>
 __global__ void
 trid_linear_backward(const REAL *__restrict__ aa, const REAL *__restrict__ cc,
                      const REAL *__restrict__ dd, REAL *__restrict__ d,
@@ -124,7 +121,9 @@ trid_linear_backward(const REAL *__restrict__ aa, const REAL *__restrict__ cc,
     //
     // reverse pass
     //
-    REAL dd0 = boundaries[2 * tid], dd_last = boundaries[2 * tid + 1];
+    REAL dd0, dd_last;
+    load_d_from_boundary_linear<REAL, boundary_SOA>(boundaries, dd0, dd_last,
+                                                    tid, sys_n);
     if (INC)
       u[ind] += dd0;
     else

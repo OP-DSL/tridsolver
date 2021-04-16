@@ -37,6 +37,8 @@
 #ifndef TRID_STRIDED_MULTIDIM_GPU_MPI__
 #define TRID_STRIDED_MULTIDIM_GPU_MPI__
 
+#include "trid_mpi_helper.hpp"
+
 typedef struct {
   int v[8];
 } DIM_V;
@@ -50,14 +52,14 @@ typedef struct {
  * elements of aa, cc, and dd for each system
  *
  */
-template <typename REAL>
+template <typename REAL, bool boundary_SOA>
 __device__ void trid_strided_multidim_forward_kernel(
     const REAL *__restrict__ a, int ind_a, int stride_a,
     const REAL *__restrict__ b, int ind_b, int stride_b,
     const REAL *__restrict__ c, int ind_c, int stride_c,
     const REAL *__restrict__ d, int ind_d, int stride_d, REAL *__restrict__ aa,
     REAL *__restrict__ cc, REAL *__restrict__ dd, REAL *__restrict__ boundaries,
-    int ind_bound, int sys_size) {
+    int tid, int sys_size, int sys_n) {
   //
   // forward pass
   //
@@ -101,15 +103,12 @@ __device__ void trid_strided_multidim_forward_kernel(
     cc[ind_c] = bb * (-cc[ind_c] * cc[ind_c + stride_c]);
   }
   // prepare boundaries for communication
-  boundaries[ind_bound + 0] = aa[ind_a];
-  boundaries[ind_bound + 1] = aa[ind_a + (sys_size - 1) * stride_a];
-  boundaries[ind_bound + 2] = cc[ind_c];
-  boundaries[ind_bound + 3] = cc[ind_c + (sys_size - 1) * stride_c];
-  boundaries[ind_bound + 4] = dd[ind_d];
-  boundaries[ind_bound + 5] = dd[ind_d + (sys_size - 1) * stride_d];
+  copy_boundaries_strided<REAL, boundary_SOA>(aa, ind_a, stride_a, cc, ind_c,
+                                              stride_c, dd, ind_d, stride_d,
+                                              boundaries, tid, sys_size, sys_n);
 }
 
-template <typename REAL>
+template <typename REAL, bool boundary_SOA = false>
 __global__ void trid_strided_multidim_forward(
     const REAL *__restrict__ a, const DIM_V a_pads, const REAL *__restrict__ b,
     const DIM_V b_pads, const REAL *__restrict__ c, const DIM_V c_pads,
@@ -150,11 +149,10 @@ __global__ void trid_strided_multidim_forward(
         blockIdx.x * blockDim.y * blockDim.x +
         blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
 
-  int ind_a     = 0;
-  int ind_b     = 0;
-  int ind_c     = 0;
-  int ind_d     = 0;
-  int ind_bound = tid * 6;
+  int ind_a = 0;
+  int ind_b = 0;
+  int ind_c = 0;
+  int ind_d = 0;
 
   for (int j = 0; j < solvedim; j++) {
     ind_a += ((tid / d_cumdims[j]) % dims.v[j]) * d_cumpads[0][j];
@@ -179,9 +177,9 @@ __global__ void trid_strided_multidim_forward(
   int sys_size = dims.v[solvedim];
 
   if (tid < sys_offset + sys_n) {
-    trid_strided_multidim_forward_kernel<REAL>(
+    trid_strided_multidim_forward_kernel<REAL, boundary_SOA>(
         a, ind_a, stride_a, b, ind_b, stride_b, c, ind_c, stride_c, d, ind_d,
-        stride_d, aa, cc, dd, boundaries, ind_bound, sys_size);
+        stride_d, aa, cc, dd, boundaries, tid, sys_size, sys_n);
   }
 }
 
@@ -194,17 +192,19 @@ __global__ void trid_strided_multidim_forward(
  * elements of dd for each system
  *
  */
-template <typename REAL, int INC>
+template <typename REAL, int INC, bool boundary_SOA>
 __device__ void trid_strided_multidim_backward_kernel(
     const REAL *__restrict__ aa, int ind_a, int stride_a,
     const REAL *__restrict__ cc, int ind_c, int stride_c,
     const REAL *__restrict__ dd, REAL *__restrict__ d, int ind_d, int stride_d,
     REAL *__restrict__ u, int ind_u, int stride_u,
-    const REAL *__restrict__ boundaries, int ind_bound, int sys_size) {
+    const REAL *__restrict__ boundaries, int tid, int sys_size, int sys_n) {
   //
   // reverse pass
   //
-  REAL dd0 = boundaries[ind_bound], dd_last = boundaries[ind_bound + 1];
+  REAL dd0, dd_last;
+  load_d_from_boundary_linear<REAL, boundary_SOA>(boundaries, dd0, dd_last, tid,
+                                                  sys_n);
   if (INC == 0)
     d[ind_d] = dd0;
   else
@@ -223,7 +223,7 @@ __device__ void trid_strided_multidim_backward_kernel(
     u[ind_u + (sys_size - 1) * stride_u] += dd_last;
 }
 
-template <typename REAL, int INC>
+template <typename REAL, int INC, bool boundary_SOA = false>
 __global__ void trid_strided_multidim_backward(
     const REAL *__restrict__ aa, const DIM_V a_pads,
     const REAL *__restrict__ cc, const DIM_V c_pads,
@@ -265,11 +265,10 @@ __global__ void trid_strided_multidim_backward(
         blockIdx.x * blockDim.y * blockDim.x +
         blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
 
-  int ind_a     = 0;
-  int ind_c     = 0;
-  int ind_d     = 0;
-  int ind_u     = 0;
-  int ind_bound = tid * 2; // 2 values per system since it hold only dd
+  int ind_a = 0;
+  int ind_c = 0;
+  int ind_d = 0;
+  int ind_u = 0;
 
   for (int j = 0; j < solvedim; j++) {
     ind_a += ((tid / d_cumdims[j]) % dims.v[j]) * d_cumpads[0][j];
@@ -295,9 +294,9 @@ __global__ void trid_strided_multidim_backward(
   int sys_size = dims.v[solvedim];
 
   if (tid < sys_offset + sys_n) {
-    trid_strided_multidim_backward_kernel<REAL, INC>(
+    trid_strided_multidim_backward_kernel<REAL, INC, boundary_SOA>(
         aa, ind_a, stride_a, cc, ind_c, stride_c, dd, d, ind_d, stride_d, u,
-        ind_u, stride_u, boundaries, ind_bound, sys_size);
+        ind_u, stride_u, boundaries, tid, sys_size, sys_n);
   }
 }
 
