@@ -249,7 +249,7 @@ __global__ void trid_linear_forward_aligned(
   }
 }
 
-template <typename REAL>
+template <typename REAL, bool boundary_SOA>
 __global__ void trid_linear_forward_unaligned(
     const REAL *__restrict__ a, const REAL *__restrict__ b,
     const REAL *__restrict__ c, const REAL *__restrict__ d,
@@ -447,7 +447,7 @@ __global__ void trid_linear_forward_unaligned(
 // Modified Thomas backwards pass for X dimension.
 // Uses register shuffle optimization, can handle both aligned and unaligned
 // memory
-template <typename REAL, int INC>
+template <typename REAL, int INC, bool boundary_SOA>
 __global__ void trid_linear_backward_aligned(
     const REAL *__restrict__ aa, const REAL *__restrict__ cc,
     const REAL *__restrict__ dd, REAL *__restrict__ d, REAL *__restrict__ u,
@@ -596,7 +596,7 @@ __global__ void trid_linear_backward_aligned(
   }
 }
 
-template <typename REAL, int INC>
+template <typename REAL, int INC, bool boundary_SOA>
 __global__ void trid_linear_backward_unaligned(
     const REAL *__restrict__ aa, const REAL *__restrict__ cc,
     const REAL *__restrict__ dd, REAL *__restrict__ d, REAL *__restrict__ u,

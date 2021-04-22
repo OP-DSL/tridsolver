@@ -34,8 +34,8 @@
 // balogh.gabor.daniel@itk.ppke.hu, 2021
 
 // This file contains helper functions for mpi solver routines
-#ifndef TRID_LINEAR_MPI_REG_HPP__
-#define TRID_LINEAR_MPI_REG_HPP__
+#ifndef TRID_MPI_HELPER_HPP__
+#define TRID_MPI_HELPER_HPP__
 
 /*
  * Copy first and last row of each system to boundaries
@@ -69,8 +69,8 @@ __device__ inline void
 copy_boundaries_strided(const REAL *__restrict__ aa, int ind_a, int stride_a,
                         const REAL *__restrict__ cc, int ind_c, int stride_c,
                         const REAL *__restrict__ dd, int ind_d, int stride_d,
-                        REAL *__restrict__ boundaries, int tid,
-                        int sys_size, int sys_n) {
+                        REAL *__restrict__ boundaries, int tid, int sys_size,
+                        int sys_n) {
   if (!boundary_SOA) {
     int i             = tid * 6;
     boundaries[i + 0] = aa[ind_a];

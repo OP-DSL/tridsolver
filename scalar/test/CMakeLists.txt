@@ -57,7 +57,10 @@ endif (BUILD_FOR_CPU)
 
 if (BUILD_FOR_GPU)
   set(cuda_flags -m64 -Xptxas -dlcm=cg)
-  set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG} -G -O0 -ftz=false -fmad=false")
+  set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG} -G -O0 ")
+  if (CMAKE_CXX_COMPILER_ID MATCHES "NVCC")
+    set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG} -ftz=false -fmad=false")
+  endif ()
 
   add_executable(cuda_tests ${PROJECT_SOURCE_DIR}/test/catch_main.cpp ${PROJECT_SOURCE_DIR}/test/test_cuda.cu)
   set_target_properties(cuda_tests PROPERTIES POSITION_INDEPENDENT_CODE ON)
