@@ -219,10 +219,12 @@ int main(int argc, char *argv[]) {
     }
   }
   assert(ndims <= MAXDIM && "ndims must be smaller or equal than MAXDIM");
+#ifndef DNDEBUG
   for (auto mpi_strat_idx : mpi_strat_idxs) {
     assert(mpi_strat_idx < 6 && mpi_strat_idx >= 0 &&
            "No such communication strategy");
   }
+#endif
   if (solvedim >= ndims) {
     if (rank == 0) {
       std::cerr << "Solvedim must be smaller than number of dimenstions!\n";
