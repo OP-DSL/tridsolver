@@ -74,6 +74,7 @@ void print_local_sizes(int rank, int num_proc, const int *mpi_dims,
                        const std::vector<int> &local_sizes) {
 #ifdef NDEBUG
   if (rank == 0) {
+    int i = 0;
 #else
   for (int i = 0; i < num_proc; ++i) {
     // Print the outputs
