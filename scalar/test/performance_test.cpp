@@ -72,26 +72,34 @@ void run_tridsolver(const MpiSolverParams &params,
 void print_local_sizes(int rank, int num_proc, const int *mpi_dims,
                        const std::vector<int> &mpi_coords,
                        const std::vector<int> &local_sizes) {
+#ifdef NDEBUG
+  if (rank == 0) {
+#else
   for (int i = 0; i < num_proc; ++i) {
     // Print the outputs
     if (i == rank) {
-      std::string idx    = std::to_string(mpi_coords[0]),
-                  dims   = std::to_string(local_sizes[0]),
-                  m_dims = std::to_string(mpi_dims[0]);
-      for (size_t j = 1; j < local_sizes.size(); ++j) {
-        idx += "," + std::to_string(mpi_coords[j]);
-        dims += "x" + std::to_string(local_sizes[j]);
-        m_dims += "x" + std::to_string(mpi_dims[j]);
-      }
-      if (rank == 0) {
-        std::cout << "########## Local decomp sizes {" + m_dims +
-                         "} ##########\n";
-      }
-      std::cout << "# Rank " << i << "(" + idx + "){" + dims + "}\n";
+#endif
+    std::string idx    = std::to_string(mpi_coords[0]),
+                dims   = std::to_string(local_sizes[0]),
+                m_dims = std::to_string(mpi_dims[0]);
+    for (size_t j = 1; j < local_sizes.size(); ++j) {
+      idx += "," + std::to_string(mpi_coords[j]);
+      dims += "x" + std::to_string(local_sizes[j]);
+      m_dims += "x" + std::to_string(mpi_dims[j]);
+    }
+    if (rank == 0) {
+      std::cout << "########## Local decomp sizes {" + m_dims +
+                       "} ##########\n";
+    }
+    std::cout << "# Rank " << i << "(" + idx + "){" + dims + "}\n";
+#ifdef NDEBUG
+  }
+#else
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     MPI_Barrier(MPI_COMM_WORLD);
   }
+#endif
 }
 
 std::ostream &operator<<(std::ostream &o,
@@ -219,7 +227,7 @@ int main(int argc, char *argv[]) {
     }
   }
   assert(ndims <= MAXDIM && "ndims must be smaller or equal than MAXDIM");
-#ifndef DNDEBUG
+#ifndef NDEBUG
   for (auto mpi_strat_idx : mpi_strat_idxs) {
     assert(mpi_strat_idx < 6 && mpi_strat_idx >= 0 &&
            "No such communication strategy");
