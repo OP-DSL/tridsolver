@@ -8,6 +8,19 @@
 #include <thread>
 #include <unistd.h>
 
+#ifdef LIKWID_PERFMON
+#include <likwid.h>
+#else
+#define LIKWID_MARKER_INIT
+#define LIKWID_MARKER_THREADINIT
+#define LIKWID_MARKER_SWITCH
+#define LIKWID_MARKER_REGISTER(regionTag)
+#define LIKWID_MARKER_START(regionTag)
+#define LIKWID_MARKER_STOP(regionTag)
+#define LIKWID_MARKER_CLOSE
+#define LIKWID_MARKER_GET(regionTag, nevents, events, time, count)
+#endif
+
 
 #ifndef TRID_PERF_CUDA
 #  include "timing.h"
@@ -20,6 +33,11 @@ void run_tridsolver(const MpiSolverParams &params,
                     const RandomMesh<Float> &mesh, int num_iters) {
   AlignedArray<Float, 1> d(mesh.d());
 
+LIKWID_MARKER_INIT;
+#pragma omp parallel
+{
+LIKWID_MARKER_THREADINIT;
+}
   // Dry run
   PROFILE_SUSPEND();
   tridStridedBatchWrapper<Float>(params, mesh.a().data(), mesh.b().data(),
@@ -38,6 +56,7 @@ void run_tridsolver(const MpiSolverParams &params,
     d = mesh.d();
     MPI_Barrier(MPI_COMM_WORLD);
   }
+LIKWID_MARKER_CLOSE;
 }
 #else
 #  include "cuda_timing.h"

@@ -32,6 +32,21 @@
 
 // Written by Toby Flynn, University of Warwick, T.Flynn@warwick.ac.uk, 2020
 
+// This block enables to compile the code with and without the likwid header in place
+#ifdef LIKWID_PERFMON
+#include <likwid.h>
+#else
+#define LIKWID_MARKER_INIT
+#define LIKWID_MARKER_THREADINIT
+#define LIKWID_MARKER_SWITCH
+#define LIKWID_MARKER_REGISTER(regionTag)
+#define LIKWID_MARKER_START(regionTag)
+#define LIKWID_MARKER_STOP(regionTag)
+#define LIKWID_MARKER_CLOSE
+#define LIKWID_MARKER_GET(regionTag, nevents, events, time, count)
+#endif
+
+
 #include "trid_mpi_cpu.h"
 
 #include "trid_common.h"
@@ -1403,7 +1418,7 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
   default: assert(false && "Unknown communication strategy");
   }
   END_PROFILING("memalloc");
-
+LIKWID_MARKER_START("Compute");
   switch (params.strategy) {
   case MpiSolverParams::GATHER_SCATTER:
     tridMultiDimBatchSolve_gather_scatter<REAL, INC>(
@@ -1437,6 +1452,7 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
     break;
   default: assert(false && "Unknown communication strategy");
   }
+LIKWID_MARKER_STOP("Compute");
 
   // Free memory used in solve
   BEGIN_PROFILING("memfree");
