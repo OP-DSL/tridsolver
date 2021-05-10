@@ -899,7 +899,7 @@ template <typename REAL, int INC>
 inline void backward(const REAL *aa, const REAL *cc, const REAL *dd, REAL *d,
                      REAL *u, const int *dims, const int *pads, int ndim,
                      int solvedim, int n_sys) {
-  LIKWID_MARKER_START("backward")
+  LIKWID_MARKER_START("backward");
   if (solvedim == 0) {
     /*********************
      *
