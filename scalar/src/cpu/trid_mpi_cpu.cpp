@@ -32,18 +32,19 @@
 
 // Written by Toby Flynn, University of Warwick, T.Flynn@warwick.ac.uk, 2020
 
-// This block enables to compile the code with and without the likwid header in place
+// This block enables to compile the code with and without the likwid header in
+// place
 #ifdef LIKWID_PERFMON
-#include <likwid.h>
+#  include <likwid.h>
 #else
-#define LIKWID_MARKER_INIT
-#define LIKWID_MARKER_THREADINIT
-#define LIKWID_MARKER_SWITCH
-#define LIKWID_MARKER_REGISTER(regionTag)
-#define LIKWID_MARKER_START(regionTag)
-#define LIKWID_MARKER_STOP(regionTag)
-#define LIKWID_MARKER_CLOSE
-#define LIKWID_MARKER_GET(regionTag, nevents, events, time, count)
+#  define LIKWID_MARKER_INIT
+#  define LIKWID_MARKER_THREADINIT
+#  define LIKWID_MARKER_SWITCH
+#  define LIKWID_MARKER_REGISTER(regionTag)
+#  define LIKWID_MARKER_START(regionTag)
+#  define LIKWID_MARKER_STOP(regionTag)
+#  define LIKWID_MARKER_CLOSE
+#  define LIKWID_MARKER_GET(regionTag, nevents, events, time, count)
 #endif
 
 
@@ -510,7 +511,7 @@ template <typename REAL>
 inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
                     REAL *aa, REAL *cc, REAL *dd, const int *dims,
                     const int *pads, int ndim, int solvedim, int n_sys) {
-
+  LIKWID_MARKER_START("forward");
   if (solvedim == 0) {
     /*********************
      *
@@ -581,6 +582,7 @@ inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
                                      pads[0] * pads[1], dims[0]);
     }
   }
+  LIKWID_MARKER_STOP("forward");
 }
 
 template <typename REAL>
@@ -897,7 +899,7 @@ template <typename REAL, int INC>
 inline void backward(const REAL *aa, const REAL *cc, const REAL *dd, REAL *d,
                      REAL *u, const int *dims, const int *pads, int ndim,
                      int solvedim, int n_sys) {
-
+  LIKWID_MARKER_START("backward")
   if (solvedim == 0) {
     /*********************
      *
@@ -960,6 +962,7 @@ inline void backward(const REAL *aa, const REAL *cc, const REAL *dd, REAL *d,
                                            pads[0] * pads[1], dims[0]);
     }
   }
+  LIKWID_MARKER_STOP("backward");
 }
 
 template <typename REAL, int INC>
@@ -1418,7 +1421,6 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
   default: assert(false && "Unknown communication strategy");
   }
   END_PROFILING("memalloc");
-LIKWID_MARKER_START("Compute");
   switch (params.strategy) {
   case MpiSolverParams::GATHER_SCATTER:
     tridMultiDimBatchSolve_gather_scatter<REAL, INC>(
@@ -1452,7 +1454,6 @@ LIKWID_MARKER_START("Compute");
     break;
   default: assert(false && "Unknown communication strategy");
   }
-LIKWID_MARKER_STOP("Compute");
 
   // Free memory used in solve
   BEGIN_PROFILING("memfree");
