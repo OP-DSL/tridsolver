@@ -659,13 +659,9 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
   REAL *rcvbufR = rcvbuf + n_sys;
 
   // norm comp
-  int global_sys_len = 0;
-  double global_norm = 0.0;
+  int global_sys_len = params.num_mpi_procs[solvedim];
+  double global_norm = -1.0;
   double norm0       = -1.0;
-  BEGIN_PROFILING("mpi_communication");
-  MPI_Allreduce(&dims[solvedim], &global_sys_len, 1, MPI_INT, MPI_SUM,
-                params.communicators[solvedim]);
-  END_PROFILING("mpi_communication");
 
   int result_stride = get_sys_span(solvedim, dims, pads);
 
@@ -687,14 +683,10 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
     }
   }
 
-  int iter = 0;
+  int iter             = 0;
+  MPI_Request norm_req = MPI_REQUEST_NULL;
   do {
     BEGIN_PROFILING("mpi_communication");
-#pragma omp parallel for
-    for (int id = 0; id < n_sys; ++id) {
-      rcvbufL[id] = 0;
-      rcvbufR[id] = 0;
-    }
     MPI_Request req[4] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL, MPI_REQUEST_NULL,
                           MPI_REQUEST_NULL};
     if (rank)
@@ -709,7 +701,7 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
     if (rank != nproc - 1)
       MPI_Isend(dd_r, n_sys, MPI_DATATYPE(REAL), rank + 1, 2,
                 params.communicators[solvedim], &req[3]);
-    MPI_Waitall(4, req, MPI_STATUS_IGNORE);
+    MPI_Waitall(2, req, MPI_STATUS_IGNORE);
     END_PROFILING("mpi_communication");
     /* calculate error norm - boundary */
     double local_norm = 0;
@@ -729,10 +721,15 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
     }
     /* sum over all processes */
     BEGIN_PROFILING("mpi_communication");
-    MPI_Allreduce(&local_norm, &global_norm, 1, MPI_DOUBLE, MPI_SUM,
-                  params.communicators[solvedim]);
-    global_norm = sqrt(global_norm / global_sys_len);
+    MPI_Wait(&norm_req, MPI_STATUS_IGNORE);
+    norm_req = MPI_REQUEST_NULL;
+    if (global_norm > 0) // skip until the first sum is ready
+      global_norm = sqrt(global_norm / global_sys_len);
     if (norm0 < 0) norm0 = global_norm;
+    MPI_Iallreduce(&local_norm, &global_norm, 1, MPI_DOUBLE, MPI_SUM,
+                   params.communicators[solvedim], &norm_req);
+    // Wait for send before write
+    MPI_Waitall(2, req + 2, MPI_STATUS_IGNORE);
     END_PROFILING("mpi_communication");
     /* correct the solution for this iteration */
     if (rank) {
@@ -747,8 +744,12 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
     }
     iter++;
   } while ((params.jacobi_maxiter < 0 || iter < params.jacobi_maxiter) &&
-           (params.jacobi_atol < global_norm &&
-            params.jacobi_rtol < global_norm / norm0));
+           (global_norm < 0.0 || params.jacobi_atol < global_norm &&
+                                     params.jacobi_rtol < global_norm / norm0));
+
+  BEGIN_PROFILING("mpi_communication");
+  MPI_Wait(&norm_req, MPI_STATUS_IGNORE);
+  END_PROFILING("mpi_communication");
 
   compute_last_for_reduced_jacobi(params, aa, cc, dd, dd_r, rcvbuf, dims, pads,
                                   ndim, solvedim, 0, n_sys, result_stride);
