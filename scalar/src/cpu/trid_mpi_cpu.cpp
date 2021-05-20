@@ -659,10 +659,12 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
   REAL *rcvbufR = rcvbuf + n_sys;
 
   // norm comp
-  int global_sys_len = params.num_mpi_procs[solvedim];
-  double local_norm_send = -1.0;
-  double global_norm = -1.0;
-  double norm0       = -1.0;
+  int global_sys_len      = params.num_mpi_procs[solvedim];
+  double local_norm_send  = -1.0;
+  double global_norm_recv = -1.0;
+  double global_norm      = -1.0;
+  double norm0            = -1.0;
+  bool need_iter          = true;
 
   int result_stride = get_sys_span(solvedim, dims, pads);
 
@@ -724,12 +726,19 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
     BEGIN_PROFILING("mpi_communication");
     MPI_Wait(&norm_req, MPI_STATUS_IGNORE);
     norm_req = MPI_REQUEST_NULL;
-    if (global_norm > 0) // skip until the first sum is ready
-      global_norm = sqrt(global_norm / global_sys_len);
+    if (global_norm_recv >= 0) // skip until the first sum is ready
+      global_norm = sqrt(global_norm_recv / global_sys_len);
     if (norm0 < 0) norm0 = global_norm;
     local_norm_send = local_norm;
-    MPI_Iallreduce(&local_norm_send, &global_norm, 1, MPI_DOUBLE, MPI_SUM,
-                   params.communicators[solvedim], &norm_req);
+    iter++;
+    need_iter =
+        (global_norm < 0.0 || params.jacobi_atol < global_norm &&
+                                  params.jacobi_rtol < global_norm / norm0);
+    if ((params.jacobi_maxiter < 0 || iter + 1 < params.jacobi_maxiter) &&
+        need_iter) { // if norm is not enough and next is not last iteration
+      MPI_Iallreduce(&local_norm_send, &global_norm_recv, 1, MPI_DOUBLE,
+                     MPI_SUM, params.communicators[solvedim], &norm_req);
+    }
     // Wait for send before write
     MPI_Waitall(2, req + 2, MPI_STATUS_IGNORE);
     END_PROFILING("mpi_communication");
@@ -744,10 +753,8 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
         if (rank) dd_r[id] -= aa[start] * rcvbufL[id];
       }
     }
-    iter++;
   } while ((params.jacobi_maxiter < 0 || iter < params.jacobi_maxiter) &&
-           (global_norm < 0.0 || params.jacobi_atol < global_norm &&
-                                     params.jacobi_rtol < global_norm / norm0));
+           need_iter);
 
   BEGIN_PROFILING("mpi_communication");
   MPI_Wait(&norm_req, MPI_STATUS_IGNORE);
@@ -811,26 +818,28 @@ inline void solve_reduced_pcr(const MpiSolverParams &params, REAL *aa, REAL *cc,
         MPI_REQUEST_NULL,
         MPI_REQUEST_NULL,
     };
+    BEGIN_PROFILING("mpi_communication");
     // Get the minus elements
     if (leftrank >= 0) {
       // send recv
       MPI_Isend(sndbuf, n_sys * nvar_per_sys, MPI_DATATYPE(REAL), leftrank, tag,
-                params.communicators[solvedim], &reqs[0]);
+                params.communicators[solvedim], &reqs[2]);
       MPI_Irecv(rcvbufL, n_sys * nvar_per_sys, MPI_DATATYPE(REAL), leftrank,
-                tag, params.communicators[solvedim], &reqs[1]);
+                tag, params.communicators[solvedim], &reqs[0]);
     }
 
     // Get the plus elements
     if (rightrank < nproc) {
       // send recv
       MPI_Isend(sndbuf, n_sys * nvar_per_sys, MPI_DATATYPE(REAL), rightrank,
-                tag, params.communicators[solvedim], &reqs[2]);
-      MPI_Irecv(rcvbufR, n_sys * nvar_per_sys, MPI_DATATYPE(REAL), rightrank,
                 tag, params.communicators[solvedim], &reqs[3]);
+      MPI_Irecv(rcvbufR, n_sys * nvar_per_sys, MPI_DATATYPE(REAL), rightrank,
+                tag, params.communicators[solvedim], &reqs[1]);
     }
 
-    // Wait for communication to finish
-    MPI_Waitall(4, reqs, MPI_STATUS_IGNORE);
+    // Wait for receives to finish
+    MPI_Waitall(2, reqs, MPI_STATUS_IGNORE);
+    END_PROFILING("mpi_communication");
 
     // PCR algorithm
 #pragma omp parallel for
@@ -869,6 +878,11 @@ inline void solve_reduced_pcr(const MpiSolverParams &params, REAL *aa, REAL *cc,
       aa_r[id] = -am1 * aa_r[id] * bbi;
       cc_r[id] = -cp1 * cc_r[id] * bbi;
     }
+
+    BEGIN_PROFILING("mpi_communication");
+    // wait for sends to finish
+    MPI_Waitall(2, reqs + 2, MPI_STATUS_IGNORE);
+    END_PROFILING("mpi_communication");
 
     // done
     s = s << 1;
