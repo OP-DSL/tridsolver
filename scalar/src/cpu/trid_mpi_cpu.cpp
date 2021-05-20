@@ -397,9 +397,9 @@ inline void copy_boundaries_strided(const REAL *aa, const REAL *cc,
 
 template <typename REAL>
 inline void forward_batched(const REAL *a, const REAL *b, const REAL *c,
-                            const REAL *d, REAL *aa, REAL *cc, REAL *dd,
-                            const int *dims, const int *pads, int ndim,
-                            int solvedim, int start_sys, int end_sys) {
+                            REAL *d, REAL *aa, REAL *cc, const int *dims,
+                            const int *pads, int ndim, int solvedim,
+                            int start_sys, int end_sys) {
   int n_sys = end_sys - start_sys;
   if (solvedim == 0) {
     /*********************
@@ -412,14 +412,14 @@ inline void forward_batched(const REAL *a, const REAL *b, const REAL *c,
 #pragma omp parallel for
       for (int id = start_sys; id < end_sys; id++) {
         int ind = id * pads[0];
-        thomas_forward<REAL>(a, b, c, d, aa, cc, dd, ind, dims[0], 1);
+        thomas_forward<REAL>(a, b, c, d, aa, cc, ind, dims[0], 1);
       }
     } else {
       // Do modified thomas forward pass
 #pragma omp parallel for
       for (int id = start_sys; id < end_sys; id++) {
         int ind = (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
-        thomas_forward<REAL>(a, b, c, d, aa, cc, dd, ind, dims[0], 1);
+        thomas_forward<REAL>(a, b, c, d, aa, cc, ind, dims[0], 1);
       }
     }
   } else if (solvedim == 1) {
@@ -437,14 +437,14 @@ inline void forward_batched(const REAL *a, const REAL *b, const REAL *c,
 #pragma omp parallel for
       for (int ind = start_sys; ind < start_sys + ROUND_DOWN(n_sys, batch_size);
            ind += batch_size) {
-        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, ind, dims[1],
+        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, ind, dims[1],
                                        pads[0], batch_size);
       }
       // Do final strip if number of systems isn't a multiple of batch_size
       if (n_sys != ROUND_DOWN(n_sys, batch_size)) {
         int ind    = start_sys + ROUND_DOWN(n_sys, batch_size);
         int length = end_sys - ind;
-        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, ind, dims[1],
+        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, ind, dims[1],
                                        pads[0], length);
       }
     } else {
@@ -462,7 +462,7 @@ inline void forward_batched(const REAL *a, const REAL *b, const REAL *c,
         strip_len -= strip_start;
         // ind += strip_start * pads[0];
         ind += strip_start;
-        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, ind, dims[1],
+        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, ind, dims[1],
                                        pads[0], strip_len);
       }
     }
@@ -483,7 +483,7 @@ inline void forward_batched(const REAL *a, const REAL *b, const REAL *c,
       strip_len -= strip_start;
       // ind += strip_start * pads[0];
       ind += strip_start;
-      thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, ind, dims[2],
+      thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, ind, dims[2],
                                      pads[0] * pads[1], strip_len);
     }
   }
@@ -492,9 +492,9 @@ inline void forward_batched(const REAL *a, const REAL *b, const REAL *c,
 // Positive and negative padding version
 // TODO generalize padding caclulations (not just hardcode the 3D case)
 template <typename REAL>
-inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
-                    REAL *aa, REAL *cc, REAL *dd, const int *dims,
-                    const int *pads, int ndim, int solvedim, int n_sys) {
+inline void forward(const REAL *a, const REAL *b, const REAL *c, REAL *d,
+                    REAL *aa, REAL *cc, const int *dims, const int *pads,
+                    int ndim, int solvedim, int n_sys) {
 
   if (solvedim == 0) {
     /*********************
@@ -507,14 +507,14 @@ inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
 #pragma omp parallel for
       for (int id = 0; id < n_sys; id++) {
         int ind = id * pads[0];
-        thomas_forward<REAL>(a, b, c, d, aa, cc, dd, ind, dims[0], 1);
+        thomas_forward<REAL>(a, b, c, d, aa, cc, ind, dims[0], 1);
       }
     } else {
       // Do modified thomas forward pass
 #pragma omp parallel for
       for (int id = 0; id < n_sys; id++) {
         int ind = (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
-        thomas_forward<REAL>(a, b, c, d, aa, cc, dd, ind, dims[0], 1);
+        thomas_forward<REAL>(a, b, c, d, aa, cc, ind, dims[0], 1);
       }
     }
   } else if (solvedim == 1) {
@@ -531,14 +531,14 @@ inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
 #pragma omp parallel for
       for (int ind = 0; ind < ROUND_DOWN(n_sys, batch_size);
            ind += batch_size) {
-        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, ind, dims[1],
+        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, ind, dims[1],
                                        pads[0], batch_size);
       }
       // Do final strip if number of systems isn't a multiple of batch_size
       if (n_sys != ROUND_DOWN(n_sys, batch_size)) {
         int ind    = ROUND_DOWN(n_sys, batch_size);
         int length = n_sys - ind;
-        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, ind, dims[1],
+        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, ind, dims[1],
                                        pads[0], length);
       }
     } else {
@@ -548,7 +548,7 @@ inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
 #pragma omp parallel for
       for (int z = 0; z < dims[2]; z++) {
         int ind = z * pads[0] * pads[1];
-        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, ind, dims[1],
+        thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, ind, dims[1],
                                        pads[0], dims[0]);
       }
     }
@@ -562,7 +562,7 @@ inline void forward(const REAL *a, const REAL *b, const REAL *c, const REAL *d,
 
 #pragma omp parallel for
     for (int ind = 0; ind < dims[1] * pads[0]; ind += pads[0]) {
-      thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, dd, ind, dims[2],
+      thomas_forward_vec_strip<REAL>(a, b, c, d, aa, cc, ind, dims[2],
                                      pads[0] * pads[1], dims[0]);
     }
   }
@@ -891,9 +891,9 @@ inline void solve_reduced_pcr(const MpiSolverParams &params, REAL *aa, REAL *cc,
 // Positive and negative padding version
 // TODO generalize padding caclulations (not just hardcode the 3D case)
 template <typename REAL, int INC>
-inline void backward(const REAL *aa, const REAL *cc, const REAL *dd, REAL *d,
-                     REAL *u, const int *dims, const int *pads, int ndim,
-                     int solvedim, int n_sys) {
+inline void backward(const REAL *aa, const REAL *cc, REAL *d, REAL *u,
+                     const int *dims, const int *pads, int ndim, int solvedim,
+                     int n_sys) {
 
   if (solvedim == 0) {
     /*********************
@@ -908,7 +908,7 @@ inline void backward(const REAL *aa, const REAL *cc, const REAL *dd, REAL *d,
 #pragma omp parallel for
       for (int id = 0; id < n_sys; id++) {
         int ind = id * pads[0];
-        thomas_backward<REAL, INC>(aa, cc, dd, d, u, ind, dims[0], 1);
+        thomas_backward<REAL, INC>(aa, cc, d, u, ind, dims[0], 1);
       }
     } else {
       // Do the backward pass to solve for remaining unknowns
@@ -916,7 +916,7 @@ inline void backward(const REAL *aa, const REAL *cc, const REAL *dd, REAL *d,
 #pragma omp parallel for
       for (int id = 0; id < n_sys; id++) {
         int ind = (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
-        thomas_backward<REAL, INC>(aa, cc, dd, d, u, ind, dims[0], 1);
+        thomas_backward<REAL, INC>(aa, cc, d, u, ind, dims[0], 1);
       }
     }
   } else if (solvedim == 1) {
@@ -931,7 +931,7 @@ inline void backward(const REAL *aa, const REAL *cc, const REAL *dd, REAL *d,
     // Check if 2D solve
     if (ndim == 2) {
       // Do the backward pass to solve for remaining unknowns
-      thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, 0, dims[1],
+      thomas_backward_vec_strip<REAL, INC>(aa, cc, d, u, 0, dims[1],
                                            pads[0], pads[0]);
     } else {
       // Assume 3D solve
@@ -940,7 +940,7 @@ inline void backward(const REAL *aa, const REAL *cc, const REAL *dd, REAL *d,
 #pragma omp parallel for
       for (int z = 0; z < dims[2]; z++) {
         int ind = z * pads[0] * pads[1];
-        thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, ind, dims[1],
+        thomas_backward_vec_strip<REAL, INC>(aa, cc, d, u, ind, dims[1],
                                              pads[0], dims[0]);
       }
     }
@@ -953,17 +953,16 @@ inline void backward(const REAL *aa, const REAL *cc, const REAL *dd, REAL *d,
 
 #pragma omp parallel for
     for (int ind = 0; ind < dims[1] * pads[0]; ind += pads[0]) {
-      thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, ind, dims[2],
+      thomas_backward_vec_strip<REAL, INC>(aa, cc, d, u, ind, dims[2],
                                            pads[0] * pads[1], dims[0]);
     }
   }
 }
 
 template <typename REAL, int INC>
-inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
-                             REAL *d, REAL *u, const int *dims, const int *pads,
-                             int ndim, int solvedim, int start_sys,
-                             int end_sys) {
+inline void backward_batched(const REAL *aa, const REAL *cc, REAL *d, REAL *u,
+                             const int *dims, const int *pads, int ndim,
+                             int solvedim, int start_sys, int end_sys) {
   int n_sys = end_sys - start_sys;
   if (solvedim == 0) {
     /*********************
@@ -979,7 +978,7 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
       for (int id = start_sys; id < end_sys; id++) {
         int ind = id * pads[0];
         // int ind = id * pads[0];
-        thomas_backward<REAL, INC>(aa, cc, dd, d, u, ind, dims[0], 1);
+        thomas_backward<REAL, INC>(aa, cc, d, u, ind, dims[0], 1);
       }
     } else {
       // Do the backward pass to solve for remaining unknowns
@@ -988,7 +987,7 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
       for (int id = start_sys; id < end_sys; id++) {
         int ind = (id / dims[1]) * pads[1] * pads[0] + (id % dims[1]) * pads[0];
         // int ind = id * pads[0];
-        thomas_backward<REAL, INC>(aa, cc, dd, d, u, ind, dims[0], 1);
+        thomas_backward<REAL, INC>(aa, cc, d, u, ind, dims[0], 1);
       }
     }
   } else if (solvedim == 1) {
@@ -1006,14 +1005,14 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
 #pragma omp parallel for
       for (int ind = start_sys; ind < start_sys + ROUND_DOWN(n_sys, batch_size);
            ind += batch_size) {
-        thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, ind, dims[1],
+        thomas_backward_vec_strip<REAL, INC>(aa, cc, d, u, ind, dims[1],
                                              pads[0], batch_size);
       }
       // Do final strip if number of systems isn't a multiple of batch_size
       if (n_sys != ROUND_DOWN(n_sys, batch_size)) {
         int ind    = start_sys + ROUND_DOWN(n_sys, batch_size);
         int length = end_sys - ind;
-        thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, ind, dims[1],
+        thomas_backward_vec_strip<REAL, INC>(aa, cc, d, u, ind, dims[1],
                                              pads[0], length);
       }
     } else {
@@ -1031,7 +1030,7 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
         strip_len -= strip_start;
         // ind += strip_start * pads[0];
         ind += strip_start;
-        thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, ind, dims[1],
+        thomas_backward_vec_strip<REAL, INC>(aa, cc, d, u, ind, dims[1],
                                              pads[0], strip_len);
       }
     }
@@ -1052,7 +1051,7 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
       strip_len -= strip_start;
       // ind += strip_start * pads[0];
       ind += strip_start;
-      thomas_backward_vec_strip<REAL, INC>(aa, cc, dd, d, u, ind, dims[2],
+      thomas_backward_vec_strip<REAL, INC>(aa, cc, d, u, ind, dims[2],
                                            pads[0] * pads[1], strip_len);
     }
   }
@@ -1062,7 +1061,7 @@ inline void backward_batched(const REAL *aa, const REAL *cc, const REAL *dd,
 template <typename REAL, int INC>
 inline void tridMultiDimBatchSolve_simple(
     const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
-    REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
+    REAL *d, REAL *u, REAL *aa, REAL *cc, int ndim, int solvedim,
     const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, REAL *aa_r,
     REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r, int n_sys) {
   int batch_size  = std::min(n_sys, params.mpi_batch_size);
@@ -1073,10 +1072,10 @@ inline void tridMultiDimBatchSolve_simple(
     int batch_start = bidx * batch_size;
     int bsize = bidx == num_batches - 1 ? n_sys - batch_start : batch_size;
     BEGIN_PROFILING("forward");
-    forward_batched(a, b, c, d, aa, cc, dd, dims, pads, ndim, solvedim,
+    forward_batched(a, b, c, d, aa, cc, dims, pads, ndim, solvedim,
                     batch_start, batch_start + bsize);
     // Pack reduced systems (boundaries of each tridiagonal system)
-    copy_boundaries_strided(aa, cc, dd, sndbuf, dims, pads, ndim, solvedim,
+    copy_boundaries_strided(aa, cc, d, sndbuf, dims, pads, ndim, solvedim,
                             batch_start, batch_start + bsize);
     END_PROFILING("forward");
     BEGIN_PROFILING("mpi_communication");
@@ -1106,13 +1105,13 @@ inline void tridMultiDimBatchSolve_simple(
     // Finish the solve for batch
     BEGIN_PROFILING("reduced");
     // Solve reduced systems on each node
-    solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads,
+    solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, d, dims, pads,
                           ndim, solvedim, sys_len_r, batch_start,
                           batch_start + bsize);
     END_PROFILING("reduced");
     // Perform the backward run of the modified thomas algorithm
     BEGIN_PROFILING("backward");
-    backward_batched<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim,
+    backward_batched<REAL, INC>(aa, cc, d, u, dims, pads, ndim, solvedim,
                                 batch_start, batch_start + bsize);
     END_PROFILING("backward");
   }
@@ -1121,7 +1120,7 @@ inline void tridMultiDimBatchSolve_simple(
 template <typename REAL, int INC>
 inline void tridMultiDimBatchSolve_LH(
     const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
-    REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
+    REAL *d, REAL *u, REAL *aa, REAL *cc, int ndim, int solvedim,
     const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, REAL *aa_r,
     REAL *cc_r, REAL *dd_r, int len_r_local, int sys_len_r, int n_sys) {
   int batch_size  = std::min(n_sys, params.mpi_batch_size);
@@ -1132,10 +1131,10 @@ inline void tridMultiDimBatchSolve_LH(
     int batch_start = bidx * batch_size;
     int bsize = bidx == num_batches - 1 ? n_sys - batch_start : batch_size;
     BEGIN_PROFILING("forward");
-    forward_batched(a, b, c, d, aa, cc, dd, dims, pads, ndim, solvedim,
+    forward_batched(a, b, c, d, aa, cc, dims, pads, ndim, solvedim,
                     batch_start, batch_start + bsize);
     // Pack reduced systems (boundaries of each tridiagonal system)
-    copy_boundaries_strided(aa, cc, dd, sndbuf, dims, pads, ndim, solvedim,
+    copy_boundaries_strided(aa, cc, d, sndbuf, dims, pads, ndim, solvedim,
                             batch_start, batch_start + bsize);
     END_PROFILING("forward");
     BEGIN_PROFILING("mpi_communication");
@@ -1158,12 +1157,12 @@ inline void tridMultiDimBatchSolve_LH(
       int bsize       = batch_size;
       BEGIN_PROFILING("reduced");
       // Solve reduced systems on each node
-      solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads,
+      solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, d, dims, pads,
                             ndim, solvedim, sys_len_r, batch_start,
                             batch_start + bsize);
       END_PROFILING("reduced");
       BEGIN_PROFILING("backward");
-      backward_batched<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim,
+      backward_batched<REAL, INC>(aa, cc, d, u, dims, pads, ndim, solvedim,
                                   batch_start, batch_start + bsize);
       END_PROFILING("backward");
     }
@@ -1177,11 +1176,11 @@ inline void tridMultiDimBatchSolve_LH(
   int bsize       = n_sys - batch_start;
   BEGIN_PROFILING("reduced");
   // Solve reduced systems on each node
-  solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads, ndim,
+  solve_reduced_batched(params, rcvbuf, aa_r, cc_r, dd_r, d, dims, pads, ndim,
                         solvedim, sys_len_r, batch_start, batch_start + bsize);
   END_PROFILING("reduced");
   BEGIN_PROFILING("backward");
-  backward_batched<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim,
+  backward_batched<REAL, INC>(aa, cc, d, u, dims, pads, ndim, solvedim,
                               batch_start, batch_start + bsize);
   END_PROFILING("backward");
 }
@@ -1190,15 +1189,15 @@ inline void tridMultiDimBatchSolve_LH(
 template <typename REAL, int INC>
 inline void tridMultiDimBatchSolve_allgather(
     const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
-    REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
+    REAL *d, REAL *u, REAL *aa, REAL *cc, int ndim, int solvedim,
     const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, REAL *aa_r,
     REAL *cc_r, REAL *dd_r, int n_sys) {
   constexpr int len_r_local = 2 * 3;
   const int sys_len_r       = 2 * params.num_mpi_procs[solvedim];
   BEGIN_PROFILING("forward");
-  forward(a, b, c, d, aa, cc, dd, dims, pads, ndim, solvedim, n_sys);
+  forward(a, b, c, d, aa, cc, dims, pads, ndim, solvedim, n_sys);
   // Pack reduced systems (boundaries of each tridiagonal system)
-  copy_boundaries_strided(aa, cc, dd, sndbuf, dims, pads, ndim, solvedim, 0,
+  copy_boundaries_strided(aa, cc, d, sndbuf, dims, pads, ndim, solvedim, 0,
                           n_sys);
   END_PROFILING("forward");
   BEGIN_PROFILING("mpi_communication");
@@ -1210,26 +1209,26 @@ inline void tridMultiDimBatchSolve_allgather(
   END_PROFILING("mpi_communication");
   BEGIN_PROFILING("reduced");
   // Solve reduced systems on each node
-  solve_reduced(params, rcvbuf, aa_r, cc_r, dd_r, dd, dims, pads, ndim,
+  solve_reduced(params, rcvbuf, aa_r, cc_r, dd_r, d, dims, pads, ndim,
                 solvedim, sys_len_r, n_sys);
   END_PROFILING("reduced");
   BEGIN_PROFILING("backward");
-  backward<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim, n_sys);
+  backward<REAL, INC>(aa, cc, d, u, dims, pads, ndim, solvedim, n_sys);
   END_PROFILING("backward");
 }
 
 template <typename REAL, int INC>
 inline void tridMultiDimBatchSolve_gather_scatter(
     const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
-    REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
+    REAL *d, REAL *u, REAL *aa, REAL *cc, int ndim, int solvedim,
     const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, REAL *aa_r,
     REAL *cc_r, REAL *dd_r, int n_sys) {
   constexpr int len_r_local = 2 * 3;
   const int sys_len_r       = 2 * params.num_mpi_procs[solvedim];
   BEGIN_PROFILING("forward");
-  forward(a, b, c, d, aa, cc, dd, dims, pads, ndim, solvedim, n_sys);
+  forward(a, b, c, d, aa, cc, dims, pads, ndim, solvedim, n_sys);
   // Pack reduced systems (boundaries of each tridiagonal system)
-  copy_boundaries_strided(aa, cc, dd, sndbuf, dims, pads, ndim, solvedim, 0,
+  copy_boundaries_strided(aa, cc, d, sndbuf, dims, pads, ndim, solvedim, 0,
                           n_sys);
   END_PROFILING("forward");
   BEGIN_PROFILING("mpi_communication");
@@ -1287,11 +1286,11 @@ inline void tridMultiDimBatchSolve_gather_scatter(
     // Gather coefficients of d
     int data_ind = get_sys_start_idx(id, solvedim, dims, pads, ndim);
     int buf_ind  = id * 2;
-    dd[data_ind] = rcvbuf[buf_ind];
-    dd[data_ind + result_stride] = rcvbuf[buf_ind + 1];
+    d[data_ind] = rcvbuf[buf_ind];
+    d[data_ind + result_stride] = rcvbuf[buf_ind + 1];
   }
 
-  backward<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim, n_sys);
+  backward<REAL, INC>(aa, cc, d, u, dims, pads, ndim, solvedim, n_sys);
 
   END_PROFILING("backward");
 }
@@ -1299,36 +1298,36 @@ inline void tridMultiDimBatchSolve_gather_scatter(
 template <typename REAL, int INC>
 inline void tridMultiDimBatchSolve_jacobi(
     const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
-    REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
+    REAL *d, REAL *u, REAL *aa, REAL *cc, int ndim, int solvedim,
     const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, int n_sys) {
   BEGIN_PROFILING("forward");
-  forward(a, b, c, d, aa, cc, dd, dims, pads, ndim, solvedim, n_sys);
+  forward(a, b, c, d, aa, cc, dims, pads, ndim, solvedim, n_sys);
   END_PROFILING("forward");
   BEGIN_PROFILING("reduced");
   // Solve reduced systems on each node
-  solve_reduced_jacobi(params, aa, cc, dd, rcvbuf, sndbuf, dims, pads, ndim,
+  solve_reduced_jacobi(params, aa, cc, d, rcvbuf, sndbuf, dims, pads, ndim,
                        solvedim, n_sys);
   END_PROFILING("reduced");
   BEGIN_PROFILING("backward");
-  backward<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim, n_sys);
+  backward<REAL, INC>(aa, cc, d, u, dims, pads, ndim, solvedim, n_sys);
   END_PROFILING("backward");
 }
 
 template <typename REAL, int INC>
 inline void tridMultiDimBatchSolve_pcr(
     const MpiSolverParams &params, const REAL *a, const REAL *b, const REAL *c,
-    REAL *d, REAL *u, REAL *aa, REAL *cc, REAL *dd, int ndim, int solvedim,
+    REAL *d, REAL *u, REAL *aa, REAL *cc, int ndim, int solvedim,
     const int *dims, const int *pads, REAL *sndbuf, REAL *rcvbuf, int n_sys) {
   BEGIN_PROFILING("forward");
-  forward(a, b, c, d, aa, cc, dd, dims, pads, ndim, solvedim, n_sys);
+  forward(a, b, c, d, aa, cc, dims, pads, ndim, solvedim, n_sys);
   END_PROFILING("forward");
   BEGIN_PROFILING("reduced");
   // Solve reduced systems on each node
-  solve_reduced_pcr(params, aa, cc, dd, rcvbuf, sndbuf, dims, pads, ndim,
+  solve_reduced_pcr(params, aa, cc, d, rcvbuf, sndbuf, dims, pads, ndim,
                     solvedim, n_sys);
   END_PROFILING("reduced");
   BEGIN_PROFILING("backward");
-  backward<REAL, INC>(aa, cc, dd, d, u, dims, pads, ndim, solvedim, n_sys);
+  backward<REAL, INC>(aa, cc, d, u, dims, pads, ndim, solvedim, n_sys);
   END_PROFILING("backward");
 }
 
@@ -1355,8 +1354,6 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
   posix_memalign((void **)&aa, 64, mem_size * sizeof(REAL));
   REAL *cc;
   posix_memalign((void **)&cc, 64, mem_size * sizeof(REAL));
-  REAL *dd;
-  posix_memalign((void **)&dd, 64, mem_size * sizeof(REAL));
 
   // Length of a reduced system
   int len_r_local = 2 * 3;
@@ -1419,32 +1416,32 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
   switch (params.strategy) {
   case MpiSolverParams::GATHER_SCATTER:
     tridMultiDimBatchSolve_gather_scatter<REAL, INC>(
-        params, a, b, c, d, u, aa, cc, dd, ndim, solvedim, dims, pads, sndbuf,
+        params, a, b, c, d, u, aa, cc, ndim, solvedim, dims, pads, sndbuf,
         rcvbuf, aa_r, cc_r, dd_r, n_sys);
     break;
   case MpiSolverParams::ALLGATHER:
     tridMultiDimBatchSolve_allgather<REAL, INC>(
-        params, a, b, c, d, u, aa, cc, dd, ndim, solvedim, dims, pads, sndbuf,
+        params, a, b, c, d, u, aa, cc, ndim, solvedim, dims, pads, sndbuf,
         rcvbuf, aa_r, cc_r, dd_r, n_sys);
     break;
   case MpiSolverParams::JACOBI:
-    tridMultiDimBatchSolve_jacobi<REAL, INC>(params, a, b, c, d, u, aa, cc, dd,
+    tridMultiDimBatchSolve_jacobi<REAL, INC>(params, a, b, c, d, u, aa, cc,
                                              ndim, solvedim, dims, pads, sndbuf,
                                              rcvbuf, n_sys);
     break;
   case MpiSolverParams::PCR:
-    tridMultiDimBatchSolve_pcr<REAL, INC>(params, a, b, c, d, u, aa, cc, dd,
+    tridMultiDimBatchSolve_pcr<REAL, INC>(params, a, b, c, d, u, aa, cc,
                                           ndim, solvedim, dims, pads, sndbuf,
                                           rcvbuf, n_sys);
     break;
   case MpiSolverParams::LATENCY_HIDING_INTERLEAVED:
     tridMultiDimBatchSolve_LH<REAL, INC>(
-        params, a, b, c, d, u, aa, cc, dd, ndim, solvedim, dims, pads, sndbuf,
+        params, a, b, c, d, u, aa, cc, ndim, solvedim, dims, pads, sndbuf,
         rcvbuf, aa_r, cc_r, dd_r, len_r_local, sys_len_r, n_sys);
     break;
   case MpiSolverParams::LATENCY_HIDING_TWO_STEP:
     tridMultiDimBatchSolve_simple<REAL, INC>(
-        params, a, b, c, d, u, aa, cc, dd, ndim, solvedim, dims, pads, sndbuf,
+        params, a, b, c, d, u, aa, cc, ndim, solvedim, dims, pads, sndbuf,
         rcvbuf, aa_r, cc_r, dd_r, len_r_local, sys_len_r, n_sys);
     break;
   default: assert(false && "Unknown communication strategy");
@@ -1454,7 +1451,6 @@ void tridMultiDimBatchSolve(const MpiSolverParams &params, const REAL *a,
   BEGIN_PROFILING("memfree");
   free(aa);
   free(cc);
-  free(dd);
   free(sndbuf);
   free(rcvbuf);
   if (aa_r) {
