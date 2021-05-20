@@ -660,6 +660,7 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
 
   // norm comp
   int global_sys_len = params.num_mpi_procs[solvedim];
+  double local_norm_send = -1.0;
   double global_norm = -1.0;
   double norm0       = -1.0;
 
@@ -726,7 +727,8 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
     if (global_norm > 0) // skip until the first sum is ready
       global_norm = sqrt(global_norm / global_sys_len);
     if (norm0 < 0) norm0 = global_norm;
-    MPI_Iallreduce(&local_norm, &global_norm, 1, MPI_DOUBLE, MPI_SUM,
+    local_norm_send = local_norm;
+    MPI_Iallreduce(&local_norm_send, &global_norm, 1, MPI_DOUBLE, MPI_SUM,
                    params.communicators[solvedim], &norm_req);
     // Wait for send before write
     MPI_Waitall(2, req + 2, MPI_STATUS_IGNORE);
