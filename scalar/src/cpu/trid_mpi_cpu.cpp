@@ -731,9 +731,8 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
     if (norm0 < 0) norm0 = global_norm;
     local_norm_send = local_norm;
     iter++;
-    need_iter =
-        (global_norm < 0.0 || params.jacobi_atol < global_norm &&
-                                  params.jacobi_rtol < global_norm / norm0);
+    need_iter = global_norm < 0.0 || (params.jacobi_atol < global_norm &&
+                                      params.jacobi_rtol < global_norm / norm0);
     if ((params.jacobi_maxiter < 0 || iter + 1 < params.jacobi_maxiter) &&
         need_iter) { // if norm is not enough and next is not last iteration
       MPI_Iallreduce(&local_norm_send, &global_norm_recv, 1, MPI_DOUBLE,
@@ -755,10 +754,6 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
     }
   } while ((params.jacobi_maxiter < 0 || iter < params.jacobi_maxiter) &&
            need_iter);
-
-  BEGIN_PROFILING("mpi_communication");
-  MPI_Wait(&norm_req, MPI_STATUS_IGNORE);
-  END_PROFILING("mpi_communication");
 
   compute_last_for_reduced_jacobi(params, aa, cc, dd, dd_r, rcvbuf, dims, pads,
                                   ndim, solvedim, 0, n_sys, result_stride);
