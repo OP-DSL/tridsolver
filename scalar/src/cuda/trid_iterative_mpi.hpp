@@ -4,10 +4,7 @@
 #include "cuda_timing.h"
 #include <cassert>
 
-#include <iostream>
-#include <string>
-#include <vector>
-
+#include "trid_strided_multidim_mpi.hpp"
 #include "trid_mpi_helper.hpp"
 #include "trid_mpi_common.hpp"
 
@@ -102,8 +99,178 @@ trid_linear_forward_pass(const REAL *__restrict__ a, const REAL *__restrict__ b,
   }
 }
 
+/*
+ * Modified forward pass in y or higher dimensions.
+ * Each array should have a size of sys_n*sys_size.
+ * The layout and indexing of aa, cc, and dd are the same as of a, c, d
+ * respectively
+ * The boundaries array has a size of sys_n*6 and will hold the first and last
+ * elements of aa, cc, and dd for each system
+ *
+ */
+template <typename REAL, bool boundary_SOA, bool shift_c0_on_rank0 = true>
+__device__ void trid_strided_multidim_forward_pass_kernel(
+    const REAL *__restrict__ a, int ind_a, int stride_a,
+    const REAL *__restrict__ b, int ind_b, int stride_b,
+    const REAL *__restrict__ c, int ind_c, int stride_c, REAL *__restrict__ d,
+    int ind_d, int stride_d, REAL *__restrict__ aa, REAL *__restrict__ cc,
+    REAL *__restrict__ boundaries, int tid, int sys_size, int sys_n, int rank,
+    int nproc) {
+  //
+  // forward pass
+  //
+  // i = 0
+  REAL b_0 = b[ind_b];
+  REAL c_0 = c[ind_c];
+  REAL d_0 = d[ind_d];
+  // i = 1
+  {
+    if (rank == 0) {
+      REAL factor          = a[ind_a + stride_a] / b_0;
+      REAL bb              = 1 / (b[ind_b + stride_b] - factor * c_0);
+      d[ind_d + stride_d]  = bb * (d[ind_d + stride_d] - factor * d_0);
+      cc[ind_c + stride_c] = bb * c[ind_c + stride_c];
+      aa[ind_a + stride_a] = 0;
+      if (shift_c0_on_rank0) {
+        d_0 = d_0 - c_0 * d[ind_d + stride_d];
+        c_0 = -c_0 * cc[ind_c + stride_c];
+      }
+    } else {
+      d[ind_d + stride_d]  = d[ind_d + stride_d] / b[ind_b + stride_b];
+      cc[ind_c + stride_c] = c[ind_c + stride_c] / b[ind_b + stride_b];
+      aa[ind_a + stride_a] = a[ind_a + stride_a] / b[ind_b + stride_b];
+      b_0                  = b_0 - c_0 * aa[ind_a + stride_a];
+      d_0                  = d_0 - c_0 * d[ind_d + stride_d];
+      if (rank == nproc - 1 && sys_size == 2) {
+        c_0 = 0;
+      } else {
+        c_0 = -c_0 * cc[ind_c + stride_c];
+      }
+    }
+  }
+
+  // Eliminate lower off-diagonal
+  for (int i = 2; i < sys_size; ++i) {
+    REAL bb = static_cast<REAL>(1.0) /
+              (b[ind_b + i * stride_b] -
+               a[ind_a + i * stride_a] * cc[ind_c + (i - 1) * stride_c]);
+    d[ind_d + i * stride_d] =
+        (d[ind_d + i * stride_d] -
+         a[ind_a + i * stride_a] * d[ind_d + (i - 1) * stride_d]) *
+        bb;
+    if (i == sys_size - 1 && rank == nproc - 1) {
+      cc[ind_c + i * stride_c] = 0.0;
+    } else {
+      cc[ind_c + i * stride_c] = c[ind_c + i * stride_c] * bb;
+    }
+    if (rank == 0) {
+      aa[ind_a + i * stride_a] = 0;
+      if (shift_c0_on_rank0) {
+        d_0 = d_0 - c_0 * d[ind_d + i * stride_d];
+        c_0 = -c_0 * cc[ind_c + i * stride_c];
+      }
+    } else {
+      aa[ind_a + i * stride_a] =
+          (-a[ind_a + i * stride_a] * aa[ind_a + (i - 1) * stride_a]) * bb;
+      b_0 = b_0 - c_0 * aa[ind_a + i * stride_a];
+      d_0 = d_0 - c_0 * d[ind_d + i * stride_d];
+      c_0 = -c_0 * cc[ind_c + i * stride_c];
+    }
+  }
+  // i = 0
+  if (0 == rank) {
+    aa[ind_a] = 0;
+  } else {
+    aa[ind_a] = a[ind_a] / b_0;
+  }
+  cc[ind_c] = c_0 / b_0;
+  d[ind_d]  = d_0 / b_0;
+
+  // prepare boundaries for communication
+  copy_boundaries_strided<REAL, boundary_SOA>(aa, ind_a, stride_a, cc, ind_c,
+                                              stride_c, d, ind_d, stride_d,
+                                              boundaries, tid, sys_size, sys_n);
+}
+
+template <typename REAL, bool boundary_SOA, bool shift_c0_on_rank0 = true>
+__global__ void trid_strided_multidim_forward_pass(
+    const REAL *__restrict__ a, const DIM_V a_pads, const REAL *__restrict__ b,
+    const DIM_V b_pads, const REAL *__restrict__ c, const DIM_V c_pads,
+    REAL *__restrict__ d, const DIM_V d_pads, REAL *__restrict__ aa,
+    REAL *__restrict__ cc, REAL *__restrict__ boundaries, int ndim,
+    int solvedim, int sys_n, const DIM_V dims, int rank, int nproc,
+    int sys_offset = 0) {
+  // thread ID in block
+  int tid = threadIdx.x + threadIdx.y * blockDim.x +
+            threadIdx.z * blockDim.x * blockDim.y;
+  if (solvedim < 1 || solvedim > ndim) return; /* Just hints to the compiler */
+
+  int __shared__ d_cumdims[MAXDIM + 1];
+  int __shared__ d_cumpads[4][MAXDIM + 1];
+
+  /* Build up d_cumpads and d_cumdims */
+  if (tid < 5) {
+    int *tgt       = (tid == 0) ? d_cumdims : d_cumpads[tid - 1];
+    const int *src = NULL;
+    switch (tid) {
+    case 0: src = dims.v; break;
+    case 1: src = a_pads.v; break;
+    case 2: src = b_pads.v; break;
+    case 3: src = c_pads.v; break;
+    case 4: src = d_pads.v; break;
+    }
+
+    tgt[0] = 1;
+    for (int i = 0; i < ndim; i++) {
+      tgt[i + 1] = tgt[i] * src[i];
+    }
+  }
+  __syncthreads();
+  //
+  // set up indices for main block
+  //
+  // Thread ID in global scope - every thread solves one system
+  tid = sys_offset + threadIdx.x + threadIdx.y * blockDim.x +
+        blockIdx.x * blockDim.y * blockDim.x +
+        blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
+
+  int ind_a = 0;
+  int ind_b = 0;
+  int ind_c = 0;
+  int ind_d = 0;
+
+  for (int j = 0; j < solvedim; j++) {
+    ind_a += ((tid / d_cumdims[j]) % dims.v[j]) * d_cumpads[0][j];
+    ind_b += ((tid / d_cumdims[j]) % dims.v[j]) * d_cumpads[1][j];
+    ind_c += ((tid / d_cumdims[j]) % dims.v[j]) * d_cumpads[2][j];
+    ind_d += ((tid / d_cumdims[j]) % dims.v[j]) * d_cumpads[3][j];
+  }
+  for (int j = solvedim + 1; j < ndim; j++) {
+    ind_a += ((tid / (d_cumdims[j] / dims.v[solvedim])) % dims.v[j]) *
+             d_cumpads[0][j];
+    ind_b += ((tid / (d_cumdims[j] / dims.v[solvedim])) % dims.v[j]) *
+             d_cumpads[1][j];
+    ind_c += ((tid / (d_cumdims[j] / dims.v[solvedim])) % dims.v[j]) *
+             d_cumpads[2][j];
+    ind_d += ((tid / (d_cumdims[j] / dims.v[solvedim])) % dims.v[j]) *
+             d_cumpads[3][j];
+  }
+  int stride_a = d_cumpads[0][solvedim];
+  int stride_b = d_cumpads[1][solvedim];
+  int stride_c = d_cumpads[2][solvedim];
+  int stride_d = d_cumpads[3][solvedim];
+  int sys_size = dims.v[solvedim];
+
+  if (tid < sys_offset + sys_n) {
+    trid_strided_multidim_forward_pass_kernel<REAL, boundary_SOA,
+                                              shift_c0_on_rank0>(
+        a, ind_a, stride_a, b, ind_b, stride_b, c, ind_c, stride_c, d, ind_d,
+        stride_d, aa, cc, boundaries, tid, sys_size, sys_n, rank, nproc);
+  }
+}
+
 //
-// Modified Thomas backward pass
+// Modified backward pass
 //
 template <typename REAL, int INC, bool boundary_SOA,
           bool is_c0_cleared_on_rank0 = true>
@@ -162,6 +329,145 @@ trid_linear_backward_pass(const REAL *__restrict__ aa,
       else
         d[ind] = dd0;
     }
+  }
+}
+
+/*
+ * Modified backward pass in y or higher dimensions.
+ * Each array should have a size of sys_n*sys_size.
+ * The layout and indexing of aa, cc, and dd are the same as of a, c, d
+ * respectively
+ * The boundaries array has a size of sys_n*2 and hold the first element from
+ * this process and from the next process of d for each system
+ * The layout of boundaries is as if it holds the a and c values of the lines as
+ * well.
+ *
+ */
+template <typename REAL, int INC, bool boundary_SOA,
+          bool is_c0_cleared_on_rank0 = true>
+__device__ void trid_strided_multidim_backward_pass_kernel(
+    const REAL *__restrict__ aa, int ind_a, int stride_a,
+    const REAL *__restrict__ cc, int ind_c, int stride_c, REAL *__restrict__ d,
+    int ind_d, int stride_d, REAL *__restrict__ u, int ind_u, int stride_u,
+    const REAL *__restrict__ boundaries, int tid, int sys_size, int sys_n,
+    int rank, int nproc) {
+  //
+  // reverse pass
+  //
+  REAL dd0, dd_p1;
+  load_d_from_boundary_linear<REAL, boundary_SOA>(boundaries, dd0, dd_p1, tid,
+                                                  sys_n);
+  // i = n-1
+  if (rank != nproc - 1)
+    dd_p1 = d[ind_d + (sys_size - 1) * stride_d] -
+            dd_p1 * cc[ind_c + (sys_size - 1) * stride_c];
+  else
+    dd_p1 = d[ind_d + (sys_size - 1) * stride_d];
+  if (rank != 0) dd_p1 += -aa[ind_a + (sys_size - 1) * stride_a] * dd0;
+  if (INC) {
+    u[ind_u + (sys_size - 1) * stride_u] += dd_p1;
+  } else {
+    d[ind_d + (sys_size - 1) * stride_d] = dd_p1;
+  }
+  // i = n-2 - 1
+  for (int i = sys_size - 2; i > 0; --i) {
+    dd_p1 = d[ind_d + i * stride_d] - cc[ind_c + i * stride_c] * dd_p1;
+    if (rank != 0) dd_p1 += -aa[ind_a + i * stride_a] * dd0;
+    if (INC)
+      u[ind_u + i * stride_u] += dd_p1;
+    else
+      d[ind_d + i * stride_d] = dd_p1;
+  }
+  // i = 0
+  if (0 == rank && !is_c0_cleared_on_rank0) {
+    dd_p1 = dd0 - cc[ind_c] * dd_p1;
+    if (INC)
+      u[ind_u] += dd_p1;
+    else
+      d[ind_d] = dd_p1;
+  } else {
+    if (INC)
+      u[ind_u] += dd0;
+    else
+      d[ind_d] = dd0;
+  }
+}
+
+template <typename REAL, int INC, bool boundary_SOA,
+          bool is_c0_cleared_on_rank0 = true>
+__global__ void trid_strided_multidim_backward_pass(
+    const REAL *__restrict__ aa, const DIM_V a_pads,
+    const REAL *__restrict__ cc, const DIM_V c_pads, REAL *__restrict__ d,
+    const DIM_V d_pads, REAL *__restrict__ u, const DIM_V u_pads,
+    const REAL *__restrict__ boundaries, int ndim, int solvedim, int sys_n,
+    const DIM_V dims, int rank, int nproc, int sys_offset = 0) {
+  // thread ID in block
+  int tid = threadIdx.x + threadIdx.y * blockDim.x +
+            threadIdx.z * blockDim.x * blockDim.y;
+  if (solvedim < 1 || solvedim > ndim) return; /* Just hints to the compiler */
+
+  int __shared__ d_cumdims[MAXDIM + 1];
+  int __shared__ d_cumpads[4][MAXDIM + 1];
+
+  /* Build up d_cumpads and d_cumdims */
+  if (tid < 5) {
+    int *tgt       = (tid == 0) ? d_cumdims : d_cumpads[tid - 1];
+    const int *src = NULL;
+    switch (tid) {
+    case 0: src = dims.v; break;
+    case 1: src = a_pads.v; break;
+    case 2: src = c_pads.v; break;
+    case 3: src = d_pads.v; break;
+    case 4: src = u_pads.v; break;
+    }
+
+    tgt[0] = 1;
+    for (int i = 0; i < ndim; i++) {
+      tgt[i + 1] = tgt[i] * src[i];
+    }
+  }
+  __syncthreads();
+  //
+  // set up indices for main block
+  //
+  // Thread ID in global scope - every thread solves one system
+  tid = sys_offset + threadIdx.x + threadIdx.y * blockDim.x +
+        blockIdx.x * blockDim.y * blockDim.x +
+        blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
+
+  int ind_a = 0;
+  int ind_c = 0;
+  int ind_d = 0;
+  int ind_u = 0;
+
+  for (int j = 0; j < solvedim; j++) {
+    ind_a += ((tid / d_cumdims[j]) % dims.v[j]) * d_cumpads[0][j];
+    ind_c += ((tid / d_cumdims[j]) % dims.v[j]) * d_cumpads[1][j];
+    ind_d += ((tid / d_cumdims[j]) % dims.v[j]) * d_cumpads[2][j];
+    if (INC) ind_u += ((tid / d_cumdims[j]) % dims.v[j]) * d_cumpads[3][j];
+  }
+  for (int j = solvedim + 1; j < ndim; j++) {
+    ind_a += ((tid / (d_cumdims[j] / dims.v[solvedim])) % dims.v[j]) *
+             d_cumpads[0][j];
+    ind_c += ((tid / (d_cumdims[j] / dims.v[solvedim])) % dims.v[j]) *
+             d_cumpads[1][j];
+    ind_d += ((tid / (d_cumdims[j] / dims.v[solvedim])) % dims.v[j]) *
+             d_cumpads[2][j];
+    if (INC)
+      ind_u += ((tid / (d_cumdims[j] / dims.v[solvedim])) % dims.v[j]) *
+               d_cumpads[3][j];
+  }
+  int stride_a = d_cumpads[0][solvedim];
+  int stride_c = d_cumpads[1][solvedim];
+  int stride_d = d_cumpads[2][solvedim];
+  int stride_u = d_cumpads[3][solvedim];
+  int sys_size = dims.v[solvedim];
+
+  if (tid < sys_offset + sys_n) {
+    trid_strided_multidim_backward_pass_kernel<REAL, INC, boundary_SOA,
+                                               is_c0_cleared_on_rank0>(
+        aa, ind_a, stride_a, cc, ind_c, stride_c, d, ind_d, stride_d, u, ind_u,
+        stride_u, boundaries, tid, sys_size, sys_n, rank, nproc);
   }
 }
 
@@ -232,14 +538,14 @@ inline void forward_batched_pass(dim3 dimGrid_x, dim3 dimBlock_x,
                                  int solvedim, int start_sys, int bsize,
                                  int offset, cudaStream_t stream = nullptr) {
   if (solvedim == 0) {
-    assert(a_pads[solvedim] == b_pads[solvedim] &&
-           a_pads[solvedim] == c_pads[solvedim] &&
-           a_pads[solvedim] == d_pads[solvedim] &&
-           "different paddings are not supported");
-    assert(a_pads[1] == dims[1] && b_pads[1] == dims[1] &&
-           c_pads[1] == dims[1] && d_pads[1] == dims[1] &&
-           " ONLLY X paddings are supported");
     assert(offset == 0 && "I think we do not need the offset");
+    assert(a_pads[0] == b_pads[0] && a_pads[0] == c_pads[0] &&
+           a_pads[0] == d_pads[0] && "different paddings are not supported");
+    if (ndim > 1) {
+      assert(a_pads[1] == dims[1] && b_pads[1] == dims[1] &&
+             c_pads[1] == dims[1] && d_pads[1] == dims[1] &&
+             " ONLLY X paddings are supported");
+    }
     const int batch_offset = start_sys * a_pads[solvedim];
     trid_linear_forward_pass<REAL, boundary_SOA, shift_c0_on_rank0>
         <<<dimGrid_x, dimBlock_x, 0, stream>>>(
@@ -248,25 +554,17 @@ inline void forward_batched_pass(dim3 dimGrid_x, dim3 dimBlock_x,
             boundaries + start_sys * 3 * 2, dims[solvedim], a_pads[solvedim],
             bsize, params.mpi_coords[solvedim], params.num_mpi_procs[solvedim]);
   } else {
-    assert(false);
-    // DIM_V k_pads, k_dims; // TODO
-    // for (int i = 0; i < ndim; ++i) {
-    //   k_pads.v[i] = a_pads[i];
-    //   k_dims.v[i] = dims[i];
-    // }
-    // trid_strided_multidim_forward<REAL><<<dimGrid_x, dimBlock_x, 0,
-    // stream>>>(
-    //     a, k_pads, b, k_pads, c, k_pads, d, k_pads, aa, cc, dd, boundaries,
-    //     ndim, solvedim, bsize, k_dims, start_sys);
+    DIM_V k_pads, k_dims; // TODO
+    for (int i = 0; i < ndim; ++i) {
+      k_pads.v[i] = a_pads[i];
+      k_dims.v[i] = dims[i];
+    }
+    trid_strided_multidim_forward_pass<REAL, boundary_SOA, shift_c0_on_rank0>
+        <<<dimGrid_x, dimBlock_x, 0, stream>>>(
+            a, k_pads, b, k_pads, c, k_pads, d, k_pads, aa, cc, boundaries,
+            ndim, solvedim, bsize, k_dims, params.mpi_coords[solvedim],
+            params.num_mpi_procs[solvedim], start_sys);
   }
-  // #if !(defined(TRID_CUDA_AWARE_MPI) || defined(TRID_NCCL))
-  //   size_t comm_buf_size   = 3 * 2 * bsize;
-  //   size_t comm_buf_offset = 3 * 2 * start_sys;
-  //   cudaMemcpyAsync(send_buf_h + comm_buf_offset, boundaries +
-  //   comm_buf_offset,
-  //                   sizeof(REAL) * comm_buf_size, cudaMemcpyDeviceToHost,
-  //                   stream);
-  // #endif
 }
 
 template <typename REAL, int INC, bool boundary_SOA,
@@ -279,16 +577,17 @@ inline void backward_batched_pass(dim3 dimGrid_x, dim3 dimBlock_x,
                                   const int *u_pads, const int *dims, int ndim,
                                   int solvedim, int start_sys, int bsize,
                                   int offset, cudaStream_t stream = nullptr) {
+  assert(start_sys == 0 &&
+         "check the whole process for boundaries if indexing is correct for "
+         "batches then remove this");
   if (solvedim == 0) {
-    assert(a_pads[solvedim] == c_pads[solvedim] &&
-           a_pads[solvedim] == d_pads[solvedim] &&
+    // assert(offset == 0 && "I think we do not need the offset");
+    assert(a_pads[0] == c_pads[0] && a_pads[0] == d_pads[0] &&
            "different paddings are not supported");
-    assert(a_pads[1] == dims[1] && c_pads[1] == dims[1] &&
-           d_pads[1] == dims[1] && " ONLLY X paddings are supported");
-    assert(offset == 0 && "I think we do not need the offset");
-    assert(start_sys == 0 &&
-           "check the whole process for boundaries if indexing is correct for "
-           "batches then remove this");
+    if (ndim > 1) {
+      assert(a_pads[1] == dims[1] && c_pads[1] == dims[1] &&
+             d_pads[1] == dims[1] && " ONLLY X paddings are supported");
+    }
     const int batch_offset = start_sys * a_pads[solvedim];
     // int y_size = 1, y_pads = 1;
     // if (ndim > 1) {
@@ -302,16 +601,17 @@ inline void backward_batched_pass(dim3 dimGrid_x, dim3 dimBlock_x,
             a_pads[solvedim], bsize, params.mpi_coords[solvedim],
             params.num_mpi_procs[solvedim]);
   } else {
-    assert(false);
-    // DIM_V k_pads, k_dims; // TODO
-    // for (int i = 0; i < ndim; ++i) {
-    //   k_pads.v[i] = a_pads[i];
-    //   k_dims.v[i] = dims[i];
-    // }
-    // trid_strided_multidim_backward<REAL, INC>
-    //     <<<dimGrid_x, dimBlock_x, 0, stream>>>(
-    //         aa, k_pads, cc, k_pads, dd, d, k_pads, u, k_pads, boundaries,
-    //         ndim, solvedim, bsize, k_dims, start_sys);
+    DIM_V k_pads, k_dims; // TODO
+    for (int i = 0; i < ndim; ++i) {
+      k_pads.v[i] = a_pads[i];
+      k_dims.v[i] = dims[i];
+    }
+    trid_strided_multidim_backward_pass<REAL, INC, boundary_SOA,
+                                        is_c0_cleared_on_rank0>
+        <<<dimGrid_x, dimBlock_x, 0, stream>>>(
+            aa, k_pads, cc, k_pads, d, k_pads, u, k_pads, boundaries, ndim,
+            solvedim, bsize, k_dims, params.mpi_coords[solvedim],
+            params.num_mpi_procs[solvedim], start_sys);
   }
 }
 

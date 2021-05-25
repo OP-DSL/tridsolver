@@ -96,7 +96,6 @@ void test_solver_from_file(const std::string &file_name) {
     cudaMemcpy(d.data(), u_d.data(), sizeof(Float) * domain_size,
                cudaMemcpyDeviceToHost);
   }
-
   // Check result
   require_allclose(u, d, domain_size, 1);
 }
@@ -598,7 +597,8 @@ void test_iterative_pcr_on_reduced(const std::string &file_name) {
 }
 
 
-TEMPLATE_TEST_CASE("short forward pass", "[forward][small]", double, float) {
+TEMPLATE_TEST_CASE("short forward pass small X", "[forward][small][solvedim:0]",
+                   double, float) {
   SECTION("ndims: 1") {
     test_short_forward_pass<TestType>("files/one_dim_small");
   }
@@ -606,8 +606,9 @@ TEMPLATE_TEST_CASE("short forward pass", "[forward][small]", double, float) {
     test_short_forward_pass<TestType>("files/two_dim_small_solve0");
   }
 }
-TEMPLATE_TEST_CASE("short forward pass large", "[forward][large]", double,
-                   float) {
+
+TEMPLATE_TEST_CASE("short forward pass solveX", "[forward][large][solvedim:0]",
+                   double, float) {
   SECTION("ndims: 1") {
     test_short_forward_pass<TestType>("files/one_dim_large");
   }
@@ -619,7 +620,31 @@ TEMPLATE_TEST_CASE("short forward pass large", "[forward][large]", double,
   }
 }
 
-TEMPLATE_TEST_CASE("iterative reduced solve with PCR", "[reduced][small]",
+TEMPLATE_TEST_CASE("short forward pass small Y", "[forward][small][solvedim:1]",
+                   double, float) {
+  SECTION("ndims: 2") {
+    test_short_forward_pass<TestType>("files/two_dim_small_solve1");
+  }
+}
+
+TEMPLATE_TEST_CASE("short forward pass solveY", "[forward][large][solvedim:1]",
+                   double, float) {
+  SECTION("ndims: 2") {
+    test_short_forward_pass<TestType>("files/two_dim_large_solve1");
+  }
+  SECTION("ndims: 3") {
+    test_short_forward_pass<TestType>("files/three_dim_large_solve1");
+  }
+}
+
+TEMPLATE_TEST_CASE("short forward pass solveZ", "[forward][large][solvedim:2]",
+                   double, float) {
+  SECTION("ndims: 3") {
+    test_short_forward_pass<TestType>("files/three_dim_large_solve2");
+  }
+}
+
+TEMPLATE_TEST_CASE("iterative reduced solve with PCR small", "[reduced][small]",
                    double, float) {
   SECTION("ndims: 1") {
     test_iterative_pcr_on_reduced<TestType>("files/one_dim_small");
@@ -628,8 +653,9 @@ TEMPLATE_TEST_CASE("iterative reduced solve with PCR", "[reduced][small]",
     test_iterative_pcr_on_reduced<TestType>("files/two_dim_small_solve0");
   }
 }
-TEMPLATE_TEST_CASE("iterative reduced solve with PCR sovleX",
-                   "[reduced][large]", double, float) {
+
+TEMPLATE_TEST_CASE("iterative reduced solve with PCR", "[reduced][large]",
+                   double, float) {
   SECTION("ndims: 1") {
     test_iterative_pcr_on_reduced<TestType>("files/one_dim_large");
   }
@@ -651,33 +677,37 @@ enum ResDest { assign = 0, increment };
   (double, assign, MpiSolverParams::ALLGATHER),                                \
       (double, assign, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),           \
       (double, assign, MpiSolverParams::LATENCY_HIDING_TWO_STEP),              \
+      (double, assign, MpiSolverParams::PCR),                                  \
       (float, assign, MpiSolverParams::ALLGATHER),                             \
       (float, assign, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),            \
       (float, assign, MpiSolverParams::LATENCY_HIDING_TWO_STEP),               \
+      (float, assign, MpiSolverParams::PCR),                                   \
       (double, increment, MpiSolverParams::ALLGATHER),                         \
       (double, increment, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),        \
       (double, increment, MpiSolverParams::LATENCY_HIDING_TWO_STEP),           \
+      (double, increment, MpiSolverParams::PCR),                               \
       (float, increment, MpiSolverParams::ALLGATHER),                          \
       (float, increment, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),         \
-      (float, increment, MpiSolverParams::LATENCY_HIDING_TWO_STEP)
+      (float, increment, MpiSolverParams::LATENCY_HIDING_TWO_STEP),            \
+      (float, increment, MpiSolverParams::PCR)
 
-TEMPLATE_TEST_CASE_SIG("cuda solver mpi: solveX PCR", "[solver][solvedim:0]",
-                       ((typename TestType, ResDest INC,
-                         MpiSolverParams::MPICommStrategy strategy),
-                        TestType, INC, strategy),
-                       (double, assign, MpiSolverParams::PCR)) {
-  SECTION("ndims: 1") {
-    test_solver_from_file<TestType, INC, strategy>("files/one_dim_large");
-  }
-  SECTION("ndims: 2") {
-    test_solver_from_file<TestType, INC, strategy>(
-        "files/two_dim_large_solve0");
-  }
-  SECTION("ndims: 3") {
-    test_solver_from_file<TestType, INC, strategy>(
-        "files/three_dim_large_solve0");
-  }
-}
+// TEMPLATE_TEST_CASE_SIG("cuda solver mpi: solveX PCR", "[solver][solvedim:0]",
+//                        ((typename TestType, ResDest INC,
+//                          MpiSolverParams::MPICommStrategy strategy),
+//                         TestType, INC, strategy),
+//                        (double, assign, MpiSolverParams::PCR)) {
+//   SECTION("ndims: 1") {
+//     test_solver_from_file<TestType, INC, strategy>("files/one_dim_large");
+//   }
+//   SECTION("ndims: 2") {
+//     test_solver_from_file<TestType, INC, strategy>(
+//         "files/two_dim_large_solve0");
+//   }
+//   SECTION("ndims: 3") {
+//     test_solver_from_file<TestType, INC, strategy>(
+//         "files/three_dim_large_solve0");
+//   }
+// }
 
 TEMPLATE_TEST_CASE_SIG("cuda solver mpi: solveX", "[solver][solvedim:0]",
                        ((typename TestType, ResDest INC,
