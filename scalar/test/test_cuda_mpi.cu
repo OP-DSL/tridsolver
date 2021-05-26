@@ -691,24 +691,6 @@ enum ResDest { assign = 0, increment };
       (float, increment, MpiSolverParams::LATENCY_HIDING_TWO_STEP),            \
       (float, increment, MpiSolverParams::PCR)
 
-// TEMPLATE_TEST_CASE_SIG("cuda solver mpi: solveX PCR", "[solver][solvedim:0]",
-//                        ((typename TestType, ResDest INC,
-//                          MpiSolverParams::MPICommStrategy strategy),
-//                         TestType, INC, strategy),
-//                        (double, assign, MpiSolverParams::PCR)) {
-//   SECTION("ndims: 1") {
-//     test_solver_from_file<TestType, INC, strategy>("files/one_dim_large");
-//   }
-//   SECTION("ndims: 2") {
-//     test_solver_from_file<TestType, INC, strategy>(
-//         "files/two_dim_large_solve0");
-//   }
-//   SECTION("ndims: 3") {
-//     test_solver_from_file<TestType, INC, strategy>(
-//         "files/three_dim_large_solve0");
-//   }
-// }
-
 TEMPLATE_TEST_CASE_SIG("cuda solver mpi: solveX", "[solver][solvedim:0]",
                        ((typename TestType, ResDest INC,
                          MpiSolverParams::MPICommStrategy strategy),

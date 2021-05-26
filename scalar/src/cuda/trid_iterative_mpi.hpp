@@ -1,12 +1,114 @@
 #ifndef TRID_ITERATIVE_MPI_HPP_INCLUDED
 #define TRID_ITERATIVE_MPI_HPP_INCLUDED
 #include "trid_mpi_solver_params.hpp"
+#include "trid_linear_reg_common.hpp"
 #include "cuda_timing.h"
 #include <cassert>
 
 #include "trid_strided_multidim_mpi.hpp"
 #include "trid_mpi_helper.hpp"
 #include "trid_mpi_common.hpp"
+
+template <typename REAL, bool shift_c0_on_rank0>
+inline __device__ void
+forward_linear_process_line(const REAL a, REAL &a_m1, const REAL b,
+                            const REAL c, REAL &c_m1, const REAL d, REAL &d_m1,
+                            REAL &b_0, REAL &c_0, REAL &d_0, int sys_size,
+                            int row_idx, int rank, int nproc) {
+  REAL bb = 1.0 / (b - a * c_m1);
+  d_m1    = (d - a * d_m1) * bb;
+  if (row_idx == sys_size - 1 && rank == nproc - 1) {
+    c_m1 = 0;
+  } else {
+    c_m1 = c * bb;
+  }
+  if (rank == 0) {
+    a_m1 = 0;
+    if (shift_c0_on_rank0) {
+      d_0 = d_0 - c_0 * d_m1;
+      c_0 = -c_0 * c_m1;
+    }
+  } else {
+    a_m1 = (-a * a_m1) * bb;
+    b_0  = b_0 - c_0 * a_m1;
+    d_0  = d_0 - c_0 * d_m1;
+    c_0  = -c_0 * c_m1;
+  }
+}
+
+template <typename REAL, bool shift_c0_on_rank0>
+inline __device__ void
+forward_linear_process_row1(const REAL a, REAL &a_m1, const REAL b,
+                            const REAL c, REAL &c_m1, const REAL d, REAL &d_m1,
+                            REAL &b_0, REAL &c_0, REAL &d_0, int sys_size,
+                            int rank, int nproc) {
+  if (rank == 0) {
+    REAL factor = a / b_0;
+    REAL bb     = 1 / (b - factor * c_0);
+    d_m1        = bb * (d - factor * d_0);
+    c_m1        = bb * c;
+    a_m1        = 0;
+    if (shift_c0_on_rank0) {
+      d_0 = d_0 - c_0 * d_m1;
+      c_0 = -c_0 * c_m1;
+    }
+  } else {
+    d_m1 = d / b;
+    c_m1 = c / b;
+    a_m1 = a / b;
+    b_0  = b_0 - c_0 * a_m1;
+    d_0  = d_0 - c_0 * d_m1;
+    if (rank == nproc - 1 && sys_size == 2) {
+      c_0 = 0;
+    } else {
+      c_0 = -c_0 * c_m1;
+    }
+  }
+}
+
+template <typename REAL, bool shift_c0_on_rank0 = true>
+inline __device__ void trid_linear_forward_single_system(
+    const REAL *__restrict__ a, const REAL *__restrict__ b,
+    const REAL *__restrict__ c, REAL *__restrict__ d, REAL *__restrict__ aa,
+    REAL *__restrict__ cc, int sys_size, int sys_start, int rank, int nproc) {
+  REAL a_m1 = 0.0;
+  REAL c_m1 = 0.0;
+  REAL d_m1 = 0.0;
+  //
+  // forward pass
+  //
+  // i = 0 save and perform at last step
+  REAL b_0 = b[sys_start];
+  REAL c_0 = c[sys_start];
+  REAL d_0 = d[sys_start];
+  // i = 1
+  forward_linear_process_row1<REAL, shift_c0_on_rank0>(
+      a[sys_start + 1], a_m1, b[sys_start + 1], c[sys_start + 1], c_m1,
+      d[sys_start + 1], d_m1, b_0, c_0, d_0, sys_size, rank, nproc);
+  aa[sys_start + 1] = a_m1;
+  cc[sys_start + 1] = c_m1;
+  d[sys_start + 1]  = d_m1;
+
+  // eliminate lower off-diagonal
+  for (int i = 2; i < sys_size; i++) {
+    int loc_ind = sys_start + i;
+    forward_linear_process_line<REAL, shift_c0_on_rank0>(
+        a[loc_ind], a_m1, b[loc_ind], c[loc_ind], c_m1, d[loc_ind], d_m1, b_0,
+        c_0, d_0, sys_size, i, rank, nproc);
+    aa[loc_ind] = a_m1;
+    cc[loc_ind] = c_m1;
+    d[loc_ind]  = d_m1;
+  }
+  // i = 0
+  if (0 == rank) {
+    aa[sys_start] = 0;
+  } else {
+    aa[sys_start] = a[sys_start] / b_0;
+  }
+  cc[sys_start] = c_0 / b_0;
+  d[sys_start]  = d_0 / b_0;
+}
+
 
 /*
  * Modified forwards pass in x direction
@@ -29,75 +131,249 @@ trid_linear_forward_pass(const REAL *__restrict__ a, const REAL *__restrict__ b,
   int ind = sys_pads * tid;
 
   if (tid < sys_n) {
-    //
-    // forward pass
-    //
-    // i = 0 save and perform at last step
-    REAL b_0 = b[ind];
-    REAL c_0 = c[ind];
-    REAL d_0 = d[ind];
-    { // i = 1
-      if (rank == 0) {
-        REAL factor = a[ind + 1] / b_0;
-        REAL bb     = 1 / (b[ind + 1] - factor * c_0);
-        d[ind + 1]  = bb * (d[ind + 1] - factor * d_0);
-        cc[ind + 1] = bb * c[ind + 1];
-        aa[ind + 1] = 0;
-        if (shift_c0_on_rank0) {
-          d_0 = d_0 - c_0 * d[ind + 1];
-          c_0 = -c_0 * cc[ind + 1];
-        }
-      } else {
-        d[ind + 1]  = d[ind + 1] / b[ind + 1];
-        cc[ind + 1] = c[ind + 1] / b[ind + 1];
-        aa[ind + 1] = a[ind + 1] / b[ind + 1];
-        b_0         = b_0 - c_0 * aa[ind + 1];
-        d_0         = d_0 - c_0 * d[ind + 1];
-        if (rank == nproc - 1 && sys_size == 2) {
-          c_0 = 0;
-        } else {
-          c_0 = -c_0 * cc[ind + 1];
-        }
-      }
-    }
-
-    // eliminate lower off-diagonal
-    for (int i = 2; i < sys_size; i++) {
-      int loc_ind = ind + i;
-      REAL bb =
-          static_cast<REAL>(1.0) / (b[loc_ind] - a[loc_ind] * cc[loc_ind - 1]);
-      d[loc_ind] = (d[loc_ind] - a[loc_ind] * d[loc_ind - 1]) * bb;
-      if (i == sys_size - 1 && rank == nproc - 1) {
-        cc[loc_ind] = 0;
-      } else {
-        cc[loc_ind] = c[loc_ind] * bb;
-      }
-      if (rank == 0) {
-        aa[loc_ind] = 0;
-        if (shift_c0_on_rank0) {
-          d_0 = d_0 - c_0 * d[loc_ind];
-          c_0 = -c_0 * cc[loc_ind];
-        }
-      } else {
-        aa[loc_ind] = (-a[loc_ind] * aa[loc_ind - 1]) * bb;
-        b_0         = b_0 - c_0 * aa[loc_ind];
-        d_0         = d_0 - c_0 * d[loc_ind];
-        c_0         = -c_0 * cc[loc_ind];
-      }
-    }
-    // i = 0
-    if (0 == rank) {
-      aa[ind] = 0;
-    } else {
-      aa[ind] = a[ind] / b_0;
-    }
-    cc[ind] = c_0 / b_0;
-    d[ind]  = d_0 / b_0;
+    trid_linear_forward_single_system<REAL, shift_c0_on_rank0>(
+        a, b, c, d, aa, cc, sys_size, ind, rank, nproc);
     // prepare boundaries for communication
     copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, d, boundaries, tid, ind,
                                                sys_size, sys_n);
   }
 }
+
+// Modified forward pass for X dimension.
+// Uses register shuffle optimization, can handle both aligned and unaligned
+// memory
+template <typename REAL, bool boundary_SOA, bool shift_c0_on_rank0 = true>
+__global__ void trid_linear_forward_pass_aligned(
+    const REAL *__restrict__ a, const REAL *__restrict__ b,
+    const REAL *__restrict__ c, REAL *__restrict__ d, REAL *__restrict__ aa,
+    REAL *__restrict__ cc, REAL *__restrict__ boundaries, int sys_size,
+    int sys_pads, int sys_n, int rank, int nproc) {
+  // Thread ID in global scope - every thread solves one system
+  const int tid = threadIdx.x + threadIdx.y * blockDim.x +
+                  blockIdx.x * blockDim.y * blockDim.x +
+                  blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
+  // Warp ID in global scope - the ID wich the thread belongs to
+  const int wid = tid / WARP_SIZE;
+  // Global memory offset: unique to a warp;
+  // every thread in a warp calculates the same woffset, which is the "begining"
+  // of 3D tile
+  const int woffset = wid * WARP_SIZE * sys_pads;
+  // These 4-threads do the regular memory read/write and data transpose
+  const int optimized_solve = ((tid / 4) * 4 + 4 <= sys_n);
+  // Among these 4-threads are some that have to be deactivated from global
+  // memory read/write
+  const int boundary_solve = !optimized_solve && (tid < (sys_n));
+  // A thread is active only if it works on valid memory
+  const int active_thread = optimized_solve || boundary_solve;
+
+  // Start index for this tridiagonal system
+  int ind = sys_pads * tid;
+
+
+  // Check that this is an active thread
+  if (active_thread) {
+    // Check that this thread can perform an optimized solve
+    if (optimized_solve && sys_size >= 192 / sizeof(REAL)) {
+      // Local arrays used in the register shuffle
+      vec_line_t<REAL> l_a, l_b, l_c, l_d, l_aa, l_cc;
+      REAL a_m1, c_m1, d_m1;
+      int n = 0;
+      // Process first vector separately
+      load_array_reg(a, &l_a, n, woffset, sys_pads);
+      load_array_reg(b, &l_b, n, woffset, sys_pads);
+      load_array_reg(c, &l_c, n, woffset, sys_pads);
+      load_array_reg(d, &l_d, n, woffset, sys_pads);
+
+      // i = 0 save and perform as last step
+      REAL b_0 = l_b.f[0];
+      REAL c_0 = l_c.f[0];
+      REAL d_0 = l_d.f[0];
+      // i = 1
+      forward_linear_process_row1<REAL, shift_c0_on_rank0>(
+          l_a.f[1], a_m1, l_b.f[1], l_c.f[1], c_m1, l_d.f[1], d_m1, b_0, c_0,
+          d_0, sys_size, rank, nproc);
+      l_d.f[1]  = d_m1;
+      l_aa.f[1] = a_m1;
+      l_cc.f[1] = c_m1;
+
+      for (int i = 2; i < vec_length<REAL>; i++) {
+        forward_linear_process_line<REAL, shift_c0_on_rank0>(
+            l_a.f[i], a_m1, l_b.f[i], l_c.f[i], c_m1, l_d.f[i], d_m1, b_0, c_0,
+            d_0, sys_size, n + i, rank, nproc);
+        l_d.f[i]  = d_m1;
+        l_aa.f[i] = a_m1;
+        l_cc.f[i] = c_m1;
+      }
+
+      store_array_reg(d, &l_d, n, woffset, sys_pads);
+      store_array_reg(cc, &l_cc, n, woffset, sys_pads);
+      store_array_reg(aa, &l_aa, n, woffset, sys_pads);
+
+      // Forward pass
+      for (n = vec_length<REAL>; n < sys_size - vec_length<REAL>;
+           n += vec_length<REAL>) {
+        load_array_reg(a, &l_a, n, woffset, sys_pads);
+        load_array_reg(b, &l_b, n, woffset, sys_pads);
+        load_array_reg(c, &l_c, n, woffset, sys_pads);
+        load_array_reg(d, &l_d, n, woffset, sys_pads);
+#pragma unroll
+        for (int i = 0; i < vec_length<REAL>; i++) {
+          forward_linear_process_line<REAL, shift_c0_on_rank0>(
+              l_a.f[i], a_m1, l_b.f[i], l_c.f[i], c_m1, l_d.f[i], d_m1, b_0,
+              c_0, d_0, sys_size, n + i, rank, nproc);
+          l_d.f[i]  = d_m1;
+          l_aa.f[i] = a_m1;
+          l_cc.f[i] = c_m1;
+        }
+        store_array_reg(d, &l_d, n, woffset, sys_pads);
+        store_array_reg(cc, &l_cc, n, woffset, sys_pads);
+        store_array_reg(aa, &l_aa, n, woffset, sys_pads);
+      }
+
+      // Finish off last part that may not fill an entire vector
+      for (int i = n; i < sys_size; i++) {
+        int loc_ind = ind + i;
+        forward_linear_process_line<REAL, shift_c0_on_rank0>(
+            a[loc_ind], a_m1, b[loc_ind], c[loc_ind], c_m1, d[loc_ind], d_m1,
+            b_0, c_0, d_0, sys_size, i, rank, nproc);
+        aa[loc_ind] = a_m1;
+        cc[loc_ind] = c_m1;
+        d[loc_ind]  = d_m1;
+      }
+      // i = 0
+      if (0 == rank) {
+        aa[ind] = 0;
+      } else {
+        aa[ind] = a[ind] / b_0;
+      }
+      cc[ind] = c_0 / b_0;
+      d[ind]  = d_0 / b_0;
+    } else {
+      trid_linear_forward_single_system<REAL, shift_c0_on_rank0>(
+          a, b, c, d, aa, cc, sys_size, ind, rank, nproc);
+    }
+    // Store boundary values for communication
+    copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, d, boundaries, tid, ind,
+                                               sys_size, sys_n);
+  }
+}
+
+template <typename REAL, bool boundary_SOA, bool shift_c0_on_rank0 = true>
+__global__ void trid_linear_forward_pass_unaligned(
+    const REAL *__restrict__ a, const REAL *__restrict__ b,
+    const REAL *__restrict__ c, REAL *__restrict__ d, REAL *__restrict__ aa,
+    REAL *__restrict__ cc, REAL *__restrict__ boundaries, int sys_size,
+    int sys_pads, int sys_n, int rank, int nproc, int offset) {
+  // Thread ID in global scope - every thread solves one system
+  const int tid = threadIdx.x + threadIdx.y * blockDim.x +
+                  blockIdx.x * blockDim.y * blockDim.x +
+                  blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
+  // These 4-threads do the regular memory read/write and data transpose
+  const int optimized_solve = ((tid / 4) * 4 + 4 <= sys_n);
+  // Among these 4-threads are some that have to be deactivated from global
+  // memory read/write
+  const int boundary_solve = !optimized_solve && (tid < (sys_n));
+  // A thread is active only if it works on valid memory
+  const int active_thread = optimized_solve || boundary_solve;
+
+  // Start index for this tridiagonal system
+  int ind = sys_pads * tid;
+
+  // Check that this is an active thread
+  if (active_thread) {
+    // Check that this thread can perform an optimized solve
+    if (optimized_solve && sys_size >= 192 / sizeof(REAL)) {
+      // Local arrays used in the register shuffle
+      vec_line_t<REAL> l_a, l_b, l_c, l_d, l_aa, l_cc;
+      REAL a_m1, c_m1, d_m1;
+
+      // Memory is unaligned
+      int ind_floor = ((ind + offset) / align<REAL>)*align<REAL> - offset;
+      int sys_off   = ind - ind_floor;
+
+      // Handle start of unaligned memory
+      // i = 0 : idx = sys_off, save and perform as last step
+      //
+      REAL b_0 = b[ind];
+      REAL c_0 = c[ind];
+      REAL d_0 = d[ind];
+      // i = 1 : idx = sys_off +1
+      if (sys_off + 1 < vec_length<REAL>) {
+        forward_linear_process_row1<REAL, shift_c0_on_rank0>(
+            a[ind + 1], a_m1, b[ind + 1], c[ind + 1], c_m1, d[ind + 1], d_m1,
+            b_0, c_0, d_0, sys_size, rank, nproc);
+        aa[ind + 1] = a_m1;
+        cc[ind + 1] = c_m1;
+        d[ind + 1]  = d_m1;
+
+        for (int i = 2; i + sys_off < vec_length<REAL>; i++) {
+          forward_linear_process_line<REAL, shift_c0_on_rank0>(
+              a[ind + i], a_m1, b[ind + i], c[ind + i], c_m1, d[ind + i], d_m1,
+              b_0, c_0, d_0, sys_size, i - sys_off, rank, nproc);
+          d[ind + i]  = d_m1;
+          aa[ind + i] = a_m1;
+          cc[ind + i] = c_m1;
+        }
+      }
+
+      int n = vec_length<REAL>;
+      // Back to normal
+      for (; n < sys_size - vec_length<REAL>; n += vec_length<REAL>) {
+        load_array_reg_unaligned(a, &l_a, n, tid, sys_pads, sys_size, offset);
+        load_array_reg_unaligned(b, &l_b, n, tid, sys_pads, sys_size, offset);
+        load_array_reg_unaligned(c, &l_c, n, tid, sys_pads, sys_size, offset);
+        load_array_reg_unaligned(d, &l_d, n, tid, sys_pads, sys_size, offset);
+#pragma unroll
+        for (int i = 0; i < vec_length<REAL>; i++) {
+          if (i == 0 && n + i - sys_off == 1) {
+            // i = 1 iteration
+            forward_linear_process_row1<REAL, shift_c0_on_rank0>(
+                l_a.f[i], a_m1, l_b.f[i], l_c.f[i], c_m1, l_d.f[i], d_m1, b_0,
+                c_0, d_0, sys_size, rank, nproc);
+          } else {
+            forward_linear_process_line<REAL, shift_c0_on_rank0>(
+                l_a.f[i], a_m1, l_b.f[i], l_c.f[i], c_m1, l_d.f[i], d_m1, b_0,
+                c_0, d_0, sys_size, n + i - sys_off, rank, nproc);
+          }
+          l_d.f[i]  = d_m1;
+          l_aa.f[i] = a_m1;
+          l_cc.f[i] = c_m1;
+        }
+        store_array_reg_unaligned(d, &l_d, n, tid, sys_pads, sys_size, offset);
+        store_array_reg_unaligned(cc, &l_cc, n, tid, sys_pads, sys_size,
+                                  offset);
+        store_array_reg_unaligned(aa, &l_aa, n, tid, sys_pads, sys_size,
+                                  offset);
+      }
+
+      // Handle end of unaligned memory
+      for (int i = n; i < sys_size + sys_off; i++) {
+        int loc_ind = ind_floor + i;
+        forward_linear_process_line<REAL, shift_c0_on_rank0>(
+            a[loc_ind], a_m1, b[loc_ind], c[loc_ind], c_m1, d[loc_ind], d_m1,
+            b_0, c_0, d_0, sys_size, i - sys_off, rank, nproc);
+        d[loc_ind]  = d_m1;
+        aa[loc_ind] = a_m1;
+        cc[loc_ind] = c_m1;
+      }
+      // i = 0
+      if (0 == rank) {
+        aa[ind] = 0;
+      } else {
+        aa[ind] = a[ind] / b_0;
+      }
+      cc[ind] = c_0 / b_0;
+      d[ind]  = d_0 / b_0;
+    } else {
+      trid_linear_forward_single_system<REAL, shift_c0_on_rank0>(
+          a, b, c, d, aa, cc, sys_size, ind, rank, nproc);
+    }
+    // Store boundary values for communication
+    copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, d, boundaries, tid, ind,
+                                               sys_size, sys_n);
+  }
+}
+
 
 /*
  * Modified forward pass in y or higher dimensions.
@@ -272,6 +548,48 @@ __global__ void trid_strided_multidim_forward_pass(
 //
 // Modified backward pass
 //
+template <typename REAL, int INC, bool is_c0_cleared_on_rank0>
+inline __device__ void trid_linear_backward_pass_single_system(
+    const REAL *__restrict__ aa, const REAL *__restrict__ cc,
+    REAL *__restrict__ d, REAL *__restrict__ u, REAL dd0, REAL dd_p1,
+    int sys_size, int ind, int rank, int nproc) {
+  // i = n-1
+  int loc_ind = ind + sys_size - 1;
+  if (rank != nproc - 1)
+    dd_p1 = d[loc_ind] - dd_p1 * cc[loc_ind];
+  else
+    dd_p1 = d[loc_ind];
+  if (rank != 0) dd_p1 += -aa[loc_ind] * dd0;
+  if (INC) {
+    u[loc_ind] += dd_p1;
+  } else {
+    d[loc_ind] = dd_p1;
+  }
+  // i = n-2 - 1
+  for (int i = sys_size - 2; i > 0; --i) {
+    loc_ind = ind + i;
+    dd_p1   = d[loc_ind] - cc[loc_ind] * dd_p1;
+    if (rank != 0) dd_p1 += -aa[loc_ind] * dd0;
+    if (INC)
+      u[ind + i] += dd_p1;
+    else
+      d[ind + i] = dd_p1;
+  }
+  // i = 0
+  if (0 == rank && !is_c0_cleared_on_rank0) {
+    dd_p1 = dd0 - cc[ind] * dd_p1;
+    if (INC)
+      u[ind] += dd_p1;
+    else
+      d[ind] = dd_p1;
+  } else {
+    if (INC)
+      u[ind] += dd0;
+    else
+      d[ind] = dd0;
+  }
+}
+
 template <typename REAL, int INC, bool boundary_SOA,
           bool is_c0_cleared_on_rank0 = true>
 __global__ void
@@ -293,41 +611,284 @@ trid_linear_backward_pass(const REAL *__restrict__ aa,
     REAL dd0, dd_p1;
     load_d_from_boundary_linear<REAL, boundary_SOA>(boundaries, dd0, dd_p1, tid,
                                                     sys_n);
+    trid_linear_backward_pass_single_system<REAL, INC, is_c0_cleared_on_rank0>(
+        aa, cc, d, u, dd0, dd_p1, sys_size, ind, rank, nproc);
+  }
+}
 
-    // i = n-1
-    int loc_ind = ind + sys_size - 1;
-    if (rank != nproc - 1)
-      dd_p1 = d[loc_ind] - dd_p1 * cc[loc_ind];
-    else
-      dd_p1 = d[loc_ind];
-    if (rank != 0) dd_p1 += -aa[loc_ind] * dd0;
-    if (INC) {
-      u[loc_ind] += dd_p1;
+// Modified backwards pass for X dimension.
+// Uses register shuffle optimization, can handle both aligned and unaligned
+// memory
+template <typename REAL, int INC, bool boundary_SOA,
+          bool is_c0_cleared_on_rank0 = true>
+__global__ void trid_linear_backward_pass_aligned(
+    const REAL *__restrict__ aa, const REAL *__restrict__ cc,
+    REAL *__restrict__ d, REAL *__restrict__ u,
+    const REAL *__restrict__ boundaries, int sys_size, int sys_pads, int sys_n,
+    int rank, int nproc) {
+  // Thread ID in global scope - every thread solves one system
+  const int tid = threadIdx.x + threadIdx.y * blockDim.x +
+                  blockIdx.x * blockDim.y * blockDim.x +
+                  blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
+  // Warp ID in global scope - the ID wich the thread belongs to
+  const int wid = tid / WARP_SIZE;
+  // Global memory offset: unique to a warp;
+  // every thread in a warp calculates the same woffset, which is the "begining"
+  // of 3D tile
+  const int woffset = wid * WARP_SIZE * sys_pads;
+  // These 4-threads do the regular memory read/write and data transpose
+  const int optimized_solve = ((tid / 4) * 4 + 4 <= sys_n);
+  // Among these 4-threads are some that have to be deactivated from global
+  // memory read/write
+  const int boundary_solve = !optimized_solve && (tid < (sys_n));
+  // A thread is active only if it works on valid memory
+  const int active_thread = optimized_solve || boundary_solve;
+
+  // Start index for this tridiagonal system
+  int ind = sys_pads * tid;
+
+
+  // Check if active thread
+  if (active_thread) {
+    // Set start and end dd values
+    REAL dd0;
+    REAL dd_p1;
+    load_d_from_boundary_linear<REAL, boundary_SOA>(boundaries, dd0, dd_p1, tid,
+                                                    sys_n);
+    // Check if optimized solve
+    if (optimized_solve && sys_size >= 192 / sizeof(REAL)) {
+      int n = 0;
+      // Local arrays used in register shuffle
+      vec_line_t<REAL> l_aa, l_cc, l_d, l_u;
+      // Start with last vector
+      int end_remainder = sys_size / vec_length<REAL> * vec_length<REAL>;
+      if (end_remainder < sys_size) {
+        // i = n-1
+        int loc_ind = ind + sys_size - 1;
+        if (rank != nproc - 1)
+          dd_p1 = d[loc_ind] - dd_p1 * cc[loc_ind];
+        else
+          dd_p1 = d[loc_ind];
+        if (rank != 0) dd_p1 += -aa[loc_ind] * dd0;
+        if (INC) {
+          u[loc_ind] += dd_p1;
+        } else {
+          d[loc_ind] = dd_p1;
+        }
+        // i = n-2 - 1
+        for (int i = sys_size - 2; i >= end_remainder; --i) {
+          loc_ind = ind + i;
+          dd_p1   = d[loc_ind] - cc[loc_ind] * dd_p1;
+          if (rank != 0) dd_p1 += -aa[loc_ind] * dd0;
+          if (INC)
+            u[ind + i] += dd_p1;
+          else
+            d[ind + i] = dd_p1;
+        }
+      }
+      for (n = end_remainder - vec_length<REAL>; n > 0; n -= vec_length<REAL>) {
+        load_array_reg(aa, &l_aa, n, woffset, sys_pads);
+        load_array_reg(cc, &l_cc, n, woffset, sys_pads);
+        load_array_reg(d, &l_d, n, woffset, sys_pads);
+        if (INC) load_array_reg(u, &l_u, n, woffset, sys_pads);
+
+        for (int i = vec_length<REAL> - 1; i >= 0; i--) {
+          if (n + i == sys_size - 1) {
+            if (rank != nproc - 1)
+              dd_p1 = l_d.f[i] - dd_p1 * l_cc.f[i];
+            else
+              dd_p1 = l_d.f[i];
+            if (rank != 0) dd_p1 += -l_aa.f[i] * dd0;
+          } else {
+            dd_p1 = l_d.f[i] - l_cc.f[i] * dd_p1;
+            if (rank != 0) dd_p1 += -l_aa.f[i] * dd0;
+          }
+          if (INC)
+            l_u.f[i] += dd_p1;
+          else
+            l_d.f[i] = dd_p1;
+        }
+        if (INC)
+          store_array_reg(u, &l_u, n, woffset, sys_pads);
+        else
+          store_array_reg(d, &l_d, n, woffset, sys_pads);
+      }
+      // Handle first vector
+      load_array_reg(aa, &l_aa, 0, woffset, sys_pads);
+      load_array_reg(cc, &l_cc, 0, woffset, sys_pads);
+      load_array_reg(d, &l_d, 0, woffset, sys_pads);
+      if (INC) load_array_reg(u, &l_u, 0, woffset, sys_pads);
+
+      for (int i = vec_length<REAL> - 1; i >= 1; i--) {
+        if (i == sys_size - 1) {
+          if (rank != nproc - 1)
+            dd_p1 = l_d.f[i] - dd_p1 * l_cc.f[i];
+          else
+            dd_p1 = l_d.f[i];
+          if (rank != 0) dd_p1 += -l_aa.f[i] * dd0;
+        } else {
+          dd_p1 = l_d.f[i] - l_cc.f[i] * dd_p1;
+          if (rank != 0) dd_p1 += -l_aa.f[i] * dd0;
+        }
+        if (INC)
+          l_u.f[i] += dd_p1;
+        else
+          l_d.f[i] = dd_p1;
+      }
+      // i = 0
+      if (0 == rank && !is_c0_cleared_on_rank0) {
+        dd_p1 = dd0 - l_cc.f[0] * dd_p1;
+        if (rank != 0) dd_p1 += -l_aa.f[0] * dd0;
+      } else {
+        dd_p1 = dd0;
+      }
+      if (INC) {
+        l_u.f[0] += dd_p1;
+        store_array_reg(u, &l_u, n, woffset, sys_pads);
+      } else {
+        l_d.f[0] = dd_p1;
+        store_array_reg(d, &l_d, n, woffset, sys_pads);
+      }
     } else {
-      d[loc_ind] = dd_p1;
+      // Normal modified backwards if not optimized solve
+      trid_linear_backward_pass_single_system<REAL, INC,
+                                              is_c0_cleared_on_rank0>(
+          aa, cc, d, u, dd0, dd_p1, sys_size, ind, rank, nproc);
     }
-    // i = n-2 - 1
-    for (int i = sys_size - 2; i > 0; --i) {
-      loc_ind = ind + i;
-      dd_p1   = d[loc_ind] - cc[loc_ind] * dd_p1;
-      if (rank != 0) dd_p1 += -aa[loc_ind] * dd0;
-      if (INC)
-        u[ind + i] += dd_p1;
-      else
-        d[ind + i] = dd_p1;
-    }
-    // i = 0
-    if (0 == rank && !is_c0_cleared_on_rank0) {
-      dd_p1 = dd0 - cc[ind] * dd_p1;
-      if (INC)
+  }
+}
+
+template <typename REAL, int INC, bool boundary_SOA,
+          bool is_c0_cleared_on_rank0 = true>
+__global__ void trid_linear_backward_pass_unaligned(
+    const REAL *__restrict__ aa, const REAL *__restrict__ cc,
+    REAL *__restrict__ d, REAL *__restrict__ u,
+    const REAL *__restrict__ boundaries, int sys_size, int sys_pads, int sys_n,
+    int offset, int rank, int nproc) {
+  // Thread ID in global scope - every thread solves one system
+  const int tid = threadIdx.x + threadIdx.y * blockDim.x +
+                  blockIdx.x * blockDim.y * blockDim.x +
+                  blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
+  // These 4-threads do the regular memory read/write and data transpose
+  const int optimized_solve = ((tid / 4) * 4 + 4 <= sys_n);
+  // Among these 4-threads are some that have to be deactivated from global
+  // memory read/write
+  const int boundary_solve = !optimized_solve && (tid < (sys_n));
+  // A thread is active only if it works on valid memory
+  const int active_thread = optimized_solve || boundary_solve;
+
+  // Start index for this tridiagonal system
+  int ind = sys_pads * tid;
+
+  // Check if active thread
+  if (active_thread) {
+    // Set start and end dd values
+    REAL dd0;
+    REAL dd_p1;
+    load_d_from_boundary_linear<REAL, boundary_SOA>(boundaries, dd0, dd_p1, tid,
+                                                    sys_n);
+    // Check if optimized solve
+    if (optimized_solve && sys_size >= 192 / sizeof(REAL)) {
+      int n = 0;
+      // Local arrays used in register shuffle
+      vec_line_t<REAL> l_aa, l_cc, l_d, l_u;
+      // Unaligned memory
+
+      int ind_floor = ((ind + offset) / align<REAL>)*align<REAL> - offset;
+      int sys_off   = ind - ind_floor;
+      int end_remainder =
+          sys_size / vec_length<REAL> * vec_length<REAL> - sys_off;
+
+      if (end_remainder < sys_size) {
+        // i = n-1
+        int loc_ind = ind + sys_size - 1;
+        if (rank != nproc - 1)
+          dd_p1 = d[loc_ind] - dd_p1 * cc[loc_ind];
+        else
+          dd_p1 = d[loc_ind];
+        if (rank != 0) dd_p1 += -aa[loc_ind] * dd0;
+        if (INC) {
+          u[loc_ind] += dd_p1;
+        } else {
+          d[loc_ind] = dd_p1;
+        }
+        // i = n-2 - 1
+        for (int i = sys_size - 2; i >= end_remainder; --i) {
+          loc_ind = ind + i;
+          dd_p1   = d[loc_ind] - cc[loc_ind] * dd_p1;
+          if (rank != 0) dd_p1 += -aa[loc_ind] * dd0;
+          if (INC)
+            u[ind + i] += dd_p1;
+          else
+            d[ind + i] = dd_p1;
+        }
+      }
+
+      for (n = end_remainder + sys_off - vec_length<REAL>; n > 0;
+           n -= vec_length<REAL>) {
+        load_array_reg_unaligned(aa, &l_aa, n, tid, sys_pads, sys_size, offset);
+        load_array_reg_unaligned(cc, &l_cc, n, tid, sys_pads, sys_size, offset);
+        load_array_reg_unaligned(d, &l_d, n, tid, sys_pads, sys_size, offset);
+        if (INC)
+          load_array_reg_unaligned(u, &l_u, n, tid, sys_pads, sys_size, offset);
+
+        for (int i = vec_length<REAL> - 1; i >= 0; i--) {
+          if (n + i == sys_size - 1) {
+            if (rank != nproc - 1)
+              dd_p1 = l_d.f[i] - dd_p1 * l_cc.f[i];
+            else
+              dd_p1 = l_d.f[i];
+            if (rank != 0) dd_p1 += -l_aa.f[i] * dd0;
+          } else {
+            dd_p1 = l_d.f[i] - l_cc.f[i] * dd_p1;
+            if (rank != 0) dd_p1 += -l_aa.f[i] * dd0;
+          }
+          if (INC)
+            l_u.f[i] += dd_p1;
+          else
+            l_d.f[i] = dd_p1;
+        }
+        if (INC)
+          store_array_reg_unaligned(u, &l_u, n, tid, sys_pads, sys_size,
+                                    offset);
+        else
+          store_array_reg_unaligned(d, &l_d, n, tid, sys_pads, sys_size,
+                                    offset);
+      }
+      // Handle first unaligned vector
+      for (int i = vec_length<REAL> - 1 - sys_off; i >= 1; i--) {
+        int loc_ind = ind + i;
+        if (i == sys_size - 1) {
+          if (rank != nproc - 1)
+            dd_p1 = d[loc_ind] - dd_p1 * cc[loc_ind];
+          else
+            dd_p1 = d[loc_ind];
+          if (rank != 0) dd_p1 += -aa[loc_ind] * dd0;
+        } else {
+          dd_p1 = d[loc_ind] - cc[loc_ind] * dd_p1;
+          if (rank != 0) dd_p1 += -aa[loc_ind] * dd0;
+        }
+        if (INC)
+          u[loc_ind] += dd_p1;
+        else
+          d[loc_ind] = dd_p1;
+      }
+      if (0 == rank && !is_c0_cleared_on_rank0) {
+        dd_p1 = dd0 - cc[ind] * dd_p1;
+        if (rank != 0) dd_p1 += -aa[ind] * dd0;
+      } else {
+        dd_p1 = dd0;
+      }
+      if (INC) {
         u[ind] += dd_p1;
-      else
+      } else {
         d[ind] = dd_p1;
+      }
     } else {
-      if (INC)
-        u[ind] += dd0;
-      else
-        d[ind] = dd0;
+      // Normal modified backwards if not optimized solve
+      trid_linear_backward_pass_single_system<REAL, INC,
+                                              is_c0_cleared_on_rank0>(
+          aa, cc, d, u, dd0, dd_p1, sys_size, ind, rank, nproc);
     }
   }
 }
@@ -339,8 +900,8 @@ trid_linear_backward_pass(const REAL *__restrict__ aa,
  * respectively
  * The boundaries array has a size of sys_n*2 and hold the first element from
  * this process and from the next process of d for each system
- * The layout of boundaries is as if it holds the a and c values of the lines as
- * well.
+ * The layout of boundaries is as if it holds the a and c values of the lines
+ * as well.
  *
  */
 template <typename REAL, int INC, bool boundary_SOA,
@@ -527,6 +1088,58 @@ __global__ void trid_PCR_iteration(REAL *__restrict__ boundaries,
 //        Host functions
 ////////////////////////////////////////
 
+//
+// Kernel launch wrapper for forward step with register blocking
+//
+template <typename REAL, bool boundary_SOA, bool shift_c0_on_rank0>
+void trid_linear_forward_pass_reg(dim3 dimGrid_x, dim3 dimBlock_x,
+                                  const REAL *a, const REAL *b, const REAL *c,
+                                  REAL *d, REAL *aa, REAL *cc, REAL *boundaries,
+                                  int sys_size, int sys_pads, int sys_n,
+                                  int offset, int rank, int nproc,
+                                  cudaStream_t stream) {
+  const int aligned =
+      (sys_pads % align<REAL>) == 0 && (offset % align<REAL>) == 0;
+  if (aligned) {
+    trid_linear_forward_pass_aligned<REAL, boundary_SOA, shift_c0_on_rank0>
+        <<<dimGrid_x, dimBlock_x, 0, stream>>>(a, b, c, d, aa, cc, boundaries,
+                                               sys_size, sys_pads, sys_n, rank,
+                                               nproc);
+  } else {
+    trid_linear_forward_pass_unaligned<REAL, boundary_SOA, shift_c0_on_rank0>
+        <<<dimGrid_x, dimBlock_x, 0, stream>>>(a, b, c, d, aa, cc, boundaries,
+                                               sys_size, sys_pads, sys_n, rank,
+                                               nproc, offset);
+  }
+}
+
+//
+// Kernel launch wrapper for backward step with register blocking
+//
+template <typename REAL, int INC, bool boundary_SOA,
+          bool is_c0_cleared_on_rank0>
+void trid_linear_backward_pass_reg(dim3 dimGrid_x, dim3 dimBlock_x,
+                                   const REAL *aa, const REAL *cc, REAL *d,
+                                   REAL *u, const REAL *boundaries,
+                                   int sys_size, int sys_pads, int sys_n,
+                                   int offset, int rank, int nproc,
+                                   cudaStream_t stream) {
+  const int aligned =
+      (sys_pads % align<REAL>) == 0 && (offset % align<REAL>) == 0;
+  if (aligned) {
+    trid_linear_backward_pass_aligned<REAL, INC, boundary_SOA,
+                                      is_c0_cleared_on_rank0>
+        <<<dimGrid_x, dimBlock_x, 0, stream>>>(
+            aa, cc, d, u, boundaries, sys_size, sys_pads, sys_n, rank, nproc);
+  } else {
+    trid_linear_backward_pass_unaligned<REAL, INC, boundary_SOA,
+                                        is_c0_cleared_on_rank0>
+        <<<dimGrid_x, dimBlock_x, 0, stream>>>(aa, cc, d, u, boundaries,
+                                               sys_size, sys_pads, sys_n,
+                                               offset, rank, nproc);
+  }
+}
+
 template <typename REAL, bool boundary_SOA, bool shift_c0_on_rank0 = true>
 inline void forward_batched_pass(dim3 dimGrid_x, dim3 dimBlock_x,
                                  const MpiSolverParams &params, const REAL *a,
@@ -538,7 +1151,7 @@ inline void forward_batched_pass(dim3 dimGrid_x, dim3 dimBlock_x,
                                  int solvedim, int start_sys, int bsize,
                                  int offset, cudaStream_t stream = nullptr) {
   if (solvedim == 0) {
-    assert(offset == 0 && "I think we do not need the offset");
+    // assert(offset == 0 && "I think we do not need the offset");
     assert(a_pads[0] == b_pads[0] && a_pads[0] == c_pads[0] &&
            a_pads[0] == d_pads[0] && "different paddings are not supported");
     if (ndim > 1) {
@@ -547,12 +1160,19 @@ inline void forward_batched_pass(dim3 dimGrid_x, dim3 dimBlock_x,
              " ONLLY X paddings are supported");
     }
     const int batch_offset = start_sys * a_pads[solvedim];
-    trid_linear_forward_pass<REAL, boundary_SOA, shift_c0_on_rank0>
-        <<<dimGrid_x, dimBlock_x, 0, stream>>>(
-            a + batch_offset, b + batch_offset, c + batch_offset,
-            d + batch_offset, aa + batch_offset, cc + batch_offset,
-            boundaries + start_sys * 3 * 2, dims[solvedim], a_pads[solvedim],
-            bsize, params.mpi_coords[solvedim], params.num_mpi_procs[solvedim]);
+    // trid_linear_forward_pass<REAL, boundary_SOA, shift_c0_on_rank0>
+    //     <<<dimGrid_x, dimBlock_x, 0, stream>>>(
+    //         a + batch_offset, b + batch_offset, c + batch_offset,
+    //         d + batch_offset, aa + batch_offset, cc + batch_offset,
+    //         boundaries + start_sys * 3 * 2, dims[solvedim], a_pads[solvedim],
+    //         bsize, params.mpi_coords[solvedim],
+    //         params.num_mpi_procs[solvedim]);
+    trid_linear_forward_pass_reg<REAL, boundary_SOA, shift_c0_on_rank0>(
+        dimGrid_x, dimBlock_x, a + batch_offset, b + batch_offset,
+        c + batch_offset, d + batch_offset, aa + batch_offset,
+        cc + batch_offset, boundaries + start_sys * 3 * 2, dims[solvedim],
+        a_pads[solvedim], bsize, offset, params.mpi_coords[solvedim],
+        params.num_mpi_procs[solvedim], stream);
   } else {
     DIM_V k_pads, k_dims; // TODO
     for (int i = 0; i < ndim; ++i) {
@@ -594,12 +1214,19 @@ inline void backward_batched_pass(dim3 dimGrid_x, dim3 dimBlock_x,
     //   y_size = dims[1];
     //   y_pads = a_pads[1];
     // }
-    trid_linear_backward_pass<REAL, INC, boundary_SOA, is_c0_cleared_on_rank0>
-        <<<dimGrid_x, dimBlock_x, 0, stream>>>(
-            aa + batch_offset, cc + batch_offset, d + batch_offset,
-            u + batch_offset, boundaries + start_sys * 2 * 3, dims[solvedim],
-            a_pads[solvedim], bsize, params.mpi_coords[solvedim],
-            params.num_mpi_procs[solvedim]);
+    // trid_linear_backward_pass<REAL, INC, boundary_SOA,
+    // is_c0_cleared_on_rank0>
+    //     <<<dimGrid_x, dimBlock_x, 0, stream>>>(
+    //         aa + batch_offset, cc + batch_offset, d + batch_offset,
+    //         u + batch_offset, boundaries + start_sys * 2 * 3, dims[solvedim],
+    //         a_pads[solvedim], bsize, params.mpi_coords[solvedim],
+    //         params.num_mpi_procs[solvedim]);
+    trid_linear_backward_pass_reg<REAL, INC, boundary_SOA,
+                                  is_c0_cleared_on_rank0>(
+        dimGrid_x, dimBlock_x, aa + batch_offset, cc + batch_offset,
+        d + batch_offset, u + batch_offset, boundaries + start_sys * 2 * 3,
+        dims[solvedim], a_pads[solvedim], bsize, offset,
+        params.mpi_coords[solvedim], params.num_mpi_procs[solvedim], stream);
   } else {
     DIM_V k_pads, k_dims; // TODO
     for (int i = 0; i < ndim; ++i) {
