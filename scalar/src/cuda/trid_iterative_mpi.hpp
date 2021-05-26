@@ -1084,6 +1084,70 @@ __global__ void trid_PCR_iteration(REAL *__restrict__ boundaries,
   }
 }
 
+//
+//  Single jacobi iteration for reduced
+//  assumption: we only have one row per system in boundaries
+//  and 1-1 prev and next row in recv_buf
+//
+template <typename REAL>
+__global__ void trid_jacobi_iteration(REAL *__restrict__ boundaries,
+                                      const REAL *__restrict__ recv_m1,
+                                      const REAL *__restrict__ recv_p1,
+                                      int sys_n, bool m1, bool p1) {
+  // Thread ID in global scope - every thread solves one system
+  int tid = threadIdx.x + threadIdx.y * blockDim.x +
+            blockIdx.x * blockDim.y * blockDim.x +
+            blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
+  // __shared__ char *temp2;
+  REAL __shared__ temp[128];
+
+  int ind       = tid;
+  REAL sys_norm = 0.0;
+  if (tid < sys_n) {
+    REAL dm1  = 0.0;
+    REAL dp1  = 0.0;
+    REAL aa   = boundaries[0 * sys_n + tid];
+    REAL cc   = boundaries[1 * sys_n + tid];
+    REAL dd   = boundaries[2 * sys_n + tid];
+    REAL dd_r = boundaries[3 * sys_n + tid];
+    if (m1) {
+      dm1 = recv_m1[ind];
+    }
+    if (p1) {
+      dp1 = recv_p1[ind];
+    }
+
+    REAL diff                   = dd_r + aa * dm1 + cc * dp1 - dd;
+    sys_norm                    = diff * diff;
+    boundaries[3 * sys_n + tid] = dd - cc * dp1 - aa * dm1;
+  }
+  // perform reduction over elements
+  __syncthreads();
+  int bid   = blockIdx.x + blockIdx.y * gridDim.x;
+  tid       = threadIdx.x + threadIdx.y * blockDim.x;
+  temp[tid] = sys_norm;
+  // first, cope with blockDim.x perhaps not being a power of 2
+  int d = 1 << (31 - __clz(((int)(blockDim.x * blockDim.y * blockDim.z) - 1)));
+  __syncthreads();
+  // d = blockDim.x/2 rounded up to nearest power of 2
+  if (tid + d < blockDim.x * blockDim.y * blockDim.z) {
+    REAL dat_t = temp[tid + d];
+    if (dat_t > sys_norm) sys_norm = dat_t;
+    temp[tid] = sys_norm;
+  }
+
+  // second, do reductions
+  for (d >>= 1; d > 0; d >>= 1) {
+    __syncthreads();
+    if (tid < d) {
+      REAL dat_t = temp[tid + d];
+      if (dat_t > sys_norm) sys_norm = dat_t;
+      temp[tid] = sys_norm;
+    }
+  }
+  if (bid < sys_n && tid == 0) boundaries[4 * sys_n + bid] = sys_norm;
+}
+
 ////////////////////////////////////////
 //        Host functions
 ////////////////////////////////////////
@@ -1141,15 +1205,12 @@ void trid_linear_backward_pass_reg(dim3 dimGrid_x, dim3 dimBlock_x,
 }
 
 template <typename REAL, bool boundary_SOA, bool shift_c0_on_rank0 = true>
-inline void forward_batched_pass(dim3 dimGrid_x, dim3 dimBlock_x,
-                                 const MpiSolverParams &params, const REAL *a,
-                                 const int *a_pads, const REAL *b,
-                                 const int *b_pads, const REAL *c,
-                                 const int *c_pads, REAL *d, const int *d_pads,
-                                 REAL *aa, REAL *cc, REAL *boundaries,
-                                 REAL *send_buf_h, const int *dims, int ndim,
-                                 int solvedim, int start_sys, int bsize,
-                                 int offset, cudaStream_t stream = nullptr) {
+inline void forward_batched_pass(
+    dim3 dimGrid_x, dim3 dimBlock_x, const MpiSolverParams &params,
+    const REAL *a, const int *a_pads, const REAL *b, const int *b_pads,
+    const REAL *c, const int *c_pads, REAL *d, const int *d_pads, REAL *aa,
+    REAL *cc, REAL *boundaries, const int *dims, int ndim, int solvedim,
+    int start_sys, int bsize, int offset, cudaStream_t stream = nullptr) {
   if (solvedim == 0) {
     // assert(offset == 0 && "I think we do not need the offset");
     assert(a_pads[0] == b_pads[0] && a_pads[0] == c_pads[0] &&
@@ -1403,6 +1464,105 @@ inline void iterative_pcr_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
 #endif
     }
   }
+  // send solution up for backward
+  trid_cuda_pcr_exchange_line<REAL, false, true>(
+      boundaries + 2 * sys_n, send_buf_h, nullptr, nullptr,
+      boundaries + 5 * sys_n, recv_buf_h, sys_n, nproc, rank - 1, rank + 1,
+      params, solvedim, rcv_requests, snd_requests);
+#ifndef TRID_NCCL
+  MPI_Waitall(2, snd_requests, MPI_STATUS_IGNORE);
+#endif
+}
+
+template <typename REAL>
+inline void iterative_jacobi_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
+                                        const MpiSolverParams &params,
+                                        REAL *boundaries, int sys_n,
+                                        int solvedim, REAL *recv_buf_d,
+                                        REAL *recv_buf_h, REAL *send_buf_h) {
+
+  MPI_Request rcv_requests[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
+  MPI_Request snd_requests[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
+  const int rank              = params.mpi_coords[solvedim];
+  const int nproc             = params.num_mpi_procs[solvedim];
+  constexpr int nvar_per_sys  = 3; // a, c, d
+  const int line_size         = sys_n * nvar_per_sys;
+
+
+  // send bottom line down
+  trid_cuda_pcr_exchange_line<REAL, true, false>(
+      boundaries + line_size, send_buf_h, recv_buf_d, recv_buf_h, nullptr,
+      nullptr, line_size, nproc, rank - 1, rank + 1, params, solvedim,
+      rcv_requests, snd_requests);
+
+  // substract received line
+  if (rank)
+    trid_PCR_iteration<REAL, true><<<dimGrid_x, dimBlock_x>>>(
+        boundaries, recv_buf_d, nullptr, sys_n, true, false);
+#ifndef TRID_NCCL
+  MPI_Waitall(2, snd_requests, MPI_STATUS_IGNORE);
+#endif
+
+  // norm comp
+  int global_sys_len    = params.num_mpi_procs[solvedim];
+  REAL local_norm_send  = -1.0;
+  REAL global_norm_recv = -1.0;
+  REAL global_norm      = -1.0;
+  REAL norm0            = -1.0;
+  bool need_iter        = true;
+
+
+  MPI_Request norm_req = MPI_REQUEST_NULL;
+  int iter             = 0;
+  while ((params.jacobi_maxiter < 0 || iter < params.jacobi_maxiter) &&
+         need_iter) {
+    REAL local_norm = 0.0;
+    // send res to neighbours
+    if (rank) {
+      // rank 0 does not do jacobi iters, only the allreduce -> rank 1 shouldn't
+      // send upwards.
+      trid_cuda_pcr_exchange_line<REAL>(
+          boundaries + 2 * sys_n, send_buf_h, recv_buf_d, recv_buf_h,
+          boundaries + 5 * sys_n, recv_buf_h + sys_n, sys_n, nproc,
+          rank == 1 ? -1 : rank - 1, rank + 1, params, solvedim, rcv_requests,
+          snd_requests);
+
+#ifndef TRID_NCCL
+      MPI_Waitall(2, snd_requests, MPI_STATUS_IGNORE);
+#endif
+      // do jacobi iter and compute norm
+      // using boundaries for scratch mem.
+      // keep the first line: aa, cc, dd, then store dd_r
+      int numblocks = dimGrid_x.x * dimGrid_x.y * dimGrid_x.z;
+      int nthreads  = dimBlock_x.x * dimBlock_x.y * dimBlock_x.z;
+      trid_jacobi_iteration<<<dimGrid_x, dimBlock_x, nthreads * sizeof(REAL)>>>(
+          boundaries, recv_buf_d, boundaries + 5 * sys_n, sys_n, rank - 1 > 0,
+          rank + 1 < nproc);
+      cudaMemcpy(recv_buf_h, boundaries + 4 * sys_n, numblocks * sizeof(REAL),
+                 cudaMemcpyDeviceToHost);
+      for (int i = 0; i < numblocks; ++i) {
+        if (local_norm < recv_buf_h[i]) local_norm = recv_buf_h[i];
+      }
+    }
+    // allgather norm
+    BEGIN_PROFILING("mpi_communication");
+    MPI_Wait(&norm_req, MPI_STATUS_IGNORE);
+    norm_req = MPI_REQUEST_NULL;
+    if (global_norm_recv >= 0) // skip until the first sum is ready
+      global_norm = sqrt(global_norm_recv / global_sys_len);
+    if (norm0 < 0) norm0 = global_norm;
+    local_norm_send = local_norm;
+    iter++;
+    need_iter = global_norm < 0.0 || (params.jacobi_atol < global_norm &&
+                                      params.jacobi_rtol < global_norm / norm0);
+    if ((params.jacobi_maxiter < 0 || iter + 1 < params.jacobi_maxiter) &&
+        need_iter) { // if norm is not enough and next is not last iteration
+      MPI_Iallreduce(&local_norm_send, &global_norm_recv, 1, MPI_DOUBLE,
+                     MPI_SUM, params.communicators[solvedim], &norm_req);
+    }
+    END_PROFILING("mpi_communication");
+  }
+
   // send solution up for backward
   trid_cuda_pcr_exchange_line<REAL, false, true>(
       boundaries + 2 * sys_n, send_buf_h, nullptr, nullptr,

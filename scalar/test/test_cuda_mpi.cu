@@ -379,8 +379,8 @@ void test_short_forward_pass(const std::string &file_name) {
       local_sizes.data(), local_device_mesh.b().data(), local_sizes.data(),
       local_device_mesh.c().data(), local_sizes.data(),
       local_device_mesh.d().data(), local_sizes.data(), aa.data(), cc.data(),
-      boundaries.data(), nullptr /*TODO remove send_buf_h*/, local_sizes.data(),
-      mesh.dims().size(), mesh.solve_dim(), 0, n_sys, 0);
+      boundaries.data(), local_sizes.data(), mesh.dims().size(),
+      mesh.solve_dim(), 0, n_sys, 0);
   std::vector<Float> a_loc(a.data(), a.data() + domain_size);
   std::vector<Float> c_loc(c.data(), c.data() + domain_size);
   std::vector<Float> d_loc(d.data(), d.data() + domain_size);
@@ -539,8 +539,8 @@ void test_iterative_pcr_on_reduced(const std::string &file_name) {
       local_sizes.data(), local_device_mesh.b().data(), local_sizes.data(),
       local_device_mesh.c().data(), local_sizes.data(),
       local_device_mesh.d().data(), local_sizes.data(), aa.data(), cc.data(),
-      boundaries.data(), nullptr /*TODO remove send_buf_h*/, local_sizes.data(),
-      mesh.dims().size(), mesh.solve_dim(), 0, n_sys, 0);
+      boundaries.data(), local_sizes.data(), mesh.dims().size(),
+      mesh.solve_dim(), 0, n_sys, 0);
   // std::vector<Float> a_loc(a.data(), a.data() + domain_size);
   // std::vector<Float> c_loc(c.data(), c.data() + domain_size);
   // std::vector<Float> d_loc(d.data(), d.data() + domain_size);
@@ -678,18 +678,22 @@ enum ResDest { assign = 0, increment };
       (double, assign, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),           \
       (double, assign, MpiSolverParams::LATENCY_HIDING_TWO_STEP),              \
       (double, assign, MpiSolverParams::PCR),                                  \
+      (double, assign, MpiSolverParams::JACOBI),                               \
       (float, assign, MpiSolverParams::ALLGATHER),                             \
       (float, assign, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),            \
       (float, assign, MpiSolverParams::LATENCY_HIDING_TWO_STEP),               \
       (float, assign, MpiSolverParams::PCR),                                   \
+      (float, assign, MpiSolverParams::JACOBI),                                \
       (double, increment, MpiSolverParams::ALLGATHER),                         \
       (double, increment, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),        \
       (double, increment, MpiSolverParams::LATENCY_HIDING_TWO_STEP),           \
       (double, increment, MpiSolverParams::PCR),                               \
+      (double, increment, MpiSolverParams::JACOBI),                            \
       (float, increment, MpiSolverParams::ALLGATHER),                          \
       (float, increment, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),         \
       (float, increment, MpiSolverParams::LATENCY_HIDING_TWO_STEP),            \
-      (float, increment, MpiSolverParams::PCR)
+      (float, increment, MpiSolverParams::PCR),                                \
+      (float, increment, MpiSolverParams::JACOBI)
 
 TEMPLATE_TEST_CASE_SIG("cuda solver mpi: solveX", "[solver][solvedim:0]",
                        ((typename TestType, ResDest INC,
