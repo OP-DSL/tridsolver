@@ -67,25 +67,6 @@ template <memory_env mem_env> struct mem_buffer {
   size_t size  = 0;       /*<< size of the buffer in bytes */
   char *buffer = nullptr; /*<< pointer to memory in mem_env */
 
-  template <typename REAL> REAL *get_bytes_as(size_t bytes) {
-    if (size < bytes) {
-      if (buffer) {
-        if (mem_env == memory_env::DEVICE) {
-          cudaFree(buffer);
-        } else {
-          cudaFreeHost(buffer);
-        }
-      }
-      if (mem_env == memory_env::DEVICE) {
-        cudaSafeCall(cudaMalloc(&buffer, bytes));
-      } else {
-        cudaSafeCall(cudaMallocHost(&buffer, bytes));
-      }
-      size = bytes;
-    }
-    return reinterpret_cast<REAL *>(buffer);
-  }
-
   void free() {
     if (buffer) {
       if (mem_env == memory_env::DEVICE) {
@@ -96,6 +77,19 @@ template <memory_env mem_env> struct mem_buffer {
       buffer = nullptr;
       size   = 0;
     }
+  }
+
+  template <typename REAL> REAL *get_bytes_as(size_t bytes) {
+    if (size < bytes) {
+      free();
+      if (mem_env == memory_env::DEVICE) {
+        cudaSafeCall(cudaMalloc(&buffer, bytes));
+      } else {
+        cudaSafeCall(cudaMallocHost(&buffer, bytes));
+      }
+      size = bytes;
+    }
+    return reinterpret_cast<REAL *>(buffer);
   }
 
   ~mem_buffer() { free(); }
@@ -596,7 +590,7 @@ void tridMultiDimBatchSolveMPI_jacobi(
   // Solve the reduced system
   BEGIN_PROFILING2("reduced");
   iterative_jacobi_on_reduced(dimGrid_x, dimBlock_x, params, boundaries, sys_n,
-                           solvedim, recv_buf, recv_buf_h, send_buf_h);
+                              solvedim, recv_buf, recv_buf_h, send_buf_h);
   END_PROFILING2("reduced");
 
   // Do the backward pass to solve for remaining unknowns
@@ -653,7 +647,7 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   // Allocate memory used during the solve
   // const int local_helper_size = outer_size * eq_stride * local_eq_size;
   const int local_helper_size =
-      std::accumulate(a_pads, a_pads + ndim, 1, std::multiplies<int>{});
+      std::accumulate(a_pads, a_pads + ndim, 1, std::multiplies<int>());
   REAL *aa = aa_buf.get_bytes_as<REAL>(local_helper_size * sizeof(REAL)),
        *cc = cc_buf.get_bytes_as<REAL>(local_helper_size * sizeof(REAL)),
        *dd = dd_buf.get_bytes_as<REAL>(local_helper_size * sizeof(REAL)),
@@ -662,16 +656,42 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
 
   // Allocate receive buffer for MPI communication of reduced system
   const size_t reduced_len_g = 2 * params.num_mpi_procs[solvedim];
-  REAL *mpi_buf =
-      mpi_buffer.get_bytes_as<REAL>(reduced_len_g * 3 * sys_n * sizeof(REAL));
+  REAL *mpi_buf              = nullptr;
   REAL *send_buf = nullptr, *receive_buf = nullptr;
-#if !(defined(TRID_CUDA_AWARE_MPI) || defined(TRID_NCCL))
   const size_t comm_buf_size = loc_red_len * 3 * sys_n;
-  // MPI buffers on host
-  send_buf    = send_buffer.get_bytes_as<REAL>(comm_buf_size * sizeof(REAL));
-  receive_buf = receive_buffer.get_bytes_as<REAL>(
-      comm_buf_size * params.num_mpi_procs[solvedim] * sizeof(REAL));
+  switch (params.strategy) {
+  case MpiSolverParams::LATENCY_HIDING_INTERLEAVED:
+  case MpiSolverParams::LATENCY_HIDING_TWO_STEP:
+  case MpiSolverParams::GATHER_SCATTER:
+  case MpiSolverParams::ALLGATHER:
+    mpi_buf =
+        mpi_buffer.get_bytes_as<REAL>(reduced_len_g * 3 * sys_n * sizeof(REAL));
+#if !(defined(TRID_CUDA_AWARE_MPI) || defined(TRID_NCCL))
+    // MPI buffers on host
+    send_buf    = send_buffer.get_bytes_as<REAL>(comm_buf_size * sizeof(REAL));
+    receive_buf = receive_buffer.get_bytes_as<REAL>(
+        comm_buf_size * params.num_mpi_procs[solvedim] * sizeof(REAL));
 #endif
+    break;
+  case MpiSolverParams::JACOBI:
+    mpi_buf = mpi_buffer.get_bytes_as<REAL>(3 * sys_n * sizeof(REAL));
+#if !(defined(TRID_CUDA_AWARE_MPI) || defined(TRID_NCCL))
+    // MPI buffers on host
+    send_buf    = send_buffer.get_bytes_as<REAL>(3 * sys_n * sizeof(REAL));
+    receive_buf = receive_buffer.get_bytes_as<REAL>(3 * sys_n * sizeof(REAL));
+#endif
+    break;
+  case MpiSolverParams::PCR:
+    mpi_buf = mpi_buffer.get_bytes_as<REAL>(3 * sys_n * sizeof(REAL));
+#if !(defined(TRID_CUDA_AWARE_MPI) || defined(TRID_NCCL))
+    // MPI buffers on host
+    send_buf = send_buffer.get_bytes_as<REAL>(3 * sys_n * sizeof(REAL));
+    receive_buf =
+        receive_buffer.get_bytes_as<REAL>(2 * 3 * sys_n * sizeof(REAL));
+#endif
+    break;
+  default: assert(false && "Unknown communication strategy");
+  }
 #ifdef TRID_NCCL
   // Dry-run, first call of this is quite expensive
   int rank;
