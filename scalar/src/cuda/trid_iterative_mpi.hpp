@@ -1098,8 +1098,8 @@ __global__ void trid_jacobi_iteration(REAL *__restrict__ boundaries,
   int tid = threadIdx.x + threadIdx.y * blockDim.x +
             blockIdx.x * blockDim.y * blockDim.x +
             blockIdx.y * gridDim.x * blockDim.y * blockDim.x;
-  // __shared__ char *temp2;
-  REAL __shared__ temp[128];
+  extern __shared__ char temp2[];
+  REAL *temp = (REAL *)temp2;
 
   int ind       = tid;
   REAL sys_norm = 0.0;
@@ -1108,8 +1108,8 @@ __global__ void trid_jacobi_iteration(REAL *__restrict__ boundaries,
     REAL dp1  = 0.0;
     REAL aa   = boundaries[0 * sys_n + tid];
     REAL cc   = boundaries[1 * sys_n + tid];
-    REAL dd   = boundaries[2 * sys_n + tid];
-    REAL dd_r = boundaries[3 * sys_n + tid];
+    REAL dd   = boundaries[3 * sys_n + tid];
+    REAL dd_r = boundaries[2 * sys_n + tid];
     if (m1) {
       dm1 = recv_m1[ind];
     }
@@ -1119,7 +1119,7 @@ __global__ void trid_jacobi_iteration(REAL *__restrict__ boundaries,
 
     REAL diff                   = dd_r + aa * dm1 + cc * dp1 - dd;
     sys_norm                    = diff * diff;
-    boundaries[3 * sys_n + tid] = dd - cc * dp1 - aa * dm1;
+    boundaries[2 * sys_n + tid] = dd - cc * dp1 - aa * dm1;
   }
   // perform reduction over elements
   __syncthreads();
@@ -1496,11 +1496,17 @@ inline void iterative_jacobi_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
       rcv_requests, snd_requests);
 
   // substract received line
-  if (rank)
+  if (rank) {
     trid_PCR_iteration<REAL, true><<<dimGrid_x, dimBlock_x>>>(
         boundaries, recv_buf_d, nullptr, sys_n, true, false);
+    // initial guess for jacobi iterations
+    cudaMemcpy(boundaries + 3 * sys_n, boundaries + 2 * sys_n,
+               sys_n * sizeof(REAL), cudaMemcpyDeviceToDevice);
+  }
 #ifndef TRID_NCCL
+  END_PROFILING("mpi_communication");
   MPI_Waitall(2, snd_requests, MPI_STATUS_IGNORE);
+  END_PROFILING("mpi_communication");
 #endif
 
   // norm comp
@@ -1528,11 +1534,14 @@ inline void iterative_jacobi_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
           snd_requests);
 
 #ifndef TRID_NCCL
+      END_PROFILING("mpi_communication");
       MPI_Waitall(2, snd_requests, MPI_STATUS_IGNORE);
+      END_PROFILING("mpi_communication");
 #endif
       // do jacobi iter and compute norm
       // using boundaries for scratch mem.
-      // keep the first line: aa, cc, dd, then store dd_r
+      // boundaries store: aas, ccs, current guess for sysmtems, original dds,
+      // result of cuda reduction, message from next process
       int numblocks = dimGrid_x.x * dimGrid_x.y * dimGrid_x.z;
       int nthreads  = dimBlock_x.x * dimBlock_x.y * dimBlock_x.z;
       trid_jacobi_iteration<<<dimGrid_x, dimBlock_x, nthreads * sizeof(REAL)>>>(
@@ -1569,7 +1578,9 @@ inline void iterative_jacobi_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
       boundaries + 5 * sys_n, recv_buf_h, sys_n, nproc, rank - 1, rank + 1,
       params, solvedim, rcv_requests, snd_requests);
 #ifndef TRID_NCCL
+  BEGIN_PROFILING("mpi_communication");
   MPI_Waitall(2, snd_requests, MPI_STATUS_IGNORE);
+  END_PROFILING("mpi_communication");
 #endif
 }
 
