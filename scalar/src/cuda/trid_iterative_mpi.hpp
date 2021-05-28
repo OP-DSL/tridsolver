@@ -1504,7 +1504,7 @@ inline void iterative_jacobi_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
                sys_n * sizeof(REAL), cudaMemcpyDeviceToDevice);
   }
 #ifndef TRID_NCCL
-  END_PROFILING("mpi_communication");
+  BEGIN_PROFILING("mpi_communication");
   MPI_Waitall(2, snd_requests, MPI_STATUS_IGNORE);
   END_PROFILING("mpi_communication");
 #endif
@@ -1534,7 +1534,7 @@ inline void iterative_jacobi_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
           snd_requests);
 
 #ifndef TRID_NCCL
-      END_PROFILING("mpi_communication");
+      BEGIN_PROFILING("mpi_communication");
       MPI_Waitall(2, snd_requests, MPI_STATUS_IGNORE);
       END_PROFILING("mpi_communication");
 #endif
