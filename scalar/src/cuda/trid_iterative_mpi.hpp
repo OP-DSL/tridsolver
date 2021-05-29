@@ -1366,7 +1366,7 @@ void trid_cuda_pcr_exchange_line(REAL *snd_d, REAL *snd_h, REAL *rcv_m1_d,
   // Exchange line with lower process
   if (snd_up && rank_p1 >= 0 && rank_p1 < nproc) {
     MPI_Irecv(rcv_p1_h, line_size, MPI_DATATYPE(REAL), rank_p1, tag,
-              params.communicators[solvedim], &rcv_requests[0]);
+              params.communicators[solvedim], &rcv_requests[1]);
   }
 
   // copy send buffer to host
@@ -1517,7 +1517,6 @@ inline void iterative_jacobi_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
   REAL norm0            = -1.0;
   bool need_iter        = true;
 
-
   MPI_Request norm_req = MPI_REQUEST_NULL;
   int iter             = 0;
   while ((params.jacobi_maxiter < 0 || iter < params.jacobi_maxiter) &&
@@ -1566,7 +1565,7 @@ inline void iterative_jacobi_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
                                       params.jacobi_rtol < global_norm / norm0);
     if ((params.jacobi_maxiter < 0 || iter + 1 < params.jacobi_maxiter) &&
         need_iter) { // if norm is not enough and next is not last iteration
-      MPI_Iallreduce(&local_norm_send, &global_norm_recv, 1, MPI_DOUBLE,
+      MPI_Iallreduce(&local_norm_send, &global_norm_recv, 1, MPI_DATATYPE(REAL),
                      MPI_SUM, params.communicators[solvedim], &norm_req);
     }
     END_PROFILING("mpi_communication");

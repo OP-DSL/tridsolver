@@ -15,8 +15,8 @@ template <typename REAL>
 constexpr ncclDataType_t nccl_datatype =
     std::is_same<REAL, double>::value ? ncclDouble : ncclFloat;
 }
-
 #  endif
+
 #  define MPI_DATATYPE(REAL) mpi_datatype<REAL>
 #else
 #  define MPI_DATATYPE(REAL)                                                   \

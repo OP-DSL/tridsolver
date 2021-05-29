@@ -104,8 +104,9 @@ mem_buffer<memory_env::DEVICE> aa_buf, cc_buf, dd_buf, boundaries_buf,
     mpi_buffer;
 
 #if !(defined(TRID_CUDA_AWARE_MPI) || defined(TRID_NCCL))
-mem_buffer<memory_env::HOST> send_buffer, receive_buffer;
+mem_buffer<memory_env::HOST> send_buffer;
 #endif
+mem_buffer<memory_env::HOST> receive_buffer;
 } // namespace
 
 template <typename REAL>
@@ -677,9 +678,9 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
     mpi_buf = mpi_buffer.get_bytes_as<REAL>(3 * sys_n * sizeof(REAL));
 #if !(defined(TRID_CUDA_AWARE_MPI) || defined(TRID_NCCL))
     // MPI buffers on host
-    send_buf    = send_buffer.get_bytes_as<REAL>(3 * sys_n * sizeof(REAL));
-    receive_buf = receive_buffer.get_bytes_as<REAL>(3 * sys_n * sizeof(REAL));
+    send_buf = send_buffer.get_bytes_as<REAL>(3 * sys_n * sizeof(REAL));
 #endif
+    receive_buf = receive_buffer.get_bytes_as<REAL>(3 * sys_n * sizeof(REAL));
     break;
   case MpiSolverParams::PCR:
     mpi_buf = mpi_buffer.get_bytes_as<REAL>(3 * sys_n * sizeof(REAL));
