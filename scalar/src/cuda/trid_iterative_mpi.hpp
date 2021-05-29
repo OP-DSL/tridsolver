@@ -1519,8 +1519,9 @@ inline void iterative_jacobi_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
 
   MPI_Request norm_req = MPI_REQUEST_NULL;
   int iter             = 0;
-  while ((params.jacobi_maxiter < 0 || iter < params.jacobi_maxiter) &&
-         need_iter) {
+  // while ((params.jacobi_maxiter < 0 || iter < params.jacobi_maxiter) &&
+  //        need_iter) {
+  while (iter < 10 && need_iter) {
     REAL local_norm = 0.0;
     // send res to neighbours
     if (rank) {
@@ -1557,7 +1558,7 @@ inline void iterative_jacobi_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
     MPI_Wait(&norm_req, MPI_STATUS_IGNORE);
     norm_req = MPI_REQUEST_NULL;
     if (global_norm_recv >= 0) // skip until the first sum is ready
-      global_norm = sqrt(global_norm_recv / global_sys_len);
+      global_norm = sqrt(1 + global_norm_recv / global_sys_len);
     if (norm0 < 0) norm0 = global_norm;
     local_norm_send = local_norm;
     iter++;
