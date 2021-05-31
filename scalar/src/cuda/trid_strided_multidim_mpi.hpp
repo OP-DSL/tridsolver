@@ -57,8 +57,8 @@ __device__ void trid_strided_multidim_forward_kernel(
     const REAL *__restrict__ a, int ind_a, int stride_a,
     const REAL *__restrict__ b, int ind_b, int stride_b,
     const REAL *__restrict__ c, int ind_c, int stride_c,
-    const REAL *__restrict__ d, int ind_d, int stride_d, REAL *__restrict__ aa,
-    REAL *__restrict__ cc, REAL *__restrict__ dd, REAL *__restrict__ boundaries,
+    REAL *__restrict__ d, int ind_d, int stride_d, REAL *__restrict__ aa,
+    REAL *__restrict__ cc, REAL *__restrict__ boundaries,
     int tid, int sys_size, int sys_n) {
   //
   // forward pass
@@ -68,7 +68,7 @@ __device__ void trid_strided_multidim_forward_kernel(
     bb                       = static_cast<REAL>(1.0) / b[ind_b + i * stride_b];
     cc[ind_c + i * stride_c] = bb * c[ind_c + i * stride_c];
     aa[ind_a + i * stride_a] = bb * a[ind_a + i * stride_a];
-    dd[ind_d + i * stride_d] = bb * d[ind_d + i * stride_d];
+    d[ind_d + i * stride_d] = bb * d[ind_d + i * stride_d];
   }
 
   if (sys_size >= 3) {
@@ -77,9 +77,9 @@ __device__ void trid_strided_multidim_forward_kernel(
       bb = static_cast<REAL>(1.0) /
            (b[ind_b + i * stride_b] -
             a[ind_a + i * stride_a] * cc[ind_c + (i - 1) * stride_c]);
-      dd[ind_d + i * stride_d] =
+      d[ind_d + i * stride_d] =
           (d[ind_d + i * stride_d] -
-           a[ind_a + i * stride_a] * dd[ind_d + (i - 1) * stride_d]) *
+           a[ind_a + i * stride_a] * d[ind_d + (i - 1) * stride_d]) *
           bb;
       aa[ind_a + i * stride_a] =
           (-a[ind_a + i * stride_a] * aa[ind_a + (i - 1) * stride_a]) * bb;
@@ -87,9 +87,9 @@ __device__ void trid_strided_multidim_forward_kernel(
     }
     // Eliminate upper off-diagonal
     for (int i = sys_size - 3; i > 0; --i) {
-      dd[ind_d + i * stride_d] =
-          dd[ind_d + i * stride_d] -
-          cc[ind_c + i * stride_c] * dd[ind_d + (i + 1) * stride_d];
+      d[ind_d + i * stride_d] =
+          d[ind_d + i * stride_d] -
+          cc[ind_c + i * stride_c] * d[ind_d + (i + 1) * stride_d];
       aa[ind_a + i * stride_a] =
           aa[ind_a + i * stride_a] -
           cc[ind_c + i * stride_c] * aa[ind_a + (i + 1) * stride_a];
@@ -98,13 +98,13 @@ __device__ void trid_strided_multidim_forward_kernel(
     }
     bb = static_cast<REAL>(1.0) /
          (static_cast<REAL>(1.0) - cc[ind_c] * aa[ind_a + stride_a]);
-    dd[ind_d] = bb * (dd[ind_d] - cc[ind_c] * dd[ind_d + stride_d]);
+    d[ind_d] = bb * (d[ind_d] - cc[ind_c] * d[ind_d + stride_d]);
     aa[ind_a] = bb * aa[ind_a];
     cc[ind_c] = bb * (-cc[ind_c] * cc[ind_c + stride_c]);
   }
   // prepare boundaries for communication
   copy_boundaries_strided<REAL, boundary_SOA>(aa, ind_a, stride_a, cc, ind_c,
-                                              stride_c, dd, ind_d, stride_d,
+                                              stride_c, d, ind_d, stride_d,
                                               boundaries, tid, sys_size, sys_n);
 }
 
@@ -112,9 +112,9 @@ template <typename REAL, bool boundary_SOA = false>
 __global__ void trid_strided_multidim_forward(
     const REAL *__restrict__ a, const DIM_V a_pads, const REAL *__restrict__ b,
     const DIM_V b_pads, const REAL *__restrict__ c, const DIM_V c_pads,
-    const REAL *__restrict__ d, const DIM_V d_pads, REAL *__restrict__ aa,
-    REAL *__restrict__ cc, REAL *__restrict__ dd, REAL *__restrict__ boundaries,
-    int ndim, int solvedim, int sys_n, const DIM_V dims, int sys_offset = 0) {
+    REAL *__restrict__ d, const DIM_V d_pads, REAL *__restrict__ aa,
+    REAL *__restrict__ cc, REAL *__restrict__ boundaries, int ndim,
+    int solvedim, int sys_n, const DIM_V dims, int sys_offset = 0) {
   // thread ID in block
   int tid = threadIdx.x + threadIdx.y * blockDim.x +
             threadIdx.z * blockDim.x * blockDim.y;
@@ -179,7 +179,7 @@ __global__ void trid_strided_multidim_forward(
   if (tid < sys_offset + sys_n) {
     trid_strided_multidim_forward_kernel<REAL, boundary_SOA>(
         a, ind_a, stride_a, b, ind_b, stride_b, c, ind_c, stride_c, d, ind_d,
-        stride_d, aa, cc, dd, boundaries, tid, sys_size, sys_n);
+        stride_d, aa, cc, boundaries, tid, sys_size, sys_n);
   }
 }
 
@@ -196,7 +196,7 @@ template <typename REAL, int INC, bool boundary_SOA>
 __device__ void trid_strided_multidim_backward_kernel(
     const REAL *__restrict__ aa, int ind_a, int stride_a,
     const REAL *__restrict__ cc, int ind_c, int stride_c,
-    const REAL *__restrict__ dd, REAL *__restrict__ d, int ind_d, int stride_d,
+    REAL *__restrict__ d, int ind_d, int stride_d,
     REAL *__restrict__ u, int ind_u, int stride_u,
     const REAL *__restrict__ boundaries, int tid, int sys_size, int sys_n) {
   //
@@ -210,7 +210,7 @@ __device__ void trid_strided_multidim_backward_kernel(
   else
     u[ind_u] += dd0;
   for (int i = 1; i < sys_size - 1; i++) {
-    REAL res = dd[ind_d + i * stride_d] - aa[ind_a + i * stride_a] * dd0 -
+    REAL res = d[ind_d + i * stride_d] - aa[ind_a + i * stride_a] * dd0 -
                cc[ind_c + i * stride_c] * dd_last;
     if (INC == 0)
       d[ind_d + i * stride_d] = res;
@@ -226,9 +226,8 @@ __device__ void trid_strided_multidim_backward_kernel(
 template <typename REAL, int INC, bool boundary_SOA = false>
 __global__ void trid_strided_multidim_backward(
     const REAL *__restrict__ aa, const DIM_V a_pads,
-    const REAL *__restrict__ cc, const DIM_V c_pads,
-    const REAL *__restrict__ dd, REAL *__restrict__ d, const DIM_V d_pads,
-    REAL *__restrict__ u, const DIM_V u_pads,
+    const REAL *__restrict__ cc, const DIM_V c_pads, REAL *__restrict__ d,
+    const DIM_V d_pads, REAL *__restrict__ u, const DIM_V u_pads,
     const REAL *__restrict__ boundaries, int ndim, int solvedim, int sys_n,
     const DIM_V dims, int sys_offset = 0) {
   // thread ID in block
@@ -295,7 +294,7 @@ __global__ void trid_strided_multidim_backward(
 
   if (tid < sys_offset + sys_n) {
     trid_strided_multidim_backward_kernel<REAL, INC, boundary_SOA>(
-        aa, ind_a, stride_a, cc, ind_c, stride_c, dd, d, ind_d, stride_d, u,
+        aa, ind_a, stride_a, cc, ind_c, stride_c, d, ind_d, stride_d, u,
         ind_u, stride_u, boundaries, tid, sys_size, sys_n);
   }
 }

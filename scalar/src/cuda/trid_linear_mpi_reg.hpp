@@ -49,10 +49,10 @@
 template <typename REAL, bool boundary_SOA = false>
 __global__ void trid_linear_forward_aligned(
     const REAL *__restrict__ a, const REAL *__restrict__ b,
-    const REAL *__restrict__ c, const REAL *__restrict__ d,
-    REAL *__restrict__ aa, REAL *__restrict__ cc, REAL *__restrict__ dd,
-    REAL *__restrict__ boundaries, int sys_size, int sys_pads, int sys_n,
-    int offset) {
+    const REAL *__restrict__ c, REAL *__restrict__ d, REAL *__restrict__ aa,
+    REAL *__restrict__ cc, REAL *__restrict__ boundaries, int sys_size,
+    int sys_pads, int sys_n, int offset, int start_sys, int y_size,
+    int y_pads) {
   // Thread ID in global scope - every thread solves one system
   const int tid = threadIdx.x + threadIdx.y * blockDim.x +
                   blockIdx.x * blockDim.y * blockDim.x +
@@ -70,6 +70,8 @@ __global__ void trid_linear_forward_aligned(
   const int boundary_solve = !optimized_solve && (tid < (sys_n));
   // A thread is active only if it works on valid memory
   const int active_thread = optimized_solve || boundary_solve;
+  // Check if in y padding
+  const int padded_sys = ((start_sys + tid) % y_pads) >= y_size;
 
   int n = 0;
   // Start index for this tridiagonal system
@@ -109,7 +111,7 @@ __global__ void trid_linear_forward_aligned(
         l_cc.f[i] = c2;
       }
 
-      store_array_reg(dd, &l_dd, n, woffset, sys_pads);
+      store_array_reg(d, &l_dd, n, woffset, sys_pads);
       store_array_reg(cc, &l_cc, n, woffset, sys_pads);
       store_array_reg(aa, &l_aa, n, woffset, sys_pads);
 
@@ -130,7 +132,7 @@ __global__ void trid_linear_forward_aligned(
           l_aa.f[i] = a2;
           l_cc.f[i] = c2;
         }
-        store_array_reg(dd, &l_dd, n, woffset, sys_pads);
+        store_array_reg(d, &l_dd, n, woffset, sys_pads);
         store_array_reg(cc, &l_cc, n, woffset, sys_pads);
         store_array_reg(aa, &l_aa, n, woffset, sys_pads);
       }
@@ -139,7 +141,7 @@ __global__ void trid_linear_forward_aligned(
       for (int i = n; i < sys_size; i++) {
         int loc_ind = ind + i;
         bb          = 1.0 / (b[loc_ind] - a[loc_ind] * cc[loc_ind - 1]);
-        dd[loc_ind] = (d[loc_ind] - a[loc_ind] * dd[loc_ind - 1]) * bb;
+        d[loc_ind]  = (d[loc_ind] - a[loc_ind] * d[loc_ind - 1]) * bb;
         aa[loc_ind] = (-a[loc_ind] * aa[loc_ind - 1]) * bb;
         cc[loc_ind] = c[loc_ind] * bb;
       }
@@ -149,15 +151,15 @@ __global__ void trid_linear_forward_aligned(
 
       a2 = aa[ind + sys_size - 2];
       c2 = cc[ind + sys_size - 2];
-      d2 = dd[ind + sys_size - 2];
+      d2 = d[ind + sys_size - 2];
 
       // Do part that may not fit in vector
       for (int i = sys_size - 3; i >= n + vec_length<REAL>; i--) {
         int loc_ind = ind + i;
-        d2          = dd[loc_ind] - cc[loc_ind] * d2;
+        d2          = d[loc_ind] - cc[loc_ind] * d2;
         a2          = aa[loc_ind] - cc[loc_ind] * a2;
         c2          = -cc[loc_ind] * c2;
-        dd[loc_ind] = d2;
+        d[loc_ind]  = d2;
         aa[loc_ind] = a2;
         cc[loc_ind] = c2;
       }
@@ -166,7 +168,7 @@ __global__ void trid_linear_forward_aligned(
       for (; n > 0; n -= vec_length<REAL>) {
         load_array_reg(aa, &l_aa, n, woffset, sys_pads);
         load_array_reg(cc, &l_cc, n, woffset, sys_pads);
-        load_array_reg(dd, &l_dd, n, woffset, sys_pads);
+        load_array_reg(d, &l_dd, n, woffset, sys_pads);
 
         for (int i = vec_length<REAL> - 1; i >= 0; i--) {
           d2        = l_dd.f[i] - l_cc.f[i] * d2;
@@ -177,7 +179,7 @@ __global__ void trid_linear_forward_aligned(
           l_aa.f[i] = a2;
         }
 
-        store_array_reg(dd, &l_dd, n, woffset, sys_pads);
+        store_array_reg(d, &l_dd, n, woffset, sys_pads);
         store_array_reg(cc, &l_cc, n, woffset, sys_pads);
         store_array_reg(aa, &l_aa, n, woffset, sys_pads);
       }
@@ -187,7 +189,7 @@ __global__ void trid_linear_forward_aligned(
 
       load_array_reg(aa, &l_aa, n, woffset, sys_pads);
       load_array_reg(cc, &l_cc, n, woffset, sys_pads);
-      load_array_reg(dd, &l_dd, n, woffset, sys_pads);
+      load_array_reg(d, &l_dd, n, woffset, sys_pads);
 
       for (int i = vec_length<REAL> - 1; i > 0; i--) {
         d2        = l_dd.f[i] - l_cc.f[i] * d2;
@@ -203,19 +205,19 @@ __global__ void trid_linear_forward_aligned(
       l_aa.f[0] = bb * l_aa.f[0];
       l_cc.f[0] = bb * (-l_cc.f[0] * c2);
 
-      store_array_reg(dd, &l_dd, n, woffset, sys_pads);
+      store_array_reg(d, &l_dd, n, woffset, sys_pads);
       store_array_reg(cc, &l_cc, n, woffset, sys_pads);
       store_array_reg(aa, &l_aa, n, woffset, sys_pads);
 
       // Store boundary values for communication
-      copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, dd, boundaries, tid,
+      copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, d, boundaries, tid,
                                                  ind, sys_size, sys_n);
-    } else {
+    } else if(!padded_sys) {
       // Normal modified Thomas if not optimized solve
 
       for (int i = 0; i < 2; ++i) {
         bb          = 1.0 / b[ind + i];
-        dd[ind + i] = bb * d[ind + i];
+        d[ind + i] = bb * d[ind + i];
         aa[ind + i] = bb * a[ind + i];
         cc[ind + i] = bb * c[ind + i];
       }
@@ -225,25 +227,25 @@ __global__ void trid_linear_forward_aligned(
         for (int i = 2; i < sys_size; i++) {
           int loc_ind = ind + i;
           bb          = 1.0 / (b[loc_ind] - a[loc_ind] * cc[loc_ind - 1]);
-          dd[loc_ind] = (d[loc_ind] - a[loc_ind] * dd[loc_ind - 1]) * bb;
+          d[loc_ind]  = (d[loc_ind] - a[loc_ind] * d[loc_ind - 1]) * bb;
           aa[loc_ind] = (-a[loc_ind] * aa[loc_ind - 1]) * bb;
           cc[loc_ind] = c[loc_ind] * bb;
         }
         // Eliminate upper off-diagonal
         for (int i = sys_size - 3; i > 0; --i) {
           int loc_ind = ind + i;
-          dd[loc_ind] = dd[loc_ind] - cc[loc_ind] * dd[loc_ind + 1];
+          d[loc_ind]  = d[loc_ind] - cc[loc_ind] * d[loc_ind + 1];
           aa[loc_ind] = aa[loc_ind] - cc[loc_ind] * aa[loc_ind + 1];
           cc[loc_ind] = -cc[loc_ind] * cc[loc_ind + 1];
         }
         bb      = 1.0 / (1.0 - cc[ind] * aa[ind + 1]);
-        dd[ind] = bb * (dd[ind] - cc[ind] * dd[ind + 1]);
+        d[ind]  = bb * (d[ind] - cc[ind] * d[ind + 1]);
         aa[ind] = bb * aa[ind];
         cc[ind] = bb * (-cc[ind] * cc[ind + 1]);
       }
 
       // Store boundary values for communication
-      copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, dd, boundaries, tid,
+      copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, d, boundaries, tid,
                                                  ind, sys_size, sys_n);
     }
   }
@@ -252,10 +254,10 @@ __global__ void trid_linear_forward_aligned(
 template <typename REAL, bool boundary_SOA>
 __global__ void trid_linear_forward_unaligned(
     const REAL *__restrict__ a, const REAL *__restrict__ b,
-    const REAL *__restrict__ c, const REAL *__restrict__ d,
-    REAL *__restrict__ aa, REAL *__restrict__ cc, REAL *__restrict__ dd,
-    REAL *__restrict__ boundaries, int sys_size, int sys_pads, int sys_n,
-    int offset) {
+    const REAL *__restrict__ c, REAL *__restrict__ d, REAL *__restrict__ aa,
+    REAL *__restrict__ cc, REAL *__restrict__ boundaries, int sys_size,
+    int sys_pads, int sys_n, int offset, int start_sys, int y_size,
+    int y_pads) {
   // Thread ID in global scope - every thread solves one system
   const int tid = threadIdx.x + threadIdx.y * blockDim.x +
                   blockIdx.x * blockDim.y * blockDim.x +
@@ -267,6 +269,8 @@ __global__ void trid_linear_forward_unaligned(
   const int boundary_solve = !optimized_solve && (tid < (sys_n));
   // A thread is active only if it works on valid memory
   const int active_thread = optimized_solve || boundary_solve;
+  // Check if in y padding
+  const int padded_sys = ((start_sys + tid) % y_pads) >= y_size;
 
   // Start index for this tridiagonal system
   int ind = sys_pads * tid;
@@ -278,7 +282,7 @@ __global__ void trid_linear_forward_unaligned(
   // Check that this is an active thread
   if (active_thread) {
     // Check that this thread can perform an optimized solve
-    if (optimized_solve && sys_size >= 192 / sizeof(REAL)) {
+    if (optimized_solve && sys_size >= 192 / sizeof(REAL) && false) {
       // Memory is unaligned
       int ind_floor = ((ind + offset) / align<REAL>)*align<REAL> - offset;
       int sys_off   = ind - ind_floor;
@@ -292,7 +296,7 @@ __global__ void trid_linear_forward_unaligned(
             d2          = bb * d[loc_ind];
             a2          = bb * a[loc_ind];
             c2          = bb * c[loc_ind];
-            dd[loc_ind] = d2;
+            d[loc_ind]  = d2;
             aa[loc_ind] = a2;
             cc[loc_ind] = c2;
           } else {
@@ -300,7 +304,7 @@ __global__ void trid_linear_forward_unaligned(
             d2          = (d[loc_ind] - a[loc_ind] * d2) * bb;
             a2          = (-a[loc_ind] * a2) * bb;
             c2          = c[loc_ind] * bb;
-            dd[loc_ind] = d2;
+            d[loc_ind]  = d2;
             aa[loc_ind] = a2;
             cc[loc_ind] = c2;
           }
@@ -324,7 +328,7 @@ __global__ void trid_linear_forward_unaligned(
           l_aa.f[i] = a2;
           l_cc.f[i] = c2;
         }
-        store_array_reg_unaligned(dd, &l_dd, n, tid, sys_pads, sys_size,
+        store_array_reg_unaligned(d, &l_dd, n, tid, sys_pads, sys_size,
                                   offset);
         store_array_reg_unaligned(cc, &l_cc, n, tid, sys_pads, sys_size,
                                   offset);
@@ -339,13 +343,13 @@ __global__ void trid_linear_forward_unaligned(
         d2          = (d[loc_ind] - a[loc_ind] * d2) * bb;
         a2          = (-a[loc_ind] * a2) * bb;
         c2          = c[loc_ind] * bb;
-        dd[loc_ind] = d2;
+        d[loc_ind]  = d2;
         aa[loc_ind] = a2;
         cc[loc_ind] = c2;
       }
 
       // Backwards pass
-      d2 = dd[ind_floor + sys_size + sys_off - 2];
+      d2 = d[ind_floor + sys_size + sys_off - 2];
       a2 = aa[ind_floor + sys_size + sys_off - 2];
       c2 = cc[ind_floor + sys_size + sys_off - 2];
 
@@ -354,10 +358,10 @@ __global__ void trid_linear_forward_unaligned(
       // Start with end of unaligned memory
       for (int i = sys_size + sys_off - 3; i >= n; i--) {
         int loc_ind = ind_floor + i;
-        d2          = dd[loc_ind] - cc[loc_ind] * d2;
+        d2          = d[loc_ind] - cc[loc_ind] * d2;
         a2          = aa[loc_ind] - cc[loc_ind] * a2;
         c2          = -cc[loc_ind] * c2;
-        dd[loc_ind] = d2;
+        d[loc_ind]  = d2;
         aa[loc_ind] = a2;
         cc[loc_ind] = c2;
       }
@@ -368,7 +372,7 @@ __global__ void trid_linear_forward_unaligned(
       for (; n > 0; n -= vec_length<REAL>) {
         load_array_reg_unaligned(aa, &l_aa, n, tid, sys_pads, sys_size, offset);
         load_array_reg_unaligned(cc, &l_cc, n, tid, sys_pads, sys_size, offset);
-        load_array_reg_unaligned(dd, &l_dd, n, tid, sys_pads, sys_size, offset);
+        load_array_reg_unaligned(d, &l_dd, n, tid, sys_pads, sys_size, offset);
 
         for (int i = vec_length<REAL> - 1; i >= 0; i--) {
           d2        = l_dd.f[i] - l_cc.f[i] * d2;
@@ -379,7 +383,7 @@ __global__ void trid_linear_forward_unaligned(
           l_aa.f[i] = a2;
         }
 
-        store_array_reg_unaligned(dd, &l_dd, n, tid, sys_pads, sys_size,
+        store_array_reg_unaligned(d, &l_dd, n, tid, sys_pads, sys_size,
                                   offset);
         store_array_reg_unaligned(cc, &l_cc, n, tid, sys_pads, sys_size,
                                   offset);
@@ -389,28 +393,28 @@ __global__ void trid_linear_forward_unaligned(
 
       for (int i = n + vec_length<REAL> - 1; i > sys_off; i--) {
         int loc_ind = ind_floor + i;
-        d2          = dd[loc_ind] - cc[loc_ind] * d2;
+        d2          = d[loc_ind] - cc[loc_ind] * d2;
         a2          = aa[loc_ind] - cc[loc_ind] * a2;
         c2          = -cc[loc_ind] * c2;
-        dd[loc_ind] = d2;
+        d[loc_ind]  = d2;
         aa[loc_ind] = a2;
         cc[loc_ind] = c2;
       }
 
       bb      = 1.0 / (1.0 - cc[ind] * a2);
-      dd[ind] = bb * (dd[ind] - cc[ind] * d2);
+      d[ind]  = bb * (d[ind] - cc[ind] * d2);
       aa[ind] = bb * aa[ind];
       cc[ind] = bb * (-cc[ind] * c2);
 
       // Store boundary values for communication
-      copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, dd, boundaries, tid,
+      copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, d, boundaries, tid,
                                                  ind, sys_size, sys_n);
-    } else {
+    } else if(!padded_sys) {
       // Normal modified Thomas if not optimized solve
 
       for (int i = 0; i < 2; ++i) {
         bb          = 1.0 / b[ind + i];
-        dd[ind + i] = bb * d[ind + i];
+        d[ind + i]  = bb * d[ind + i];
         aa[ind + i] = bb * a[ind + i];
         cc[ind + i] = bb * c[ind + i];
       }
@@ -420,25 +424,25 @@ __global__ void trid_linear_forward_unaligned(
         for (int i = 2; i < sys_size; i++) {
           int loc_ind = ind + i;
           bb          = 1.0 / (b[loc_ind] - a[loc_ind] * cc[loc_ind - 1]);
-          dd[loc_ind] = (d[loc_ind] - a[loc_ind] * dd[loc_ind - 1]) * bb;
+          d[loc_ind]  = (d[loc_ind] - a[loc_ind] * d[loc_ind - 1]) * bb;
           aa[loc_ind] = (-a[loc_ind] * aa[loc_ind - 1]) * bb;
           cc[loc_ind] = c[loc_ind] * bb;
         }
         // Eliminate upper off-diagonal
         for (int i = sys_size - 3; i > 0; --i) {
           int loc_ind = ind + i;
-          dd[loc_ind] = dd[loc_ind] - cc[loc_ind] * dd[loc_ind + 1];
+          d[loc_ind]  = d[loc_ind] - cc[loc_ind] * d[loc_ind + 1];
           aa[loc_ind] = aa[loc_ind] - cc[loc_ind] * aa[loc_ind + 1];
           cc[loc_ind] = -cc[loc_ind] * cc[loc_ind + 1];
         }
         bb      = 1.0 / (1.0 - cc[ind] * aa[ind + 1]);
-        dd[ind] = bb * (dd[ind] - cc[ind] * dd[ind + 1]);
+        d[ind]  = bb * (d[ind] - cc[ind] * d[ind + 1]);
         aa[ind] = bb * aa[ind];
         cc[ind] = bb * (-cc[ind] * cc[ind + 1]);
       }
 
       // Store boundary values for communication
-      copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, dd, boundaries, tid,
+      copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, d, boundaries, tid,
                                                  ind, sys_size, sys_n);
     }
   }
@@ -450,7 +454,7 @@ __global__ void trid_linear_forward_unaligned(
 template <typename REAL, int INC, bool boundary_SOA>
 __global__ void trid_linear_backward_aligned(
     const REAL *__restrict__ aa, const REAL *__restrict__ cc,
-    const REAL *__restrict__ dd, REAL *__restrict__ d, REAL *__restrict__ u,
+    REAL *__restrict__ d, REAL *__restrict__ u,
     const REAL *__restrict__ boundaries, int sys_size, int sys_pads, int sys_n,
     int offset, int start_sys, int y_size, int y_pads) {
   // Thread ID in global scope - every thread solves one system
@@ -496,7 +500,7 @@ __global__ void trid_linear_backward_aligned(
         // Handle first vector
         load_array_reg(aa, &l_aa, n, woffset, sys_pads);
         load_array_reg(cc, &l_cc, n, woffset, sys_pads);
-        load_array_reg(dd, &l_dd, n, woffset, sys_pads);
+        load_array_reg(d, &l_dd, n, woffset, sys_pads);
         load_array_reg(u, &l_u, n, woffset, sys_pads);
 
         if (!padded_sys) {
@@ -514,7 +518,7 @@ __global__ void trid_linear_backward_aligned(
              n += vec_length<REAL>) {
           load_array_reg(aa, &l_aa, n, woffset, sys_pads);
           load_array_reg(cc, &l_cc, n, woffset, sys_pads);
-          load_array_reg(dd, &l_dd, n, woffset, sys_pads);
+          load_array_reg(d, &l_dd, n, woffset, sys_pads);
           load_array_reg(u, &l_u, n, woffset, sys_pads);
           if (!padded_sys) {
             for (int i = 0; i < vec_length<REAL>; i++) {
@@ -528,7 +532,7 @@ __global__ void trid_linear_backward_aligned(
           // Handle last section separately as might not completely fit into a
           // vector
           for (int i = n; i < sys_size - 1; i++) {
-            u[ind + i] += dd[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
+            u[ind + i] += d[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
           }
 
           u[ind + sys_size - 1] += ddn;
@@ -537,7 +541,7 @@ __global__ void trid_linear_backward_aligned(
         // Handle first vector
         load_array_reg(aa, &l_aa, n, woffset, sys_pads);
         load_array_reg(cc, &l_cc, n, woffset, sys_pads);
-        load_array_reg(dd, &l_dd, n, woffset, sys_pads);
+        load_array_reg(d, &l_dd, n, woffset, sys_pads);
 
         if (!padded_sys) {
           l_d.f[0] = dd0;
@@ -554,7 +558,7 @@ __global__ void trid_linear_backward_aligned(
              n += vec_length<REAL>) {
           load_array_reg(aa, &l_aa, n, woffset, sys_pads);
           load_array_reg(cc, &l_cc, n, woffset, sys_pads);
-          load_array_reg(dd, &l_dd, n, woffset, sys_pads);
+          load_array_reg(d, &l_dd, n, woffset, sys_pads);
           if (!padded_sys) {
             for (int i = 0; i < vec_length<REAL>; i++) {
               l_d.f[i] = l_dd.f[i] - l_aa.f[i] * dd0 - l_cc.f[i] * ddn;
@@ -567,7 +571,7 @@ __global__ void trid_linear_backward_aligned(
           // Handle last section separately as might not completely fit into a
           // vector
           for (int i = n; i < sys_size - 1; i++) {
-            d[ind + i] = dd[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
+            d[ind + i] = d[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
           }
 
           d[ind + sys_size - 1] = ddn;
@@ -579,7 +583,7 @@ __global__ void trid_linear_backward_aligned(
         u[ind] += dd0;
 
         for (int i = 1; i < sys_size - 1; i++) {
-          u[ind + i] += dd[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
+          u[ind + i] += d[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
         }
 
         u[ind + sys_size - 1] += ddn;
@@ -587,7 +591,7 @@ __global__ void trid_linear_backward_aligned(
         d[ind] = dd0;
 
         for (int i = 1; i < sys_size - 1; i++) {
-          d[ind + i] = dd[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
+          d[ind + i] = d[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
         }
 
         d[ind + sys_size - 1] = ddn;
@@ -599,7 +603,7 @@ __global__ void trid_linear_backward_aligned(
 template <typename REAL, int INC, bool boundary_SOA>
 __global__ void trid_linear_backward_unaligned(
     const REAL *__restrict__ aa, const REAL *__restrict__ cc,
-    const REAL *__restrict__ dd, REAL *__restrict__ d, REAL *__restrict__ u,
+    REAL *__restrict__ d, REAL *__restrict__ u,
     const REAL *__restrict__ boundaries, int sys_size, int sys_pads, int sys_n,
     int offset, int start_sys, int y_size, int y_pads) {
   // Thread ID in global scope - every thread solves one system
@@ -631,7 +635,7 @@ __global__ void trid_linear_backward_unaligned(
     load_d_from_boundary_linear<REAL, boundary_SOA>(boundaries, dd0, ddn, tid,
                                                     sys_n);
     // Check if optimized solve
-    if (optimized_solve && sys_size >= 192 / sizeof(REAL)) {
+    if (optimized_solve && sys_size >= 192 / sizeof(REAL) && false) {
       // Unaligned memory
 
       // If in padding, do dummy loads and stores without changing values in
@@ -650,7 +654,7 @@ __global__ void trid_linear_backward_unaligned(
                 u[loc_ind] += dd0;
               } else {
                 u[loc_ind] +=
-                    dd[loc_ind] - aa[loc_ind] * dd0 - cc[loc_ind] * ddn;
+                    d[loc_ind] - aa[loc_ind] * dd0 - cc[loc_ind] * ddn;
               }
             }
           }
@@ -663,7 +667,7 @@ __global__ void trid_linear_backward_unaligned(
                                    offset);
           load_array_reg_unaligned(cc, &l_cc, n, tid, sys_pads, sys_size,
                                    offset);
-          load_array_reg_unaligned(dd, &l_dd, n, tid, sys_pads, sys_size,
+          load_array_reg_unaligned(d, &l_dd, n, tid, sys_pads, sys_size,
                                    offset);
           load_array_reg_unaligned(u, &l_u, n, tid, sys_pads, sys_size, offset);
           if (!padded_sys) {
@@ -680,7 +684,7 @@ __global__ void trid_linear_backward_unaligned(
           // Handle end of unaligned memory
           for (int i = n; i < sys_size + sys_off - 1; i++) {
             int loc_ind = ind_floor + i;
-            u[loc_ind] += dd[loc_ind] - aa[loc_ind] * dd0 - cc[loc_ind] * ddn;
+            u[loc_ind] += d[loc_ind] - aa[loc_ind] * dd0 - cc[loc_ind] * ddn;
           }
 
           u[ind + sys_size - 1] += ddn;
@@ -698,7 +702,7 @@ __global__ void trid_linear_backward_unaligned(
                 d[loc_ind] = dd0;
               } else {
                 d[loc_ind] =
-                    dd[loc_ind] - aa[loc_ind] * dd0 - cc[loc_ind] * ddn;
+                    d[loc_ind] - aa[loc_ind] * dd0 - cc[loc_ind] * ddn;
               }
             }
           }
@@ -711,7 +715,7 @@ __global__ void trid_linear_backward_unaligned(
                                    offset);
           load_array_reg_unaligned(cc, &l_cc, n, tid, sys_pads, sys_size,
                                    offset);
-          load_array_reg_unaligned(dd, &l_dd, n, tid, sys_pads, sys_size,
+          load_array_reg_unaligned(d, &l_dd, n, tid, sys_pads, sys_size,
                                    offset);
           load_array_reg_unaligned(d, &l_d, n, tid, sys_pads, sys_size, offset);
           if (!padded_sys) {
@@ -728,7 +732,7 @@ __global__ void trid_linear_backward_unaligned(
           // Handle end of unaligned memory
           for (int i = n; i < sys_size + sys_off - 1; i++) {
             int loc_ind = ind_floor + i;
-            d[loc_ind]  = dd[loc_ind] - aa[loc_ind] * dd0 - cc[loc_ind] * ddn;
+            d[loc_ind]  = d[loc_ind] - aa[loc_ind] * dd0 - cc[loc_ind] * ddn;
           }
 
           d[ind + sys_size - 1] = ddn;
@@ -740,7 +744,7 @@ __global__ void trid_linear_backward_unaligned(
         u[ind] += dd0;
 
         for (int i = 1; i < sys_size - 1; i++) {
-          u[ind + i] += dd[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
+          u[ind + i] += d[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
         }
 
         u[ind + sys_size - 1] += ddn;
@@ -748,7 +752,7 @@ __global__ void trid_linear_backward_unaligned(
         d[ind] = dd0;
 
         for (int i = 1; i < sys_size - 1; i++) {
-          d[ind + i] = dd[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
+          d[ind + i] = d[ind + i] - aa[ind + i] * dd0 - cc[ind + i] * ddn;
         }
 
         d[ind + sys_size - 1] = ddn;
@@ -763,22 +767,24 @@ __global__ void trid_linear_backward_unaligned(
 //
 template <typename REAL, bool boundary_SOA = false>
 void trid_linear_forward_reg(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *a,
-                             const REAL *b, const REAL *c, const REAL *d,
-                             REAL *aa, REAL *cc, REAL *dd, REAL *boundaries,
-                             int sys_size, int sys_pads, int sys_n, int offset,
-                             cudaStream_t stream) {
+                             const REAL *b, const REAL *c, REAL *d, REAL *aa,
+                             REAL *cc, REAL *boundaries, int sys_size,
+                             int sys_pads, int sys_n, int offset, int start_sys,
+                             int y_size, int y_pads, cudaStream_t stream) {
   const int aligned =
       (sys_pads % align<REAL>) == 0 && (offset % align<REAL>) == 0;
   if (aligned) {
     trid_linear_forward_aligned<REAL, boundary_SOA>
-        <<<dimGrid_x, dimBlock_x, 0, stream>>>(a, b, c, d, aa, cc, dd,
+        <<<dimGrid_x, dimBlock_x, 0, stream>>>(a, b, c, d, aa, cc,
                                                boundaries, sys_size, sys_pads,
-                                               sys_n, offset);
+                                               sys_n, offset, start_sys, y_size,
+                                               y_pads);
   } else {
     trid_linear_forward_unaligned<REAL, boundary_SOA>
-        <<<dimGrid_x, dimBlock_x, 0, stream>>>(a, b, c, d, aa, cc, dd,
+        <<<dimGrid_x, dimBlock_x, 0, stream>>>(a, b, c, d, aa, cc,
                                                boundaries, sys_size, sys_pads,
-                                               sys_n, offset);
+                                               sys_n, offset, start_sys, y_size,
+                                               y_pads);
   }
 }
 
@@ -787,7 +793,7 @@ void trid_linear_forward_reg(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *a,
 //
 template <typename REAL, int INC, bool boundary_SOA = false>
 void trid_linear_backward_reg(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
-                              const REAL *cc, const REAL *dd, REAL *d, REAL *u,
+                              const REAL *cc, REAL *d, REAL *u,
                               const REAL *boundaries, int sys_size,
                               int sys_pads, int sys_n, int offset,
                               int start_sys, int y_size, int y_pads,
@@ -797,12 +803,12 @@ void trid_linear_backward_reg(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
   if (aligned) {
     trid_linear_backward_aligned<REAL, INC, boundary_SOA>
         <<<dimGrid_x, dimBlock_x, 0, stream>>>(
-            aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
+            aa, cc, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
             start_sys, y_size, y_pads);
   } else {
     trid_linear_backward_unaligned<REAL, INC, boundary_SOA>
         <<<dimGrid_x, dimBlock_x, 0, stream>>>(
-            aa, cc, dd, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
+            aa, cc, d, u, boundaries, sys_size, sys_pads, sys_n, offset,
             start_sys, y_size, y_pads);
   }
 }
