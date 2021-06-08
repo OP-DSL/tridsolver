@@ -1,12 +1,28 @@
 if (USE_PROFILING)
   add_library(profiling ${BUILD_TYPE} ./timing.cpp)
-  target_include_directories(profiling PUBLIC ${PROJECT_SOURCE_DIR}/include)
+  target_include_directories(profiling PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+                                              $<INSTALL_INTERFACE:${PROJECT_NAME}/include>)
   set_property(TARGET profiling PROPERTY POSITION_INDEPENDENT_CODE ON)
   if (BUILD_FOR_MPI)
     target_compile_definitions(profiling PRIVATE -DUSE_MPI)
     target_link_libraries(profiling MPI::MPI_CXX)
   endif (BUILD_FOR_MPI)
   target_compile_definitions(profiling PUBLIC -DPROFILING=1)
+  set(${PROJECT_NAME}_components "${${PROJECT_NAME}_components} profiling")
+  set(${PROJECT_NAME}_components
+      ${${PROJECT_NAME}_components}
+      PARENT_SCOPE)
+  install(
+    TARGETS profiling
+    EXPORT profilingTarget
+    LIBRARY DESTINATION ${PROJECT_NAME}/lib
+    ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
+  install(FILES ${PROJECT_SOURCE_DIR}/include/timing.h DESTINATION ${PROJECT_NAME}/include)
+  install(
+    EXPORT profilingTarget
+    FILE profilingTarget.cmake
+    NAMESPACE ${PROJECT_NAME}::
+    DESTINATION ${PROJECT_NAME}/lib/cmake)
 endif (USE_PROFILING)
 
 set(CPU_LIBS "OpenMP::OpenMP_CXX;trid_common_options;trid_global_options")
@@ -78,11 +94,8 @@ if (BUILD_FOR_CPU)
       EXPORT tridcpuMPITarget
       LIBRARY DESTINATION ${PROJECT_NAME}/lib
       ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
-    install(
-      FILES ${PROJECT_SOURCE_DIR}/include/trid_common.h
-            ${PROJECT_SOURCE_DIR}/include/trid_mpi_cpu.h
-            ${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
-      DESTINATION ${PROJECT_NAME}/include)
+    install(FILES ${PROJECT_SOURCE_DIR}/include/trid_common.h ${PROJECT_SOURCE_DIR}/include/trid_mpi_cpu.h
+                  ${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp DESTINATION ${PROJECT_NAME}/include)
     install(
       EXPORT tridcpuMPITarget
       FILE tridcpu_mpiTarget.cmake

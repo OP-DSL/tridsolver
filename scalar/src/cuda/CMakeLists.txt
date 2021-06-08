@@ -16,7 +16,8 @@ if (BUILD_FOR_GPU)
     set_property(CACHE PROFILING_LEVEL PROPERTY STRINGS PROFILE DETAILED)
     add_library(profiling_cuda ${BUILD_TYPE} ./cuda_timing.cu)
     set_target_properties(profiling_cuda PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    target_include_directories(profiling_cuda PRIVATE ${PROJECT_SOURCE_DIR}/include/)
+    target_include_directories(profiling_cuda PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+                                                     $<INSTALL_INTERFACE:${PROJECT_NAME}/include>)
     if (BUILD_FOR_MPI)
       target_compile_definitions(profiling_cuda PRIVATE -DUSE_MPI)
       target_link_libraries(profiling_cuda PUBLIC MPI::MPI_CXX)
@@ -27,6 +28,22 @@ if (BUILD_FOR_GPU)
       target_compile_definitions(profiling_cuda PUBLIC -DPROFILING=2)
     endif (${PROFILING_LEVEL} STREQUAL "PROFILE")
     target_link_libraries(profiling_cuda PRIVATE CUDA::nvToolsExt)
+
+    set(${PROJECT_NAME}_components "${${PROJECT_NAME}_components} profiling_cuda")
+    set(${PROJECT_NAME}_components
+        ${${PROJECT_NAME}_components}
+        PARENT_SCOPE)
+    install(
+      TARGETS profiling_cuda
+      EXPORT profilingCUDATarget
+      LIBRARY DESTINATION ${PROJECT_NAME}/lib
+      ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
+    install(FILES ${PROJECT_SOURCE_DIR}/include/cuda_timing.h DESTINATION ${PROJECT_NAME}/include)
+    install(
+      EXPORT profilingCUDATarget
+      FILE profilingCUDATarget.cmake
+      NAMESPACE ${PROJECT_NAME}::
+      DESTINATION ${PROJECT_NAME}/lib/cmake)
   endif (USE_PROFILING)
 
   set(${PROJECT_NAME}_components "${${PROJECT_NAME}_components} tridcuda")
