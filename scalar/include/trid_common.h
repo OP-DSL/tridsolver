@@ -50,7 +50,6 @@
 #define ALIGN        32          // 32 byte alignment is required
 #define ALIGN_FLOAT  (ALIGN / 4) // 32 byte/ 4bytes/float = 8
 #define ALIGN_DOUBLE (ALIGN / 8) // 32 byte/ 8bytes/float = 4
-// FIXME actual MAXDIM seems to be lower (3) in trid_cpu.cpp
 // Maximal dimension that can be used in the library. Defines static arrays
 #define MAXDIM          3
 #define CUDA_ALIGN_BYTE 32 // 32 byte alignment is used on CUDA-enabled GPUs

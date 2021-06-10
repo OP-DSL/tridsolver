@@ -36,58 +36,7 @@
 #ifndef __TRID_MPI_CPU_HPP
 #define __TRID_MPI_CPU_HPP
 
-#include "trid_simd.h"
-#include "transpose.hpp"
 #include "math.h"
-
-//#define N_MPI_MAX 128
-
-////
-//// Thomas solver for reduced system
-////
-//template<typename REAL>
-//inline void pcr_on_reduced(void** a, void** c, void** d, int N, int stride) {
-//
-//  REAL b;
-//  int s=1;
-//  REAL a2_array[N_MPI_MAX], c2_array[N_MPI_MAX], d2_array[N_MPI_MAX];
-//  REAL *a2 = a2_array;
-//  REAL *c2 = c2_array;
-//  REAL *d2 = d2_array;
-//
-//  REAL *a_tmp, *c_tmp, *d_tmp;
-//
-//  int P = ceil(log2((double)N));
-//
-//  for(int i=0; i<N; i+=2) {
-//    b       = static_cast<REAL>(1.0) - a[i+1] * c[i] - c[i+1] * a[i+2];
-//    b       = static_cast<REAL>(1.0) / b;
-//    d2[i+1] =   b * (d[i+1] - a[i+1] * d[i] - c[i+1] * d[i+2]);
-//    a2[i+1] = - b * a[i+1] * a[i];
-//    c2[i+1] = - b * c[i+1] * c[i+2];
-//  }
-//
-//  for(int p=1; p<P; p++) {
-//    int s = 1 << p;
-//    for(int i=0; i<N; i+=2) {
-//      b       = static_cast<REAL>(1.0) - a[i+1] * c[i+s+1] - c[i+1] * a[i+s+2];
-//      b       = static_cast<REAL>(1.0) / b;
-//      d2[i+1] = 1;//  b * (d[i+1] - a[i+1] * d[i-s+1] - c[i+1] * d[i+s+1]);
-//      a2[i+1] = - b * a[i+1] * a[i+1-s];
-//      c2[i+1] = - b * c[i+1] * c[i+1+s];
-//    }
-//    a_tmp = a2;
-//    a2    = a;
-//    a     = a_tmp;
-//    c_tmp = c2;
-//    c2    = c;
-//    c     = c_tmp;
-//    d_tmp = d2;
-//    d2    = d;
-//    d     = d_tmp;
-//  }
-//}
-
 
 //
 // Thomas solver for reduced system
@@ -101,7 +50,6 @@ inline void thomas_on_reduced(
     const int stride) {
   int   i, ind = 0;
   REAL aa, bb, cc, dd, c2[2 * N_MPI_MAX], d2[2 * N_MPI_MAX];
-  // REAL aa, bb, cc, dd, c2[N], d2[N];
   //
   // forward pass
   //
@@ -141,10 +89,10 @@ inline void thomas_forward(
     const REAL *__restrict__ a,
     const REAL *__restrict__ b,
     const REAL *__restrict__ c,
-    const REAL *__restrict__ d,
+          REAL *__restrict__ d,
           REAL *__restrict__ aa,
           REAL *__restrict__ cc,
-          REAL *__restrict__ dd,
+    const int sys_index,
     const int N,
     const int stride) {
 
@@ -154,37 +102,33 @@ inline void thomas_forward(
   if(N >=2) {
     // Start lower off-diagonal elimination
     for(int i=0; i<2; i++) {
-      ind = i * stride;
+      ind = sys_index + i * stride;
       bbi   = static_cast<REAL>(1.0) / b[ind];
-      //dd[i] = 66;//d[i] * bbi;
-      dd[ind] = d[ind] * bbi;
+      d[ind] = d[ind] * bbi;
       aa[ind] = a[ind] * bbi;
       cc[ind] = c[ind] * bbi;
     }
     if(N >=3 ) {
       // Eliminate lower off-diagonal
       for(int i=2; i<N; i++) {
-        ind = i * stride;
+        ind = sys_index + i * stride;
         bbi   = static_cast<REAL>(1.0) / (b[ind] - a[ind] * cc[ind - stride]);
-        //dd[i] = 77;//(d[i] - a[i]*dd[i-1]) * bbi;
-        dd[ind] = (d[ind] - a[ind]*dd[ind - stride]) * bbi;
+        d[ind] = (d[ind] - a[ind]*d[ind - stride]) * bbi;
         aa[ind] = (     - a[ind]*aa[ind - stride]) * bbi;
         cc[ind] =                 c[ind]  * bbi;
       }
       // Eliminate upper off-diagonal
       for(int i=N-3; i>0; i--) {
-        ind = i * stride;
-        //dd[i] = 88;//dd[i] - cc[i]*dd[i+1];
-        dd[ind] = dd[ind] - cc[ind]*dd[ind + stride];
+        ind = sys_index + i * stride;
+        d[ind] = d[ind] - cc[ind]*d[ind + stride];
         aa[ind] = aa[ind] - cc[ind]*aa[ind + stride];
         cc[ind] =       - cc[ind]*cc[ind + stride];
       }
-      bbi = static_cast<REAL>(1.0) / (static_cast<REAL>(1.0) - cc[0]*aa[stride]);
-      dd[0] =  bbi * ( dd[0] - cc[0]*dd[stride] );
-      aa[0] =  bbi *   aa[0];
-      cc[0] =  bbi * (       - cc[0]*cc[stride] );
+      bbi = static_cast<REAL>(1.0) / (static_cast<REAL>(1.0) - cc[sys_index]*aa[sys_index + stride]);
+      d[sys_index] =  bbi * ( d[sys_index] - cc[sys_index]*d[sys_index + stride] );
+      aa[sys_index] =  bbi *   aa[sys_index];
+      cc[sys_index] =  bbi * (       - cc[sys_index]*cc[sys_index + stride] );
     }
-
   }
   else {
     exit(-1);
@@ -199,10 +143,10 @@ inline void thomas_forward_vec_strip(
     const REAL *__restrict__ a,
     const REAL *__restrict__ b,
     const REAL *__restrict__ c,
-    const REAL *__restrict__ d,
+          REAL *__restrict__ d,
           REAL *__restrict__ aa,
           REAL *__restrict__ cc,
-          REAL *__restrict__ dd,
+    const int sys_index,
     const int N,
     const int stride,
     const int strip_len) {
@@ -213,89 +157,87 @@ inline void thomas_forward_vec_strip(
   REAL bbi;
 
   for(int i = 0; i < 2; i++) {
-    base = i * stride;
-    #pragma omp simd
+    base = sys_index + i * stride;
+    // Compiler seems to have an issue with #pragma omp simd aligned(aa, cc, dd: SIMD_WIDTH)
+    #pragma omp simd aligned(aa, cc: 64)
     for(int j = 0; j < strip_len; j++) {
       ind = base + j;
       bbi   = static_cast<REAL>(1.0) / b[ind];
-      //dd[i] = 66;//d[i] * bbi;
-      dd[ind] = d[ind] * bbi;
+      d[ind] = d[ind] * bbi;
       aa[ind] = a[ind] * bbi;
       cc[ind] = c[ind] * bbi;
     }
   }
 
   for(int i = 2; i < N; i++) {
-    base = i * stride;
-    #pragma omp simd
+    base = sys_index + i * stride;
+    #pragma omp simd aligned(aa, cc: 64)
     for(int j = 0; j < strip_len; j++) {
       ind = base + j;
       bbi   = static_cast<REAL>(1.0) / (b[ind] - a[ind] * cc[ind - stride]);
-      //dd[i] = 77;//(d[i] - a[i]*dd[i-1]) * bbi;
-      dd[ind] = (d[ind] - a[ind]*dd[ind - stride]) * bbi;
+      d[ind] = (d[ind] - a[ind]*d[ind - stride]) * bbi;
       aa[ind] = (     - a[ind]*aa[ind - stride]) * bbi;
       cc[ind] =                 c[ind]  * bbi;
     }
   }
 
   for(int i = N - 3; i > 0; i--) {
-    base = i * stride;
-    #pragma omp simd
+    base = sys_index + i * stride;
+    #pragma omp simd aligned(aa, cc: 64)
     for(int j = 0; j < strip_len; j++) {
       ind = base + j;
-      dd[ind] = dd[ind] - cc[ind]*dd[ind + stride];
+      d[ind] = d[ind] - cc[ind]*d[ind + stride];
       aa[ind] = aa[ind] - cc[ind]*aa[ind + stride];
       cc[ind] =       - cc[ind]*cc[ind + stride];
     }
   }
 
-  #pragma omp simd
+  #pragma omp simd aligned(aa, cc: 64)
   for(int j = 0; j < strip_len; j++) {
-    bbi = static_cast<REAL>(1.0) / (static_cast<REAL>(1.0) - cc[j]*aa[stride + j]);
-    dd[j] =  bbi * ( dd[j] - cc[j]*dd[stride + j] );
-    aa[j] =  bbi *   aa[j];
-    cc[j] =  bbi * (       - cc[j]*cc[stride + j] );
+    bbi = static_cast<REAL>(1.0) / (static_cast<REAL>(1.0) - cc[sys_index + j]*aa[sys_index + stride + j]);
+    d[sys_index + j] =  bbi * ( d[sys_index + j] - cc[sys_index + j]*d[sys_index + stride + j] );
+    aa[sys_index + j] =  bbi *   aa[sys_index + j];
+    cc[sys_index + j] =  bbi * (       - cc[sys_index + j]*cc[sys_index + stride + j] );
   }
 }
 
 template <typename REAL, int INC>
 inline void thomas_backward_vec_strip(const REAL *__restrict__ aa,
                                       const REAL *__restrict__ cc,
-                                      const REAL *__restrict__ dd,
                                       REAL *__restrict__ d,
-                                      REAL *__restrict__ u, const int N,
-                                      const int stride, const int strip_len) {
+                                      REAL *__restrict__ u, const int sys_index,
+                                      const int N, const int stride,
+                                      const int strip_len) {
   int base = 0;
-
-  #pragma omp simd
-  for (int j = 0; j < strip_len; j++) {
-    if (INC) {
-      u[j] += dd[j];
-    } else {
-      d[j] = dd[j];
+  if (INC) {
+    for (int j = 0; j < strip_len; j++) {
+      u[sys_index + j] += d[sys_index + j];
     }
   }
 
-  for (int i = 1; i < N - 1; i++) {
-    base = i * stride;
-    #pragma omp simd
-    for (int j = 0; j < strip_len; j++) {
-      if (INC) {
-        u[base + j] += dd[base + j] - aa[base + j] * dd[j] -
-                       cc[base + j] * dd[(N - 1) * stride + j];
-      } else {
-        d[base + j] = dd[base + j] - aa[base + j] * dd[j] -
-                      cc[base + j] * dd[(N - 1) * stride + j];
+  if (INC) {
+    for (int i = 1; i < N - 1; i++) {
+      base = sys_index + i * stride;
+      #pragma omp simd aligned(aa, cc: 64)
+      for (int j = 0; j < strip_len; j++) {
+        u[base + j] += d[base + j] - aa[base + j] * d[sys_index + j] -
+                       cc[base + j] * d[sys_index + (N - 1) * stride + j];
+      }
+    }
+  } else {
+    for (int i = 1; i < N - 1; i++) {
+      base = sys_index + i * stride;
+      #pragma omp simd aligned(aa, cc: 64)
+      for (int j = 0; j < strip_len; j++) {
+        d[base + j] = d[base + j] - aa[base + j] * d[sys_index + j] -
+                      cc[base + j] * d[sys_index + (N - 1) * stride + j];
       }
     }
   }
 
-  #pragma omp simd
-  for (int j = 0; j < strip_len; j++) {
-    if (INC) {
-      u[(N - 1) * stride + j] += dd[(N - 1) * stride + j];
-    } else {
-      d[(N - 1) * stride + j] = dd[(N - 1) * stride + j];
+  if (INC) {
+    for (int j = 0; j < strip_len; j++) {
+      u[sys_index + (N - 1) * stride + j] += d[sys_index + (N - 1) * stride + j];
     }
   }
 }
@@ -303,26 +245,28 @@ inline void thomas_backward_vec_strip(const REAL *__restrict__ aa,
 template <typename REAL, int INC>
 inline void
 thomas_backward(const REAL *__restrict__ aa, const REAL *__restrict__ cc,
-                const REAL *__restrict__ dd, REAL *__restrict__ d,
-                REAL *__restrict__ u, const int N, const int stride) {
+                REAL *__restrict__ d, REAL *__restrict__ u,
+                const int sys_index, const int N, const int stride) {
   if (INC) {
-    u[0] += dd[0];
-  } else {
-    d[0] = dd[0];
+    u[sys_index] += d[sys_index];
   }
-#pragma omp simd
-  for (int i = 1; i < N - 1; i++) {
-    int ind = i * stride;
-    if (INC) {
-      u[ind] += dd[ind] - aa[ind] * dd[0] - cc[ind] * dd[(N - 1) * stride];
-    } else {
-      d[ind] = dd[ind] - aa[ind] * dd[0] - cc[ind] * dd[(N - 1) * stride];
+
+  if(INC) {
+    #pragma omp simd aligned(aa, cc: 64)
+    for (int i = 1; i < N - 1; i++) {
+      int ind = sys_index + i * stride;
+      u[ind] += d[ind] - aa[ind] * d[sys_index] - cc[ind] * d[sys_index + (N - 1) * stride];
+    }
+  } else {
+    #pragma omp simd aligned(aa, cc: 64)
+    for (int i = 1; i < N - 1; i++) {
+      int ind = sys_index + i * stride;
+      d[ind] = d[ind] - aa[ind] * d[sys_index] - cc[ind] * d[sys_index + (N - 1) * stride];
     }
   }
+
   if (INC) {
-    u[(N - 1) * stride] += dd[(N - 1) * stride];
-  } else {
-    d[(N - 1) * stride] = dd[(N - 1) * stride];
+    u[sys_index + (N - 1) * stride] += d[sys_index + (N - 1) * stride];
   }
 }
 #endif

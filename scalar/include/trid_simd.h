@@ -84,15 +84,24 @@
 #endif
 
 #ifdef __AVX__
+#ifdef __INTEL_COMPILER
 #  include "dvec.h"
+#else //if defined(__GNUC__)
+#  include "immintrin.h"
+#    define __assume_aligned __builtin_assume_aligned
+#endif
 #  if FPPREC == 0
 // AVX float
+#ifdef __INTEL_COMPILER
 #    define VECTOR F32vec8
+#else //if defined(__GNUC__)
+#    define VECTOR __m256
+#endif
 #    define SIMD_REG __m256            // Name of Packed REGister
-#    define SIMD_LOAD_P _mm256_load_ps // Aligned load for packed registers
+#    define SIMD_LOAD_P _mm256_loadu_ps // Aligned load for packed registers
 #    define SIMD_STREAM_P                                                      \
       _mm256_stream_ps // Aligned stream store for packed registers
-#    define SIMD_STORE_P _mm256_store_ps // Aligned store for packed registers
+#    define SIMD_STORE_P _mm256_storeu_ps // Aligned store for packed registers
 #    define SIMD_SET1_P _mm256_set1_ps   // Set Packed register
 #    define SIMD_ADD_P _mm256_add_ps
 #    define SIMD_SUB_P _mm256_sub_ps
@@ -101,10 +110,14 @@
 #    define SIMD_RCP_P _mm256_rcp_ps
 #  elif FPPREC == 1
 // AVX double
+#ifdef __INTEL_COMPILER
 #    define VECTOR F64vec4
+#else //if defined(__GNUC__)
+#    define VECTOR __m256d
+#endif
 #    define SIMD_REG __m256d             // Name of Packed REGister
-#    define SIMD_LOAD_P _mm256_load_pd   // Aligned load for packed registers
-#    define SIMD_STORE_P _mm256_store_pd // Aligned store for packed registers
+#    define SIMD_LOAD_P _mm256_loadu_pd   // Aligned load for packed registers
+#    define SIMD_STORE_P _mm256_storeu_pd // Aligned store for packed registers
 #    define SIMD_SET1_P _mm256_set1_pd   // Set Packed register
 #    define SIMD_ADD_P _mm256_add_pd
 #    define SIMD_SUB_P _mm256_sub_pd

@@ -1,89 +1,8 @@
 #include "catch.hpp"
 #include "cuda_utils.hpp"
+#include "catch_utils.hpp"
 
 #include <trid_cuda.h>
-
-template <typename Float, unsigned Align>
-void require_allclose(const AlignedArray<Float, Align> &expected,
-                      const AlignedArray<Float, Align> &actual, size_t N = 0,
-                      int stride = 1) {
-  if (N == 0) {
-    assert(expected.size() == actual.size());
-    N = expected.size();
-  }
-  for (size_t j = 0, i = 0; j < N; ++j, i += stride) {
-    CAPTURE(i);
-    CAPTURE(expected[i]);
-    CAPTURE(actual[i]);
-    Float min_val = std::min(std::abs(expected[i]), std::abs(actual[i]));
-    const double abs_tolerance =
-        std::is_same<Float, float>::value ? ABS_TOLERANCE_FLOAT : ABS_TOLERANCE;
-    const double rel_tolerance =
-        std::is_same<Float, float>::value ? REL_TOLERANCE_FLOAT : REL_TOLERANCE;
-    const double tolerance = abs_tolerance + rel_tolerance * min_val;
-    CAPTURE(tolerance);
-    const double diff = std::abs(static_cast<double>(expected[i]) - actual[i]);
-    CAPTURE(diff);
-    REQUIRE(diff <= tolerance);
-  }
-}
-
-
-template <typename Float>
-void require_allclose_padded(const std::vector<Float> &expected,
-                           const std::vector<Float> &actual, size_t N = 0,
-                           int stride = 1) {
-  if (N == 0) {
-    assert(expected.size() == actual.size());
-    N = expected.size();
-  }
-
-  for (size_t j = 0, i = 0; j < N; ++j, i += stride) {
-    CAPTURE(i);
-    CAPTURE(expected[i]);
-    CAPTURE(actual[i]);
-    Float min_val = std::min(std::abs(expected[i]), std::abs(actual[i]));
-    const double abs_tolerance =
-        std::is_same<Float, float>::value ? ABS_TOLERANCE_FLOAT : ABS_TOLERANCE;
-    const double rel_tolerance =
-        std::is_same<Float, float>::value ? REL_TOLERANCE_FLOAT : REL_TOLERANCE;
-    const double tolerance = abs_tolerance + rel_tolerance * min_val;
-    CAPTURE(tolerance);
-    const double diff = std::abs(static_cast<double>(expected[i]) - actual[i]);
-    CAPTURE(diff);
-    REQUIRE(diff <= tolerance);
-  }
-}
-
-// Adds 1 depth of padding to all dimensions
-template <typename Float, unsigned Align>
-void copy_to_padded_array(const AlignedArray<Float, Align> &original,
-                        std::vector<Float> &padded,
-                        std::vector<int> &dims) {
-  assert(dims.size() == 3);
-  std::vector<int> padded_dims = dims;
-  for(int i = 0; i < padded_dims.size(); i++) {
-    // -1 and 1 padding
-    padded_dims[i] += 2;
-  }
-  assert(padded.size() == padded_dims[0] * padded_dims[1] * padded_dims[2]);
-
-  for(int z = -1; z < dims[2] + 1; z++) {
-    for(int y = -1; y < dims[1] + 1; y++) {
-      for(int x = -1; x < dims[0] + 1; x++) {
-        int array_index = (z + 1) * padded_dims[1] * padded_dims[0]
-                          + (y + 1) * padded_dims[0] + (x + 1);
-        if(x == -1 || x == dims[0] || y == -1 || y == dims[1]
-           || z == -1 || z == dims[2]) {
-          padded[array_index] = 0.0;
-        } else {
-          int aligned_array_index = z * dims[1] * dims[0] + y * dims[0] + x;
-          padded[array_index] = original[aligned_array_index];
-        }
-      }
-    }
-  }
-}
 
 template <typename Float>
 tridStatus_t tridStridedBatchWrapper(const Float *a, const Float *b,
@@ -138,7 +57,8 @@ template <typename Float> void test_from_file(const std::string &file_name) {
   require_allclose(mesh.u(), d);
 }
 
-template <typename Float> void test_from_file_padded(const std::string &file_name) {
+template <typename Float>
+void test_from_file_padded(const std::string &file_name) {
   MeshLoader<Float> mesh(file_name);
   std::vector<int> dims = mesh.dims(); // Because it isn't const in the lib
   while (dims.size() < 3) {
@@ -146,8 +66,8 @@ template <typename Float> void test_from_file_padded(const std::string &file_nam
   }
 
   std::vector<int> padded_dims = dims;
-  int padded_size = 1;
-  for(int i = 0; i < padded_dims.size(); i++) {
+  int padded_size              = 1;
+  for (int i = 0; i < padded_dims.size(); i++) {
     padded_dims[i] += 2;
     padded_size *= padded_dims[i];
   }
@@ -175,18 +95,18 @@ template <typename Float> void test_from_file_padded(const std::string &file_nam
   cudaMemcpy(c_d, c.data(), c.size() * sizeof(Float), cudaMemcpyHostToDevice);
   cudaMemcpy(d_d, d.data(), d.size() * sizeof(Float), cudaMemcpyHostToDevice);
 
-  int offset_to_first_element = padded_dims[1] * padded_dims[0]
-                                + padded_dims[0] + 1;
+  int offset_to_first_element =
+      padded_dims[1] * padded_dims[0] + padded_dims[0] + 1;
 
   const tridStatus_t status =
       tridStridedBatchWrapper<Float>(a_d + offset_to_first_element, // a
                                      b_d + offset_to_first_element, // b
                                      c_d + offset_to_first_element, // c
                                      d_d + offset_to_first_element, // d
-                                     nullptr,                // u
-                                     mesh.dims().size(),     // ndim
-                                     mesh.solve_dim(),       // solvedim
-                                     dims.data(),            // dims
+                                     nullptr,                       // u
+                                     mesh.dims().size(),            // ndim
+                                     mesh.solve_dim(),              // solvedim
+                                     dims.data(),                   // dims
                                      padded_dims.data());           // pads
 
   CHECK(status == TRID_STATUS_SUCCESS);

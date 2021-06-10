@@ -1,4 +1,6 @@
 #include "timing.h"
+#include <numeric>
+#include <cmath>
 
 #ifdef USE_MPI
 #  include <mpi.h>
@@ -6,9 +8,11 @@
 
 std::map<std::string, Timing::LoopData> Timing::loops;
 std::vector<int> Timing::stack;
-int Timing::counter = 0;
+int Timing::counter  = 0;
+bool Timing::measure = true;
 
 void Timing::startTimer(const std::string &_name) {
+  if (!measure) return;
   auto now = clock::now();
   if (loops.size() == 0) counter = 0;
   int parent           = stack.size() == 0 ? -1 : stack.back();
@@ -25,6 +29,7 @@ void Timing::startTimer(const std::string &_name) {
 }
 
 void Timing::stopTimer(const std::string &_name) {
+  if (!measure) return;
   stack.pop_back();
   int parent           = stack.empty() ? -1 : stack.back();
   std::string fullname = _name + "(" + std::to_string(parent) + ")";
@@ -39,31 +44,50 @@ void Timing::reportWithParent(int parent, const std::string &indentation) {
   for (const auto &element : loops) {
     const LoopData &l = element.second;
     if (l.parent == parent) {
-      std::cout << indentation + element.first + ": " + std::to_string(l.time) +
-                       " seconds\n";
+#ifdef USE_MPI
+      int rank, nproc;
+      MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+      MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+      std::vector<double> times(nproc, 0);
+      MPI_Gather(&l.time, 1, MPI_DOUBLE, times.data(), 1, MPI_DOUBLE, 0,
+                 MPI_COMM_WORLD);
+      if (!rank) {
+        double mean = 0.0;
+        double max  = times[0];
+        double min  = times[0];
+        for (double t : times) {
+          mean += t;
+          max = std::max(max, t);
+          min = std::min(min, t);
+        }
+        mean = mean / nproc;
+        double stddev =
+            std::accumulate(times.begin(), times.end(), 0.0,
+                            [&](const double &sum, const double &time) {
+                              return sum + (time - mean) * (time - mean);
+                            });
+        stddev = std::sqrt(stddev / nproc);
+
+        std::cout << indentation + element.first + ": ";
+        std::cout << min << "s; " << max << "s; " << mean << "s; " << stddev
+                  << "s;\n";
+      }
+#else
+      std::cout << indentation + element.first + ": "
+                << std::to_string(l.time) + " seconds\n";
+#endif
       reportWithParent(l.index, indentation + "  ");
     }
   }
 }
 
-void Timing::report() {
-#ifdef USE_MPI
-  // For the debug prints
-  int rank, num_proc;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
-  std::srand(rank);
-  for (int i = 0; i < num_proc; ++i) {
-    // Print the outputs
-    if (i == rank) {
-      std::cout << "##########################\n"
-                << "Rank " << i << "\n"
-                << "##########################\n";
-#endif
-      reportWithParent(-1, "  ");
-#ifdef USE_MPI
-    }
-    MPI_Barrier(MPI_COMM_WORLD);
-  }
-#endif
+void Timing::reset() {
+  loops.clear();
+  stack.clear();
+  counter = 0;
 }
+
+void Timing::suspend_prof() { measure = false; }
+void Timing::continue_prof() { measure = true; }
+
+void Timing::report() { reportWithParent(-1, "  "); }

@@ -16,6 +16,13 @@ constexpr double REL_TOLERANCE       = 1e-11;
 constexpr double ABS_TOLERANCE_FLOAT = 1e-6;
 constexpr double REL_TOLERANCE_FLOAT = 1e-5;
 
+template <typename REAL>
+double abs_tolerance =
+    std::is_same<REAL, double>::value ? ABS_TOLERANCE : ABS_TOLERANCE_FLOAT;
+template <typename REAL>
+double rel_tolerance =
+    std::is_same<REAL, double>::value ? REL_TOLERANCE : REL_TOLERANCE_FLOAT;
+
 template <typename T, unsigned Align> class AlignedArray {
   char *padded_data;
   size_t _size, _capacity;
@@ -59,8 +66,6 @@ public:
   size_t size() const { return _size; }
 
   size_t capacity() const { return _capacity; }
-
-  //friend void std::swap(AlignedArray<T, Align> &, AlignedArray<T, Align> &);
 };
 
 template <typename Float, unsigned Align = 1> class MeshLoader {
@@ -90,7 +95,11 @@ template <typename Float, unsigned Align = 1> class RandomMesh {
   AlignedArray<Float, Align> _a, _b, _c, _d;
 
 public:
-  RandomMesh(const std::vector<int> dims, size_t solvedim);
+  RandomMesh(const std::vector<int> &dims, size_t solvedim);
+  RandomMesh(const RandomMesh &) = delete;
+  RandomMesh &operator=(const RandomMesh &) = delete;
+  RandomMesh(RandomMesh &&)                 = delete;
+  RandomMesh &operator=(RandomMesh &&) = delete;
 
   size_t solve_dim() const { return _solve_dim; }
   const std::vector<int> &dims() const { return _dims; }
@@ -136,25 +145,21 @@ AlignedArray<T, Align>::AlignedArray(const AlignedArray &other, size_t start,
 
 template <typename T, unsigned Align>
 AlignedArray<T, Align> &AlignedArray<T, Align>::operator=(AlignedArray rhs) {
-  std::swap(*this, rhs);
+  std::swap(this->_capacity, rhs._capacity);
+  std::swap(this->_size, rhs._size);
+  std::swap(this->padded_data, rhs.padded_data);
+  std::swap(this->padding, rhs.padding);
   return *this;
 }
 
 template <typename T, unsigned Align>
 AlignedArray<T, Align>::AlignedArray(AlignedArray &&other) : AlignedArray{} {
-  std::swap(*this, other);
+  std::swap(this->_capacity, other._capacity);
+  std::swap(this->_size, other._size);
+  std::swap(this->padded_data, other.padded_data);
+  std::swap(this->padding, other.padding);
 }
-/*
-namespace std {
-template <typename T, unsigned Align>
-void swap(AlignedArray<T, Align> &lhs, AlignedArray<T, Align> &rhs) {
-  std::swap(lhs._capacity, rhs._capacity);
-  std::swap(lhs._size, rhs._size);
-  std::swap(lhs.padded_data, rhs.padded_data);
-  std::swap(lhs.padding, rhs.padding);
-}
-} // namespace std
-*/
+
 template <typename T, unsigned Align>
 void AlignedArray<T, Align>::allocate(size_t capacity) {
   assert(_capacity == 0 && "Array has already been allocated");
@@ -175,7 +180,7 @@ template <typename T, unsigned Align>
 void AlignedArray<T, Align>::resize(size_t size, T default_val) {
   if (_capacity == 0) allocate(size);
   assert(_size == 0 && "Array has already been initialised");
-  for (int i = 0; i < size; ++i) {
+  for (size_t i = 0; i < size; ++i) {
     this->push_back(default_val);
   }
 }
@@ -233,7 +238,7 @@ void MeshLoader<Float, Align>::load_array(std::ifstream &f, size_t num_elements,
 }
 
 template <typename Float, unsigned Align>
-RandomMesh<Float, Align>::RandomMesh(const std::vector<int> dims,
+RandomMesh<Float, Align>::RandomMesh(const std::vector<int> &dims,
                                      size_t solvedim)
     : _solve_dim(solvedim), _dims(dims), _a{}, _b{}, _c{}, _d{} {
   assert(_solve_dim < _dims.size() && "solve dim greater than number of dims");
@@ -249,14 +254,23 @@ RandomMesh<Float, Align>::RandomMesh(const std::vector<int> dims,
     std::mt19937 gen(omp_get_thread_num());
     std::uniform_real_distribution<Float> dist;
 #pragma omp for
-    for (size_t i = 0; i < num_elements; i++)
-      _a[i] = -1 + 0.1 * dist(gen);
+    for (size_t i = 0; i < num_elements; i++) {
+      _a[i] = 0.3; //-1 + 0.1 * dist(gen);
+      // _a[i] = -1 + 0.1 * dist(gen);
+    }
+#pragma omp for
+    for (size_t i = 0; i < num_elements; i++) {
+      // _b[i] = 2 + dist(gen);
+      if (i % dims[solvedim] == 0 ||
+          (int)i % dims[solvedim] == dims[solvedim] - 1) {
+        _b[i] = 1; //-1 + 0.1 * dist(gen);
+      } else {
+        _b[i] = 0.6; //-1 + 0.1 * dist(gen);
+      }
+    }
 #pragma omp for
     for (size_t i = 0; i < num_elements; i++)
-      _b[i] = 2 + dist(gen);
-#pragma omp for
-    for (size_t i = 0; i < num_elements; i++)
-      _c[i] = -1 + 0.1 * dist(gen);
+      _c[i] = 0.1; //-1 + 0.1 * dist(gen);
 #pragma omp for
     for (size_t i = 0; i < num_elements; i++)
       _d[i] = dist(gen);

@@ -1,102 +1,88 @@
-cmake_minimum_required(VERSION 2.8.8)
+cmake_minimum_required(VERSION 3.18)
+project("adi" C CXX)
 
-option(INTEL_CC "Use the Intel compiler." ON)
 option(BUILD_FOR_CPU "Build library for CPU architecture." OFF)
 option(BUILD_FOR_MIC "Build library for MIC architecture." OFF)
 option(BUILD_FOR_GPU "Build library for GPU architecture." OFF)
 option(BUILD_FOR_MPI "Build library for MPI combnied with the above architectures." OFF)
+option(BUILD_FOR_SN  "Build library for a single node combnied with the above architectures." OFF)
 option(USE_NCCL "TDMA library built with NCCL" OFF)
-set(LIBTRID_PATH $ENV{TRIDSOLVER_INSTALL_PATH}
-  CACHE STRING "Tridsolver (scalar) installation directory")
+set(LIBTRID_PATH
+    $ENV{TRIDSOLVER_INSTALL_PATH}
+    CACHE STRING "Tridsolver (scalar) installation directory")
 
-if (INTEL_CC)
-  # Detect/find Intel compilers
-  find_program(CMAKE_C_COMPILER NAMES   mpicc)
-  find_program(CMAKE_CXX_COMPILER NAMES mpicxx)
-  find_program(CMAKE_AR NAMES           xiar)
-  find_program(CMAKE_LINKER NAMES       xild)
+if (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
+  option(PRODUCE_OPT_REPORT "Print intel optimisation reports" OFF)
 
-  set(INTEL_PATH $ENV{INTEL_PATH} CACHE FILEPATH "Intel compiler suite path")
-  #set(CMAKE_C_COMPILER   ${INTEL_PATH}/bin/intel64/icc  CACHE FILEPATH "Intel compiler is prefered")
-  #set(CMAKE_CXX_COMPILER ${INTEL_PATH}/bin/intel64/icpc CACHE FILEPATH "Intel compiler is prefered")
-  set(MPI_PATH $ENV{MPI_INSTALL_PATH} CACHE FILEPATH "MPI library path")
-
-  if (CMAKE_C_COMPILER MATCHES CMAKE_C_COMPILER-NOTFOUND OR
-      CMAKE_CXX_COMPILER MATCHES CMAKE_CXX_COMPILER-NOTFOUND OR
-      CMAKE_AR MATCHES CMAKE_AR-NOTFOUND OR
-      CMAKE_LINKER MATCHES CMAKE_LINKER-NOTFOUND)
-    message(FATAL_ERROR "Cannot find Intel compiler.  You may need to run `. /opt/intel/bin/compilervars.sh intel64'")
-  endif ()
-endif (INTEL_CC)
-
-project("adi")
-
-list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
-
-if (USE_NCCL)
-  find_package(NCCL)
-endif ()
-
-if (INTEL_CC)
   # Set compiler flags/options for Intel compiler
-  set(FLAGS_INTEL_DEFAULT "-O3 -xMIC-AVX512 -xHost -m64 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout")
-  #set(FLAGS_INTEL_DEFAULT "-xAVX -m64 -parallel -openmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par") #-xCORE_AVX2
-  set(FLAGS_INTEL_DEBUG   "-O3 -xMIC-AVX512 -xHost -m64 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout -g")
-  set(FLAGS_INTEL_RELEASE "-O3 -xMIC-AVX512 -xHost -m64 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout") #-fp-model fast
+  set(FLAGS_INTEL_DEFAULT "-xHost -m64 -parallel -qno-offload")
+  if (PRODUCE_OPT_REPORT)
+    set(FLAGS_INTEL_DEFAULT "${FLAGS_INTEL_DEFAULT} -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout")
+  endif (PRODUCE_OPT_REPORT)
 
-  set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS}       ${FLAGS_INTEL_DEFAULT}")
-  set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_INTEL_DEBUG}  ")
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_RELEASE}     ${FLAGS_INTEL_RELEASE}")
-
-  set(CMAKE_C_FLAGS         "${CMAKE_CXX_FLAGS}       ${FLAGS_INTEL_DEFAULT}")
-  set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_INTEL_DEBUG}  ")
-  set(CMAKE_C_FLAGS_RELEASE "${CMAKE_CXX_RELEASE}     ${FLAGS_INTEL_RELEASE}")
-else (INTEL_CC)
+  # cmake-format: off
+  set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS}     ${FLAGS_INTEL_DEFAULT}")
+  set(CMAKE_C_FLAGS           "${CMAKE_C_FLAGS}       ${FLAGS_INTEL_DEFAULT}")
+  set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} -O0")
+  # cmake-format: on
+else (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
   # Set compiler flags/options for GCC compiler
-  set(FLAGS_GCC_DEFAULT "-mavx -fopenmp") #-march=core-avx2
-  set(FLAGS_GCC_DEBUG   "-g -O0")
-  set(FLAGS_GCC_RELEASE "-O3 -flto -fstrict-aliasing -finline-functions") # -ffast-math -fargument-noalias -fargument-noalias-global
+  set(FLAGS_GCC_DEFAULT "-march=native ") # -march=core-avx2
+  set(FLAGS_GCC_RELEASE "-flto -fstrict-aliasing -finline-functions") # -ffast-math -fargument-noalias -fargument-
+                                                                      # noalias-global
 
-  set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS}       ${FLAGS_GCC_DEFAULT}")
-  set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_GCC_DEBUG}  ")
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_RELEASE}     ${FLAGS_GCC_RELEASE}")
+  # cmake-format: off
+  set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS}         ${FLAGS_GCC_DEFAULT}")
+  set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG}   -O0")
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${FLAGS_GCC_RELEASE}")
 
-  set(CMAKE_C_FLAGS         "${CMAKE_CXX_FLAGS}       ${FLAGS_GCC_DEFAULT} -std=c99")
-  set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_GCC_DEBUG}   -std=c99")
-  set(CMAKE_C_FLAGS_RELEASE "${CMAKE_CXX_RELEASE}     ${FLAGS_GCC_RELEASE} -std=c99")
-endif (INTEL_CC)
+  set(CMAKE_C_FLAGS           "${CMAKE_C_FLAGS}         ${FLAGS_GCC_DEFAULT}")
+  set(CMAKE_C_FLAGS_DEBUG     "${CMAKE_C_FLAGS_DEBUG}   -O0")
+  set(CMAKE_C_FLAGS_RELEASE   "${CMAKE_C_FLAGS_RELEASE} ${FLAGS_GCC_RELEASE}")
+  # cmake-format: on
+endif (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
 
-
-#set(CMAKE_GENERATOR_TOOLSET "Intel C++ Compiler XE 15.0" CACHE STRING "Platform Toolset" FORCE)
-
-set(N_MAX 1024 CACHE STRING "Maximum length of the internal buffer for storing intermediate c and d vectors of the Thomas algorithm")
-add_definitions(-DN_MAX=${N_MAX})
-
-set(FPPREC 1 CACHE STRING "0 - single precision build; 1 - double precision build")
+set(FPPREC
+    1
+    CACHE STRING "0 - single precision build; 1 - double precision build")
+set_property(CACHE FPPREC PROPERTY STRINGS 0 1)
 add_definitions(-DFPPREC=${FPPREC})
 
-#include_directories(${LIBTRID_PATH}/scalar/include ./include ../libtrid/ ../libtrid/src )
-
 if (BUILD_FOR_CPU)
-  add_executable(adi_cpu src/adi_cpu.cpp)
-  #target_compile_options(adi_cpu PRIVATE -xAVX -parallel -openmp -no-offload)
-  target_include_directories(adi_cpu PRIVATE ${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include)
-  target_link_libraries(adi_cpu PRIVATE -L${LIBTRID_PATH}/lib -ltridcpu -L${INTEL_PATH}/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
+  find_package(OpenMP REQUIRED)
+  find_package(
+    libtrid
+    REQUIRED
+    PATHS
+    ${LIBTRID_PATH})
+  if (BUILD_FOR_SN)
+    add_executable(adi_cpu src/adi_cpu.cpp)
+    # the tridsolver config file should set TRIDSOLVER_N_MAX value
+    target_compile_definitions(adi_cpu PUBLIC -DN_MAX=${TRIDSOLVER_N_MAX})
+    target_include_directories(adi_cpu PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(adi_cpu PRIVATE libtrid::tridcpu OpenMP::OpenMP_CXX)
 
-  #/opt/intel/composer_xe_2015.3.187/bin/intel64/icc -O3 -xAVX -ip -restrict -parallel -fopenmp -openmp-report2 -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par  -DFPPREC=0  -DN_MAX=1024  -I./include -I./libtrid  -I./include -I./libtrid -I/opt/intel/composer_xe_2015.3.187/mkl/include   -D__LAPACKE__ src/adi_cpu.cpp -L/opt/intel/composer_xe_2015.3.187/mkl/lib/intel64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -L/opt/intel/composer_xe_2015.3.187/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts -o adi_mkl
+    # cmake-format: off
+    add_executable(adi_mkl src/adi_cpu.cpp)
+    target_compile_definitions(adi_mkl PUBLIC -DN_MAX=${TRIDSOLVER_N_MAX})
+    target_compile_definitions(adi_mkl PRIVATE -D__MKL__)
+    target_compile_options(adi_mkl PRIVATE -xAVX -parallel -qopenmp -no-offload)
+    target_include_directories(adi_mkl PRIVATE ${INTEL_PATH}/mkl/include ${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(adi_mkl -L${LIBTRID_PATH}/lib -ltridcpu -L${INTEL_PATH}/mkl/lib/intel64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -L${INTEL_PATH}/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
+    # cmake-format: on
+  endif (BUILD_FOR_SN)
 
-  add_executable(adi_mkl src/adi_cpu.cpp)
-  target_compile_definitions(adi_mkl PRIVATE -D__MKL__)
-  target_compile_options(adi_mkl PRIVATE -xAVX -parallel -qopenmp -no-offload)
-  target_include_directories(adi_mkl PRIVATE ${INTEL_PATH}/mkl/include ${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include)
-  target_link_libraries(adi_mkl -L${LIBTRID_PATH}/lib -ltridcpu -L${INTEL_PATH}/mkl/lib/intel64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -L${INTEL_PATH}/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
-
-  add_executable(adi_mpi_cpu src/adi_mpi_cpu.cpp)
-  target_include_directories(adi_mpi_cpu PRIVATE ${INTEL_PATH}/mkl/include ${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include ${MPI_PATH}/include)
-  target_link_libraries(adi_mpi_cpu PRIVATE -L${LIBTRID_PATH}/lib -ltridcpu -L${INTEL_PATH}/compiler/lib/intel64 -L${MPI_PATH}/lib -lmpi -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
+  if (BUILD_FOR_MPI)
+    find_package(MPI REQUIRED)
+    add_executable(adi_mpi_cpu src/adi_mpi_cpu.cpp)
+    target_compile_definitions(adi_mpi_cpu PUBLIC -DN_MAX=${TRIDSOLVER_N_MAX} -DN_MPI_MAX=${TRIDSOLVER_N_MPI_MAX})
+    target_include_directories(adi_mpi_cpu PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(adi_mpi_cpu PRIVATE libtrid::tridcpu_mpi OpenMP::OpenMP_CXX MPI::MPI_CXX)
+  endif (BUILD_FOR_MPI)
 
 endif (BUILD_FOR_CPU)
 
+# cmake-format: off
 if (BUILD_FOR_MIC)
   add_executable(adi_mic_offload src/adi_cpu.cpp)
   target_link_libraries(adi_mic_offload ${LIBTRID_PATH}/lib/libtridmic_offload.so)
@@ -124,37 +110,54 @@ if (BUILD_FOR_MIC)
   target_include_directories(adi_mic_native_mkl PRIVATE -I${INTEL_PATH}/mkl/include)
   target_link_libraries(adi_mic_native_mkl ${LIBTRID_PATH}/lib/libtridmic_native.so -L./libtrid/lib -limf -lintlc -lsvml -lirng) #-L$(INTEL_PATH)/mkl/lib/mic -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_rt -liomp5 -lpthread -lm -lgfortran)
 endif (BUILD_FOR_MIC)
+# cmake-format: on
 
 if (BUILD_FOR_GPU)
-  include(FindCUDA)
-  #find_package(CUDA)
+  include(CheckLanguage)
+  check_language(CUDA)
+  if (CMAKE_CUDA_COMPILER)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 11)
+  else (CMAKE_CUDA_COMPILER)
+    message(ERROR "Couldn't find CUDA compiler")
+  endif (CMAKE_CUDA_COMPILER)
 
-  set(CUDA_PROPAGATE_HOST_FLAGS OFF)
-  set(CUDA_NVCC_FLAGS         "-arch sm_35 --ptxas-options=-v -Xptxas -dlcm=cg -std=c++11")
-  set(CUDA_NVCC_FLAGS_DEBUG   "-g -G -O0 -ftz=false -fmad=false")
-  set(CUDA_NVCC_FLAGS_RELEASE "-O3")
+  find_package(
+    libtrid
+    REQUIRED
+    PATHS
+    ${LIBTRID_PATH})
+  find_package(CUDAToolkit)
 
-  set(CUDA_LIBRARIES ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcudart.so)
-  cuda_include_directories(${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include)
-  cuda_add_executable(adi_cuda src/adi_cuda.cu src/preproc.cu)
-  cuda_add_cublas_to_target(adi_cuda)
-  target_link_libraries(adi_cuda -L${LIBTRID_PATH}/lib -ltridcuda)
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --ptxas-options=-v -Xptxas -dlcm=cg")
+  set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG}   -g -G -O0 ")
 
-  find_package(MPI REQUIRED)
-  find_package(OpenMP REQUIRED)
-  if (NCCL_FOUND)
-    add_definitions(-DTRID_NCCL)
-    include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
-  endif ()
-  cuda_include_directories(SYSTEM ${MPI_INCLUDE_PATH})
-  cuda_add_executable(adi_mpi_cuda src/adi_mpi_cuda.cu)
-  #cuda_include_directories(${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include SYSTEM ${MPI_INCLUDE_PATH})
-  cuda_add_cublas_to_target(adi_mpi_cuda)
-  target_link_libraries(adi_mpi_cuda -L${LIBTRID_PATH}/lib -ltridcuda -ltridcuda_mpi ${MPI_C_LIBRARIES} ${NCCL_LIBRARY})
+  add_executable(adi_cuda src/adi_cuda.cu src/preproc.cu)
+  target_compile_definitions(adi_cuda PUBLIC -DN_MAX=${TRIDSOLVER_N_MAX})
+  target_include_directories(adi_cuda PRIVATE ${PROJECT_SOURCE_DIR}/include)
+  target_link_libraries(adi_cuda libtrid::tridcuda CUDA::cublas)
+
+  if (BUILD_FOR_MPI)
+    find_package(MPI REQUIRED)
+    set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
+
+    if (USE_NCCL)
+      list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+      find_package(NCCL)
+    endif ()
+    add_executable(adi_mpi_cuda src/adi_mpi_cuda.cu)
+    target_compile_definitions(adi_mpi_cuda PUBLIC -DN_MAX=${TRIDSOLVER_N_MAX} -DN_MPI_MAX=${TRIDSOLVER_N_MPI_MAX})
+    target_include_directories(adi_mpi_cuda PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(
+      adi_mpi_cuda
+      libtrid::tridcuda_mpi
+      MPI::MPI_CXX
+      CUDA::cublas
+      ${NCCL_LIBRARY})
+  endif (BUILD_FOR_MPI)
 endif (BUILD_FOR_GPU)
 
-
-
+# cmake-format: off
 #INCS_MKL = -I./include -I./libtrid -I$(INTEL_PATH)/mkl/include
 #LIBS_MKL = -L$(INTEL_PATH)/mkl/lib/intel64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -L$(INTEL_PATH)/compiler/lib/intel64 -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts
 #LIBS_MKL = $(INTEL_PATH)/mkl/lib/intel64/libmkl_intel_lp64.a \
@@ -171,18 +174,17 @@ endif (BUILD_FOR_GPU)
 #LIBS_PHI_LAPACKE = -L./libtrid/lib -limf -lintlc -lsvml -lirng -L$(INTEL_PATH)/mkl/lib/mic -lmkl_core -lmkl_rt -lmkl_lapack95_ilp64 -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -lgfortran #-ltrid_phi
 #LIBS_PHI_LAPACKE = -L./libtrid/lib -limf -lintlc -lsvml -lirng -L$(INTEL_PATH)/mkl/lib/mic -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_rt -liomp5 -lpthread -lm -lgfortran #-ltrid_phi
 #LIBS_PHI_LAPACKE = -L./libtrid/lib -limf -lintlc -lsvml -lirng #-L$(INTEL_PATH)/mkl/lib/mic -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_rt -liomp5 -lpthread -lm -lgfortran #-ltrid_phi
+# cmake-format: on
 
+#add_executable(adi_orig ${PROJECT_SOURCE_DIR}/src/adi_orig.c)
+#target_compile_definitions(adi_orig PUBLIC -DN_MAX=$<IF:$<BOOL:${TRIDSOLVER_N_MAX}>,${TRIDSOLVER_N_MAX},1024>)
 
+#if (BUILD_FOR_CPU)
+#  add_executable(compare ${PROJECT_SOURCE_DIR}/src/compare.c)
+#  target_link_libraries(compare PRIVATE libtrid::tridcpu) # uses trid_common.h
+#endif (BUILD_FOR_CPU)
 
-
-
-#target_link_libraries(adi_cpu tridcpu)
-add_executable(adi_orig ${PROJECT_SOURCE_DIR}/src/adi_orig.c)
-
-add_executable(compare ${PROJECT_SOURCE_DIR}/src/compare.c)
-target_include_directories(compare PRIVATE ${LIBTRID_PATH}/include)
-
-
-
+# cmake-format: off
 #install(TARGETS libtridcuda DESTINATION lib)
 #install(FILES src/cuda/trid_cuda.h DESTINATION include)
+# cmake-format: on

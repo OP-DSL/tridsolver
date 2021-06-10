@@ -71,53 +71,57 @@ __global__ void pcr_on_reduced_kernel(REAL *input, REAL *results,
   REAL a_m, a_p, c_m, c_p, d_m, d_p;
 
   int s = 1;
-  
+
   // PCR iterations
-  for(int p = 0; p < P; p++) {
+  for (int p = 0; p < P; p++) {
     // Get the minus elements
-    if(i - s < 0) {
-      a_m = (REAL) 0.0;
-      c_m = (REAL) 0.0;
-      d_m = (REAL) 0.0;
+    if (i - s < 0) {
+      a_m = (REAL)0.0;
+      c_m = (REAL)0.0;
+      d_m = (REAL)0.0;
     } else {
       int a_m_ind = (6 * sys_n * ((i - s) / 2)) + (tridNum * 6) + ((i - s) % 2);
-      a_m = input[a_m_ind];
-      int c_m_ind = (6 * sys_n * ((i - s) / 2)) + (tridNum * 6) + 2 + ((i - s) % 2);
+      a_m         = input[a_m_ind];
+      int c_m_ind =
+          (6 * sys_n * ((i - s) / 2)) + (tridNum * 6) + 2 + ((i - s) % 2);
       c_m = input[c_m_ind];
-      int d_m_ind = (6 * sys_n * ((i - s) / 2)) + (tridNum * 6) + 4 + ((i - s) % 2);
+      int d_m_ind =
+          (6 * sys_n * ((i - s) / 2)) + (tridNum * 6) + 4 + ((i - s) % 2);
       d_m = input[d_m_ind];
     }
 
     // Get the plus elements
-    if(i + s >= n) {
-      a_p = (REAL) 0.0;
-      c_p = (REAL) 0.0;
-      d_p = (REAL) 0.0;
+    if (i + s >= n) {
+      a_p = (REAL)0.0;
+      c_p = (REAL)0.0;
+      d_p = (REAL)0.0;
     } else {
       int a_p_ind = (6 * sys_n * ((i + s) / 2)) + (tridNum * 6) + ((i + s) % 2);
-      a_p = input[a_p_ind];
-      int c_p_ind = (6 * sys_n * ((i + s) / 2)) + (tridNum * 6) + 2 + ((i + s) % 2);
+      a_p         = input[a_p_ind];
+      int c_p_ind =
+          (6 * sys_n * ((i + s) / 2)) + (tridNum * 6) + 2 + ((i + s) % 2);
       c_p = input[c_p_ind];
-      int d_p_ind = (6 * sys_n * ((i + s) / 2)) + (tridNum * 6) + 4 + ((i + s) % 2);
+      int d_p_ind =
+          (6 * sys_n * ((i + s) / 2)) + (tridNum * 6) + 4 + ((i + s) % 2);
       d_p = input[d_p_ind];
     }
-    
+
     // Synchronise threads within block
     __syncthreads();
-    
+
     // PCR algorithm
-    REAL r = 1.0 - input[a_ind] * c_m - input[c_ind] * a_p;
-    r = 1.0 / r;
+    REAL r       = 1.0 - input[a_ind] * c_m - input[c_ind] * a_p;
+    r            = 1.0 / r;
     input[d_ind] = r * (input[d_ind] - input[a_ind] * d_m - input[c_ind] * d_p);
     input[a_ind] = -r * input[a_ind] * a_m;
     input[c_ind] = -r * input[c_ind] * c_p;
-    
-     // Synchronise threads within block
+
+    // Synchronise threads within block
     __syncthreads();
-    
+
     s = s << 1;
   }
-  
+
   // Store results of this reduced solve that are relevant to this MPI process
   if (i >= 2 * mpi_coord && i < 2 * (mpi_coord + 1)) {
     int reduced_ind_l                    = i - (2 * mpi_coord);

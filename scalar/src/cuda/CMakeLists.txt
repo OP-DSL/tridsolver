@@ -1,40 +1,10 @@
-cmake_minimum_required(VERSION 2.8.8)
-
 if (BUILD_FOR_GPU)
-  find_package(CUDA REQUIRED)
-  include(FindCUDA)
+  # find cublas, nvToolsExt, etc.
+  find_package(CUDAToolkit)
 
-  set(CUDA_64_BIT_DEVICE_CODE ON) # -m64 compiler option
-  set(CUDA_PROPAGATE_HOST_FLAGS OFF)
+  set(cuda_flags -m64 -Xptxas -dlcm=cg)
 
-  # architecture
-  set(ARCHITECTURE
-      "AUTO"
-      CACHE STRING "What is your target CUDA architecture?")
-  if (${ARCHITECTURE} STREQUAL "AUTO")
-    set(CUDA_ARCH_LIST Auto)
-    cuda_select_nvcc_arch_flags(CUDA_ARCH_FLAGS ${CUDA_ARCH_LIST})
-    list(APPEND CUDA_NVCC_FLAGS ${CUDA_ARCH_FLAGS})
-    string(
-      REPLACE ";"
-              " "
-              ARCH_FLAGS
-              "${CUDA_NVCC_FLAGS}")
-  else ()
-    string(
-      REPLACE "NUM"
-              ${ARCHITECTURE}
-              ARCH_FLAGS
-              "-gencode arch=compute_NUM,code=sm_NUM")
-  endif ()
-
-  set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -Xptxas -dlcm=cg -std=c++11")
-  set(CUDA_NVCC_FLAGS_DEBUG "${CUDA_NVCC_FLAGS_DEBUG}   -g -G -O0 -ftz=false -fmad=false")
-  set(CUDA_NVCC_FLAGS_RELEASE "${CUDA_NVCC_FLAGS_RELEASE} -O3")
-
-  cuda_include_directories(${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/src/cuda/
-                           ${PROJECT_SOURCE_DIR}/src/cuda/generics/)
-  set(CUDA_LIBRARIES ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcudart.so) # , ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcublas.so)
+  set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG} -G -O0 ")
 
   if (USE_PROFILING)
     # PROFILE disables macros with the suffix 2 to achieve lower overhead to use with profiler
@@ -44,77 +14,138 @@ if (BUILD_FOR_GPU)
         "DETAILED"
         CACHE STRING "Level of details for profiling")
     set_property(CACHE PROFILING_LEVEL PROPERTY STRINGS PROFILE DETAILED)
-    cuda_add_library(profiling_cuda SHARED ./cuda_timing.cu)
-    target_compile_options(profiling_cuda PRIVATE -fPIC)
+    add_library(profiling_cuda ${BUILD_TYPE} ./cuda_timing.cu)
+    set_target_properties(profiling_cuda PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_include_directories(profiling_cuda PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+                                                     $<INSTALL_INTERFACE:${PROJECT_NAME}/include>)
     if (BUILD_FOR_MPI)
       target_compile_definitions(profiling_cuda PRIVATE -DUSE_MPI)
+      target_link_libraries(profiling_cuda PUBLIC MPI::MPI_CXX)
     endif (BUILD_FOR_MPI)
     if (${PROFILING_LEVEL} STREQUAL "PROFILE")
       target_compile_definitions(profiling_cuda PUBLIC -DPROFILING=1)
     else (${PROFILING_LEVEL} STREQUAL "PROFILE")
       target_compile_definitions(profiling_cuda PUBLIC -DPROFILING=2)
     endif (${PROFILING_LEVEL} STREQUAL "PROFILE")
-    target_link_directories(profiling_cuda PUBLIC "${CUDA_TOOLKIT_ROOT_DIR}/lib64")
-    target_link_libraries(profiling_cuda nvToolsExt)
+    target_link_libraries(profiling_cuda PRIVATE CUDA::nvToolsExt)
+
+    set(${PROJECT_NAME}_components "${${PROJECT_NAME}_components} profiling_cuda")
+    set(${PROJECT_NAME}_components
+        ${${PROJECT_NAME}_components}
+        PARENT_SCOPE)
+    install(
+      TARGETS profiling_cuda
+      EXPORT profilingCUDATarget
+      LIBRARY DESTINATION ${PROJECT_NAME}/lib
+      ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
+    install(FILES ${PROJECT_SOURCE_DIR}/include/cuda_timing.h DESTINATION ${PROJECT_NAME}/include)
+    install(
+      EXPORT profilingCUDATarget
+      FILE profilingCUDATarget.cmake
+      NAMESPACE ${PROJECT_NAME}::
+      DESTINATION ${PROJECT_NAME}/lib/cmake)
   endif (USE_PROFILING)
 
-  cuda_add_library(
+  set(${PROJECT_NAME}_components "${${PROJECT_NAME}_components} tridcuda")
+  set(${PROJECT_NAME}_components
+      ${${PROJECT_NAME}_components}
+      PARENT_SCOPE)
+  add_library(tridcuda ${BUILD_TYPE} ./trid_cuda.cu)
+  add_library(${PROJECT_NAME}::tridcuda ALIAS tridcuda)
+  target_link_libraries(
     tridcuda
-    ${PROJECT_SOURCE_DIR}/src/cuda/trid_cuda.cu
-    SHARED
-    OPTIONS
-    -Xcompiler
-    -fPIC) # Make binary relocatable
+    PRIVATE trid_common_options
+    PUBLIC trid_global_options CUDA::cublas)
+  target_compile_options(tridcuda PRIVATE ${cuda_flags})
+  set_target_properties(tridcuda PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+  target_include_directories(tridcuda PRIVATE ${PROJECT_SOURCE_DIR}/src/cuda/ ${PROJECT_SOURCE_DIR}/src/cuda/generics/)
 
   install(
     TARGETS tridcuda
-    LIBRARY DESTINATION ${CMAKE_BINARY_DIR}/lib
-    ARCHIVE DESTINATION ${CMAKE_BINARY_DIR}/lib)
+    EXPORT tridcudaTarget
+    LIBRARY DESTINATION ${PROJECT_NAME}/lib
+    ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
 
   install(
     FILES ${PROJECT_SOURCE_DIR}/include/trid_cuda.h
           ${PROJECT_SOURCE_DIR}/include/trid_common.h
           ${PROJECT_SOURCE_DIR}/include/trid_util.h
           ${PROJECT_SOURCE_DIR}/include/cutil_inline.h
-    DESTINATION ${CMAKE_BINARY_DIR}/include)
+    DESTINATION ${PROJECT_NAME}/include)
+
+  install(
+    EXPORT tridcudaTarget
+    FILE tridcudaTarget.cmake
+    NAMESPACE ${PROJECT_NAME}::
+    DESTINATION ${PROJECT_NAME}/lib/cmake)
 
   if (BUILD_FOR_MPI)
-    option(USE_CUDA_AWARE_MPI "Build library with CUDA-aware MPI" OFF)
-    option(USE_NCCL "Build library with NCCL for MPI comms" OFF)
-    find_package(MPI REQUIRED)
-    find_package(OpenMP REQUIRED)
+    set_property(
+      CACHE CUDA_COMMUNICATION_LIBRARY
+      PROPERTY STRINGS
+               MPI
+               CUDA_AWARE_MPI
+               NCCL)
 
-    if (USE_NCCL)
-      find_package(NCCL)
-      if (NCCL_FOUND)
-        add_definitions(-DTRID_NCCL)
-        include_directories(SYSTEM ${NCCL_INCLUDE_DIR})
-      endif ()
+    set(${PROJECT_NAME}_components "${${PROJECT_NAME}_components} tridcuda_mpi")
+    set(${PROJECT_NAME}_components
+        ${${PROJECT_NAME}_components}
+        PARENT_SCOPE)
+    add_library(tridcuda_mpi ${BUILD_TYPE} ./trid_cuda_mpi.cu)
+    add_library(${PROJECT_NAME}::tridcuda_mpi ALIAS tridcuda_mpi)
+    target_include_directories(tridcuda_mpi PRIVATE ${PROJECT_SOURCE_DIR}/src/cuda/
+                                                    ${PROJECT_SOURCE_DIR}/src/cuda/generics/)
+    target_compile_options(tridcuda_mpi PRIVATE ${cuda_flags})
+    set_target_properties(tridcuda_mpi PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+    target_link_libraries(
+      tridcuda_mpi
+      PRIVATE trid_common_options
+      PUBLIC tridcuda trid_global_options MPI::MPI_CXX)
+
+    if (CUDA_COMMUNICATION_LIBRARY STREQUAL "NCCL")
+      find_package(NCCL REQUIRED)
+      target_compile_definitions(tridcuda_mpi PUBLIC -DTRID_NCCL)
+      target_include_directories(tridcuda_mpi PUBLIC ${NCCL_INCLUDE_DIR})
+      target_link_libraries(tridcuda_mpi PUBLIC ${NCCL_LIBRARY})
+    elseif (CUDA_COMMUNICATION_LIBRARY STREQUAL "CUDA_AWARE_MPI")
+      target_compile_definitions(tridcuda_mpi PRIVATE TRID_CUDA_AWARE_MPI)
+    elseif (
+      NOT
+      CUDA_COMMUNICATION_LIBRARY
+      STREQUAL
+      "MPI")
+      get_property(
+        COMM_MODES
+        CACHE CUDA_COMMUNICATION_LIBRARY
+        PROPERTY STRINGS)
+      message(
+        FATAL_ERROR
+          "Unknown communication mode for CUDA: ${CUDA_COMMUNICATION_LIBRARY}. CUDA_COMMUNICATION_LIBRARY must be one of the folowing: ${COMM_MODES}"
+      )
     endif ()
 
-    cuda_add_library(
-      tridcuda_mpi
-      ${PROJECT_SOURCE_DIR}/src/cuda/trid_cuda_mpi.cu
-      SHARED
-      OPTIONS
-      -Xcompiler
-      -fPIC
-      -Xcompiler) # Make binary relocatable
-
-    if (USE_CUDA_AWARE_MPI)
-      target_compile_definitions(tridcuda_mpi PRIVATE TRID_CUDA_AWARE_MPI)
-    endif (USE_CUDA_AWARE_MPI)
-
     if (USE_PROFILING)
-      target_link_libraries(tridcuda_mpi profiling_cuda)
+      target_link_libraries(tridcuda_mpi PUBLIC profiling_cuda)
     endif (USE_PROFILING)
+
     install(
       TARGETS tridcuda_mpi
-      LIBRARY DESTINATION ${CMAKE_BINARY_DIR}/lib
-      ARCHIVE DESTINATION ${CMAKE_BINARY_DIR}/lib)
+      EXPORT tridcuda_mpiTarget
+      LIBRARY DESTINATION ${PROJECT_NAME}/lib
+      ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
 
-    install(FILES ${PROJECT_SOURCE_DIR}/include/trid_mpi_cuda.hpp
-                  ${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp DESTINATION ${CMAKE_BINARY_DIR}/include)
+    install(
+      FILES ${PROJECT_SOURCE_DIR}/include/trid_cuda.h
+            ${PROJECT_SOURCE_DIR}/include/trid_common.h
+            ${PROJECT_SOURCE_DIR}/include/trid_mpi_cuda.hpp
+            ${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
+      DESTINATION ${PROJECT_NAME}/include)
+    install(
+      EXPORT tridcuda_mpiTarget
+      FILE tridcuda_mpiTarget.cmake
+      NAMESPACE ${PROJECT_NAME}::
+      DESTINATION ${PROJECT_NAME}/lib/cmake)
   endif (BUILD_FOR_MPI)
-
 endif (BUILD_FOR_GPU)

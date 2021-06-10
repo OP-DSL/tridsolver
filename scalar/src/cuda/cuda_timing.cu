@@ -1,6 +1,7 @@
 #include "cuda_timing.h"
 #include <cassert>
-#include <thread>
+#include <numeric>
+#include <cmath>
 
 #ifdef USE_MPI
 #  include <mpi.h>
@@ -8,16 +9,25 @@
 
 std::map<std::string, Timing::LoopData> Timing::loops;
 std::vector<int> Timing::stack;
-int Timing::counter = 0;
+int Timing::counter  = 0;
+bool Timing::measure = true;
 
 
 void Timing::pushRange(const std::string &_name) {
+  if (!measure) return;
   nvtxRangePushA(_name.c_str());
 }
-void Timing::popRange() { nvtxRangePop(); }
-void Timing::markStart(const std::string &_name) { nvtxMarkA(_name.c_str()); }
+void Timing::popRange() {
+  if (!measure) return;
+  nvtxRangePop();
+}
+void Timing::markStart(const std::string &_name) {
+  if (!measure) return;
+  nvtxMarkA(_name.c_str());
+}
 
 void Timing::startTimer(const std::string &_name) {
+  if (!measure) return;
   pushRange(_name);
   if (loops.size() == 0) counter = 0;
   int parent           = stack.size() == 0 ? -1 : stack.back();
@@ -37,7 +47,8 @@ void Timing::startTimer(const std::string &_name) {
 }
 
 void Timing::stopTimer(const std::string &_name) {
-  auto now             = clock::now();
+  if (!measure) return;
+  auto now = clock::now();
   stack.pop_back();
   int parent           = stack.empty() ? -1 : stack.back();
   std::string fullname = _name + "(" + std::to_string(parent) + ")";
@@ -49,13 +60,14 @@ void Timing::stopTimer(const std::string &_name) {
 }
 
 void Timing::startTimerCUDA(const std::string &_name, cudaStream_t stream) {
+  if (!measure) return;
   markStart(_name);
   if (loops.size() == 0) counter = 0;
   int parent           = stack.size() == 0 ? -1 : stack.back();
   std::string fullname = _name + "(" + std::to_string(parent) + ")";
   cudaEvent_t start;
   cudaSafeCall(cudaEventCreate(&start));
-  cudaSafeCall(cudaEventRecord(start,stream));
+  cudaSafeCall(cudaEventRecord(start, stream));
   int index;
   if (loops.find(fullname) != loops.end()) {
     loops[fullname].event_pairs.push_back(start);
@@ -68,18 +80,19 @@ void Timing::startTimerCUDA(const std::string &_name, cudaStream_t stream) {
     // loops[fullname].event_pairs = {start};
     loops[fullname].event_pairs.reserve(10);
     loops[fullname].event_pairs.push_back(start);
-    index                       = counter - 1;
+    index = counter - 1;
   }
   stack.push_back(index);
 }
 
 void Timing::stopTimerCUDA(const std::string &_name, cudaStream_t stream) {
+  if (!measure) return;
   stack.pop_back();
   int parent           = stack.empty() ? -1 : stack.back();
   std::string fullname = _name + "(" + std::to_string(parent) + ")";
   cudaEvent_t stop;
   cudaSafeCall(cudaEventCreate(&stop));
-  cudaSafeCall(cudaEventRecord(stop,stream));
+  cudaSafeCall(cudaEventRecord(stop, stream));
   loops[fullname].event_pairs.push_back(stop);
 }
 
@@ -87,8 +100,38 @@ void Timing::reportWithParent(int parent, const std::string &indentation) {
   for (const auto &element : loops) {
     const LoopData &l = element.second;
     if (l.parent == parent) {
-      std::cout << indentation + element.first + ": " + std::to_string(l.time) +
-                       " seconds\n";
+#ifdef USE_MPI
+      int rank, nproc;
+      MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+      MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+      std::vector<double> times(nproc, 0);
+      MPI_Gather(&l.time, 1, MPI_DOUBLE, times.data(), 1, MPI_DOUBLE, 0,
+                 MPI_COMM_WORLD);
+      if (!rank) {
+        double mean = 0.0;
+        double max  = times[0];
+        double min  = times[0];
+        for (double t : times) {
+          mean += t;
+          max = std::max(max, t);
+          min = std::min(min, t);
+        }
+        mean = mean / nproc;
+        double stddev =
+            std::accumulate(times.begin(), times.end(), 0.0,
+                            [&](const double &sum, const double &time) {
+                              return sum + (time - mean) * (time - mean);
+                            });
+        stddev = std::sqrt(stddev / nproc);
+
+        std::cout << indentation + element.first + ": ";
+        std::cout << min << "s; " << max << "s; " << mean << "s; " << stddev
+                  << "s;\n";
+      }
+#else
+      std::cout << indentation + element.first + ": "
+                << std::to_string(l.time) + " seconds\n";
+#endif
       reportWithParent(l.index, indentation + "  ");
     }
   }
@@ -109,25 +152,16 @@ void Timing::sumCudaEvents() {
   }
 }
 
+void Timing::reset() {
+  loops.clear();
+  stack.clear();
+  counter = 0;
+}
+
+void Timing::suspend_prof() { measure = false; }
+void Timing::continue_prof() { measure = true; }
+
 void Timing::report() {
   sumCudaEvents();
-#ifdef USE_MPI
-  int rank, num_proc;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
-  std::srand(rank);
-  for (int i = 0; i < num_proc; ++i) {
-    // Print the outputs
-    if (i == rank) {
-      std::cout << "##########################\n"
-                << "Rank " << i << "\n"
-                << "##########################\n";
-#endif
-      reportWithParent(-1, "  ");
-#ifdef USE_MPI
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    MPI_Barrier(MPI_COMM_WORLD);
-  }
-#endif
+  reportWithParent(-1, "  ");
 }
