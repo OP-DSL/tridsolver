@@ -52,12 +52,13 @@
 EXTERN_C
 tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b,
                                    const float *c, float *d, float *u, int ndim,
-                                   int solvedim, int *dims, int *pads);
+                                   int solvedim, const int *dims,
+                                   const int *pads);
 EXTERN_C
 tridStatus_t tridDmtsvStridedBatch(const double *a, const double *b,
                                    const double *c, double *d, double *u,
-                                   int ndim, int solvedim, int *dims,
-                                   int *pads);
+                                   int ndim, int solvedim, const int *dims,
+                                   const int *pads);
 
 //
 // Solve a batch of linear equation systems along a specified axis.
@@ -73,13 +74,13 @@ tridStatus_t tridDmtsvStridedBatch(const double *a, const double *b,
 EXTERN_C
 tridStatus_t tridSmtsvStridedBatchInc(const float *a, const float *b,
                                       const float *c, float *d, float *u,
-                                      int ndim, int solvedim, int *dims,
-                                      int *pads);
+                                      int ndim, int solvedim, const int *dims,
+                                      const int *pads);
 EXTERN_C
 tridStatus_t tridDmtsvStridedBatchInc(const double *a, const double *b,
                                       const double *c, double *d, double *u,
-                                      int ndim, int solvedim, int *dims,
-                                      int *pads);
+                                      int ndim, int solvedim, const int *dims,
+                                      const int *pads);
 
 EXTERN_C
 void trid_scalarS(const float *a, const float *b, const float *c, float *d,

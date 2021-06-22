@@ -30,6 +30,7 @@ template <typename T, unsigned Align> class AlignedArray {
 
 public:
   AlignedArray(size_t capacity);
+  explicit AlignedArray(const std::vector<T> &other);
   AlignedArray();
   ~AlignedArray();
   AlignedArray(const AlignedArray &other);
@@ -68,31 +69,31 @@ public:
   size_t capacity() const { return _capacity; }
 };
 
-template <typename Float, unsigned Align = 1> class MeshLoader {
+template <typename Float> class MeshLoader {
   size_t _solve_dim;
   std::vector<int> _dims;
-  AlignedArray<Float, Align> _a, _b, _c, _d, _u;
+  std::vector<Float> _a, _b, _c, _d, _u;
 
 public:
   MeshLoader(const std::string &file_name);
 
   size_t solve_dim() const { return _solve_dim; }
   const std::vector<int> &dims() const { return _dims; }
-  const AlignedArray<Float, Align> &a() const { return _a; }
-  const AlignedArray<Float, Align> &b() const { return _b; }
-  const AlignedArray<Float, Align> &c() const { return _c; }
-  const AlignedArray<Float, Align> &d() const { return _d; }
-  const AlignedArray<Float, Align> &u() const { return _u; }
+  const std::vector<Float> &a() const { return _a; }
+  const std::vector<Float> &b() const { return _b; }
+  const std::vector<Float> &c() const { return _c; }
+  const std::vector<Float> &d() const { return _d; }
+  const std::vector<Float> &u() const { return _u; }
 
 private:
   void load_array(std::ifstream &f, size_t num_elements,
-                  AlignedArray<Float, Align> &array);
+                  std::vector<Float> &array);
 };
 
-template <typename Float, unsigned Align = 1> class RandomMesh {
+template <typename Float> class RandomMesh {
   size_t _solve_dim;
   std::vector<int> _dims;
-  AlignedArray<Float, Align> _a, _b, _c, _d;
+  std::vector<Float> _a, _b, _c, _d;
 
 public:
   RandomMesh(const std::vector<int> &dims, size_t solvedim);
@@ -103,10 +104,10 @@ public:
 
   size_t solve_dim() const { return _solve_dim; }
   const std::vector<int> &dims() const { return _dims; }
-  const AlignedArray<Float, Align> &a() const { return _a; }
-  const AlignedArray<Float, Align> &b() const { return _b; }
-  const AlignedArray<Float, Align> &c() const { return _c; }
-  const AlignedArray<Float, Align> &d() const { return _d; }
+  const std::vector<Float> &a() const { return _a; }
+  const std::vector<Float> &b() const { return _b; }
+  const std::vector<Float> &c() const { return _c; }
+  const std::vector<Float> &d() const { return _d; }
 };
 /**********************************************************************
  *                          Implementations                           *
@@ -124,6 +125,14 @@ AlignedArray<T, Align>::AlignedArray()
 
 template <typename T, unsigned Align> AlignedArray<T, Align>::~AlignedArray() {
   delete[] padded_data;
+}
+
+template <typename T, unsigned Align>
+AlignedArray<T, Align>::AlignedArray(const std::vector<T> &other)
+    : padded_data{nullptr}, _size{0}, _capacity{0} {
+  allocate(other.size());
+  std::copy(other.data(), other.data() + other.size(), this->data());
+  _size = other.size();
 }
 
 template <typename T, unsigned Align>
@@ -195,8 +204,8 @@ void AlignedArray<T, Align>::push_back(T value) {
   ++_size;
 }
 
-template <typename Float, unsigned Align>
-MeshLoader<Float, Align>::MeshLoader(const std::string &file_name)
+template <typename Float>
+MeshLoader<Float>::MeshLoader(const std::string &file_name)
     : _a{}, _b{}, _c{}, _d{}, _u{} {
   std::ifstream f(file_name);
   assert(f.good() && "Couldn't open file");
@@ -225,10 +234,10 @@ MeshLoader<Float, Align>::MeshLoader(const std::string &file_name)
   }
 }
 
-template <typename Float, unsigned Align>
-void MeshLoader<Float, Align>::load_array(std::ifstream &f, size_t num_elements,
-                                          AlignedArray<Float, Align> &array) {
-  array.allocate(num_elements);
+template <typename Float>
+void MeshLoader<Float>::load_array(std::ifstream &f, size_t num_elements,
+                                   std::vector<Float> &array) {
+  array.reserve(num_elements);
   for (size_t i = 0; i < num_elements; ++i) {
     // Load with the larger precision, then convert to the specified type
     double value;
@@ -237,9 +246,8 @@ void MeshLoader<Float, Align>::load_array(std::ifstream &f, size_t num_elements,
   }
 }
 
-template <typename Float, unsigned Align>
-RandomMesh<Float, Align>::RandomMesh(const std::vector<int> &dims,
-                                     size_t solvedim)
+template <typename Float>
+RandomMesh<Float>::RandomMesh(const std::vector<int> &dims, size_t solvedim)
     : _solve_dim(solvedim), _dims(dims), _a{}, _b{}, _c{}, _d{} {
   assert(_solve_dim < _dims.size() && "solve dim greater than number of dims");
 
