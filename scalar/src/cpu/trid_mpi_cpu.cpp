@@ -679,7 +679,7 @@ inline void solve_reduced_jacobi(const MpiSolverParams &params, REAL *aa,
 #pragma omp parallel for
   for (int id = 0; id < n_sys; ++id) {
     int start = get_sys_start_idx(id, solvedim, dims, pads, ndim);
-    if (rank)
+    if (rank || nproc == 1)
       dd_r[id] = dd[start];
     else {
       dd_r[id] = 0;
