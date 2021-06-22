@@ -64,8 +64,12 @@ void test_solver_from_file(const std::string &file_name) {
   }
 
   // Simulate distributed environment: only load our data
-  AlignedArray<Float, 1> a(domain_size), b(domain_size), c(domain_size),
-      u(domain_size), d(domain_size);
+  std::vector<Float> a, b, c, u, d;
+  a.reserve(domain_size);
+  b.reserve(domain_size);
+  c.reserve(domain_size);
+  d.reserve(domain_size);
+  u.reserve(domain_size);
   copy_strided(mesh.a(), a, local_sizes, domain_offsets, global_strides,
                local_sizes.size() - 1);
   copy_strided(mesh.b(), b, local_sizes, domain_offsets, global_strides,
@@ -140,8 +144,12 @@ void test_solver_from_file_padded(const std::string &file_name) {
   }
 
   // Simulate distributed environment: only load our data
-  AlignedArray<Float, 1> a(domain_size), b(domain_size), c(domain_size),
-      u(domain_size), d(domain_size);
+  std::vector<Float> a, b, c, u, d;
+  a.reserve(domain_size);
+  b.reserve(domain_size);
+  c.reserve(domain_size);
+  d.reserve(domain_size);
+  u.reserve(domain_size);
   copy_strided(mesh.a(), a, local_sizes, domain_offsets, global_strides,
                local_sizes.size() - 1);
   copy_strided(mesh.b(), b, local_sizes, domain_offsets, global_strides,
@@ -208,7 +216,7 @@ void test_solver_from_file_padded(const std::string &file_name) {
                cudaMemcpyDeviceToHost);
   }
   // Check result
-  require_allclose_padded(u_p, d_p);
+  require_allclose(u_p, d_p);
 }
 
 template <typename Float>
@@ -224,16 +232,16 @@ void test_PCR_on_reduced(const std::string &file_name) {
   //    layout: [d_[2*mpi_proc_id] d_[2*mpi_proc_id + 1] ...(for every system)]
   //    size: 2 * sys_n
 
-  // AlignedArray<double, 1> aa(mesh.a()), cc(mesh.c()), dd(mesh.d());
   MeshLoader<Float> mesh(file_name);
   const int reduced_sys_len = mesh.dims()[mesh.solve_dim()];
   const int num_mpi_procs   = reduced_sys_len / 2;
   const int mpi_coord       = num_mpi_procs / 2;
   const int sys_n =
       std::accumulate(mesh.dims().begin() + mesh.solve_dim() + 1,
-                      mesh.dims().end(), 1, std::multiplies<int>{});
+                      mesh.dims().end(), 1, std::multiplies<int>());
   // buffer holding the 3 arrays (a, c, d) merged:
-  AlignedArray<Float, 1> buffer(sys_n * reduced_sys_len * 3);
+  std::vector<Float> buffer;
+  buffer.reserve(sys_n * reduced_sys_len * 3);
   for (int mpi_coord = 0; mpi_coord < num_mpi_procs; ++mpi_coord) {
     for (int sys_idx = 0; sys_idx < sys_n; ++sys_idx) {
       buffer.push_back(mesh.a()[sys_idx * reduced_sys_len + 2 * mpi_coord]);
@@ -250,14 +258,14 @@ void test_PCR_on_reduced(const std::string &file_name) {
   pcr_on_reduced_batched<Float>(buffer_d.data(), result_d.data(), sys_n,
                                 mpi_coord, reduced_sys_len);
 
-  AlignedArray<Float, 1> result(2 * sys_n);
-  result.resize(2 * sys_n);
+  std::vector<Float> result(2 * sys_n);
   cudaMemcpy(result.data(), result_d.data(), sizeof(Float) * 2 * sys_n,
              cudaMemcpyDeviceToHost);
   // BATCHING reduced calls
   const int batch_size  = 32;
   const int num_batches = 1 + (sys_n - 1) / batch_size;
-  AlignedArray<Float, 1> batched_buffer(sys_n * reduced_sys_len * 3);
+  std::vector<Float> batched_buffer;
+  batched_buffer.reserve(sys_n * reduced_sys_len * 3);
   for (int bidx = 0; bidx < num_batches; ++bidx) {
     int batch_start = bidx * batch_size;
     int bsize = bidx == num_batches - 1 ? sys_n - batch_start : batch_size;
@@ -293,8 +301,7 @@ void test_PCR_on_reduced(const std::string &file_name) {
                                   result_batched_d.data() + bound_buf_offset,
                                   bsize, mpi_coord, reduced_sys_len);
   }
-  AlignedArray<Float, 1> result_batched(2 * sys_n);
-  result_batched.resize(2 * sys_n);
+  std::vector<Float> result_batched(2 * sys_n);
   cudaMemcpy(result_batched.data(), result_batched_d.data(),
              sizeof(Float) * 2 * sys_n, cudaMemcpyDeviceToHost);
   require_allclose(result, result_batched);

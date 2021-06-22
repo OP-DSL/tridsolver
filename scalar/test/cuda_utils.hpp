@@ -10,8 +10,8 @@ template <typename T> class DeviceArray {
 public:
   DeviceArray();
   DeviceArray(size_t size);
-  DeviceArray(const T* host_arr, size_t size);
-  DeviceArray(const AlignedArray<T, 1> &host_arr);
+  DeviceArray(const T *host_arr, size_t size);
+  DeviceArray(const std::vector<T> &host_arr);
   DeviceArray(const DeviceArray &);
   DeviceArray &operator=(DeviceArray);
   DeviceArray(DeviceArray &&);
@@ -29,8 +29,8 @@ template <typename Float> class GPUMesh {
 
 public:
   GPUMesh(const MeshLoader<Float> &mesh);
-  GPUMesh(const AlignedArray<Float, 1> &a, const AlignedArray<Float, 1> &b,
-          const AlignedArray<Float, 1> &c, const AlignedArray<Float, 1> &d,
+  GPUMesh(const std::vector<Float> &a, const std::vector<Float> &b,
+          const std::vector<Float> &c, const std::vector<Float> &d,
           const std::vector<int> dims);
 
   const std::vector<int> &dims() const { return _dims; }
@@ -58,7 +58,7 @@ DeviceArray<T>::DeviceArray(const T *host_arr, size_t size)
 }
 
 template <typename T>
-DeviceArray<T>::DeviceArray(const AlignedArray<T, 1> &host_arr)
+DeviceArray<T>::DeviceArray(const std::vector<T> &host_arr)
     : DeviceArray(host_arr.data(), host_arr.size()) {}
 
 template <typename T>
@@ -79,8 +79,7 @@ DeviceArray<T> &DeviceArray<T>::operator=(DeviceArray<T> other) {
   std::swap(this->arr_d, other.arr_d);
 }
 template <typename T> DeviceArray<T>::~DeviceArray() {
-  if (arr_d)
-    cudaFree(arr_d);
+  if (arr_d) cudaFree(arr_d);
 }
 
 template <typename T> void DeviceArray<T>::allocate(size_t N) {
@@ -96,10 +95,10 @@ GPUMesh<Float>::GPUMesh(const MeshLoader<Float> &mesh)
     : GPUMesh<Float>(mesh.a(), mesh.b(), mesh.c(), mesh.d(), mesh.dims()) {}
 
 template <typename Float>
-GPUMesh<Float>::GPUMesh(const AlignedArray<Float, 1> &a,
-                        const AlignedArray<Float, 1> &b,
-                        const AlignedArray<Float, 1> &c,
-                        const AlignedArray<Float, 1> &d,
+GPUMesh<Float>::GPUMesh(const std::vector<Float> &a,
+                        const std::vector<Float> &b,
+                        const std::vector<Float> &c,
+                        const std::vector<Float> &d,
                         const std::vector<int> dims)
     : _a(a), _b(b), _c(c), _d(d), _dims(dims) {}
 

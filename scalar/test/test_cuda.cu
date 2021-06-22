@@ -51,7 +51,7 @@ template <typename Float> void test_from_file(const std::string &file_name) {
 
   CHECK(status == TRID_STATUS_SUCCESS);
 
-  AlignedArray<Float, 1> d(mesh.d());
+  std::vector<Float> d(mesh.d().size());
   cudaMemcpy(d.data(), device_mesh.d().data(), d.size() * sizeof(Float),
              cudaMemcpyDeviceToHost);
   require_allclose(mesh.u(), d);
@@ -116,7 +116,7 @@ void test_from_file_padded(const std::string &file_name) {
   cudaFree(b_d);
   cudaFree(c_d);
   cudaFree(d_d);
-  require_allclose_padded(u, d);
+  require_allclose(u, d);
 }
 
 TEMPLATE_TEST_CASE("cuda: solveX", "[solvedim:0]", double, float) {
