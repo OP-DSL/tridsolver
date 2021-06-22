@@ -181,8 +181,12 @@ void test_solver_from_file_padded(const std::string &file_name) {
   copy_to_padded_array(d, d_p, local_sizes);
   copy_to_padded_array(u, u_p, local_sizes);
 
-  int offset_to_first_element =
-      padded_dims[1] * padded_dims[0] + padded_dims[0] + 1;
+  int offset_to_first_element = 1;
+  for (size_t i = 0; i < padded_dims.size() - 1; ++i) {
+    offset_to_first_element +=
+        std::accumulate(padded_dims.begin(), padded_dims.begin() + i + 1, 1,
+                        std::multiplies<int>());
+  }
 
   Float *a_d, *b_d, *c_d, *d_d, *u_d;
   cudaMalloc((void **)&a_d, padded_size * sizeof(Float));
@@ -376,6 +380,20 @@ TEMPLATE_TEST_CASE_SIG("cuda: padded", "[padded]",
                          MpiSolverParams::MPICommStrategy strategy),
                         TestType, INC, strategy),
                        PARAM_COMBOS) {
+  SECTION("ndims: 1") {
+    test_solver_from_file_padded<TestType, INC, strategy>(
+        "files/one_dim_large");
+  }
+  SECTION("ndims: 2") {
+    SECTION("solvedim: 0") {
+      test_solver_from_file_padded<TestType, INC, strategy>(
+          "files/two_dim_large_solve0");
+    }
+    SECTION("solvedim: 1") {
+      test_solver_from_file_padded<TestType, INC, strategy>(
+          "files/two_dim_large_solve1");
+    }
+  }
   SECTION("ndims: 3") {
     SECTION("solvedim: 0") {
       test_solver_from_file_padded<TestType, INC, strategy>(

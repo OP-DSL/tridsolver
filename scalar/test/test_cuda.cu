@@ -15,7 +15,7 @@ tridStatus_t tridStridedBatchWrapper<float>(const float *a, const float *b,
                                             const float *c, float *d, float *u,
                                             int ndim, int solvedim, int *dims,
                                             int *pads) {
-  int opts[] = {0, 0, 0};
+  int opts[] = {ndim == 1 ? 1 : 0, 0, 0};
   return tridSmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads, opts,
                                0);
 }
@@ -25,7 +25,7 @@ tridStatus_t tridStridedBatchWrapper<double>(const double *a, const double *b,
                                              const double *c, double *d,
                                              double *u, int ndim, int solvedim,
                                              int *dims, int *pads) {
-  int opts[] = {0, 0, 0};
+  int opts[] = {ndim == 1 ? 1 : 0, 0, 0};
   return tridDmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads, opts,
                                0);
 }
@@ -146,6 +146,17 @@ TEMPLATE_TEST_CASE("cuda: solveZ", "[solvedim:2]", double, float) {
 }
 
 TEMPLATE_TEST_CASE("cuda: padded", "[padded]", double, float) {
+  SECTION("ndims: 1") {
+    test_from_file_padded<TestType>("files/one_dim_large");
+  }
+  SECTION("ndims: 2") {
+    SECTION("solvedim: 0") {
+      test_from_file_padded<TestType>("files/two_dim_large_solve0");
+    }
+    SECTION("solvedim: 1") {
+      test_from_file_padded<TestType>("files/two_dim_large_solve1");
+    }
+  }
   SECTION("ndims: 3") {
     SECTION("solvedim: 0") {
       test_from_file_padded<TestType>("files/three_dim_large_solve0");
