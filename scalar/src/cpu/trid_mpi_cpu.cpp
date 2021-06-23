@@ -833,7 +833,7 @@ inline void solve_reduced_pcr(const MpiSolverParams &params, REAL *aa, REAL *cc,
     }
 
     // Wait for receives to finish
-    MPI_Waitall(2, reqs, MPI_STATUS_IGNORE);
+    MPI_Waitall(4, reqs, MPI_STATUS_IGNORE);
     END_PROFILING("mpi_communication");
 
     // PCR algorithm
@@ -873,11 +873,6 @@ inline void solve_reduced_pcr(const MpiSolverParams &params, REAL *aa, REAL *cc,
       aa_r[id] = -am1 * aa_r[id] * bbi;
       cc_r[id] = -cp1 * cc_r[id] * bbi;
     }
-
-    BEGIN_PROFILING("mpi_communication");
-    // wait for sends to finish
-    MPI_Waitall(2, reqs + 2, MPI_STATUS_IGNORE);
-    END_PROFILING("mpi_communication");
 
     // done
     s = s << 1;
