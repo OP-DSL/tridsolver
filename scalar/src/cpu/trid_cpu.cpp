@@ -315,19 +315,19 @@ void trid_scalar_vec(const REAL *__restrict h_a, const REAL *__restrict h_b,
   //
   // forward pass
   //
-  bb    = ones / SIMD_LOAD_P(&h_b[0 * SIMD_VEC]);
-  cc    = bb * SIMD_LOAD_P(&h_c[0 * SIMD_VEC]);
-  dd    = bb * SIMD_LOAD_P(&h_d[0 * SIMD_VEC]);
+  bb    = ones / SIMD_LOAD_P(&h_b[0]);
+  cc    = bb * SIMD_LOAD_P(&h_c[0]);
+  dd    = bb * SIMD_LOAD_P(&h_d[0]);
   c2[0] = cc;
   d2[0] = dd;
 
   for (i = 1; i < N; i++) {
     ind   = ind + stride;
-    aa    = SIMD_LOAD_P(&h_a[ind * SIMD_VEC]);
-    bb    = SIMD_LOAD_P(&h_b[ind * SIMD_VEC]) - aa * cc;
-    dd    = SIMD_LOAD_P(&h_d[ind * SIMD_VEC]) - aa * dd;
+    aa    = SIMD_LOAD_P(&h_a[ind]);
+    bb    = SIMD_LOAD_P(&h_b[ind]) - aa * cc;
+    dd    = SIMD_LOAD_P(&h_d[ind]) - aa * dd;
     bb    = ones / bb;
-    cc    = bb * SIMD_LOAD_P(&h_c[ind * SIMD_VEC]);
+    cc    = bb * SIMD_LOAD_P(&h_c[ind]);
     dd    = bb * dd;
     c2[i] = cc;
     d2[i] = dd;
@@ -336,17 +336,16 @@ void trid_scalar_vec(const REAL *__restrict h_a, const REAL *__restrict h_b,
   // reverse pass
   //
   if (INC)
-    SIMD_STORE_P(&h_u[ind * SIMD_VEC], SIMD_LOAD_P(&h_u[ind * SIMD_VEC]) + dd);
+    SIMD_STORE_P(&h_u[ind], SIMD_LOAD_P(&h_u[ind]) + dd);
   else
-    SIMD_STORE_P(&h_d[ind * SIMD_VEC], dd);
+    SIMD_STORE_P(&h_d[ind], dd);
   for (i = N - 2; i >= 0; i--) {
     ind = ind - stride;
     dd  = d2[i] - c2[i] * dd;
     if (INC)
-      SIMD_STORE_P(&h_u[ind * SIMD_VEC],
-                   SIMD_LOAD_P(&h_u[ind * SIMD_VEC]) + dd);
+      SIMD_STORE_P(&h_u[ind], SIMD_LOAD_P(&h_u[ind]) + dd);
     else
-      SIMD_STORE_P(&h_d[ind * SIMD_VEC], dd);
+      SIMD_STORE_P(&h_d[ind], dd);
   }
 }
 
@@ -460,8 +459,7 @@ void tridMultiDimBatchSolve(const REAL *a, const REAL *b, const REAL *c,
       for (int i = 0; i < ROUND_DOWN(dims[0], SIMD_VEC); i += SIMD_VEC) {
         int ind = k * pads[0] * pads[1] + i;
         trid_scalar_vec<REAL, VECTOR, INC>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                           &u[ind], sys_size,
-                                           sys_stride / SIMD_VEC);
+                                           &u[ind], sys_size, sys_stride);
       }
     }
     if (ROUND_DOWN(dims[0], SIMD_VEC) <
@@ -487,8 +485,7 @@ void tridMultiDimBatchSolve(const REAL *a, const REAL *b, const REAL *c,
       for (int i = 0; i < ROUND_DOWN(dims[0], SIMD_VEC); i += SIMD_VEC) {
         int ind = j * pads[0] + i;
         trid_scalar_vec<REAL, VECTOR, INC>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                           &u[ind], sys_size,
-                                           (sys_stride) / SIMD_VEC);
+                                           &u[ind], sys_size, sys_stride);
       }
     }
     if (ROUND_DOWN(dims[0], SIMD_VEC) <

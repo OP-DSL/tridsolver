@@ -170,8 +170,7 @@ void test_from_file_scalar_vec(const std::string &file_name) {
                                  d.data(), // d
                                  nullptr,  // u
                                  N,        // N
-                                 stride /
-                                     (SIMD_WIDTH / sizeof(Float))); // stride
+                                 stride);  // stride
 
   require_allclose(mesh.u().data(), d.data(), N, stride);
 }
