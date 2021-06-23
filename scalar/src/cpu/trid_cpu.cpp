@@ -158,7 +158,7 @@ void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
   //
   // forward pass
   //
-  int n = 0;
+  int n         = 0;
   SIMD_REG ones = SIMD_SET1_P(1.0F);
 
   LOAD(a_reg, a, n, sys_pad);
@@ -172,10 +172,10 @@ void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
 #elif FPPREC == 1
   bb = SIMD_DIV_P(ones, bb);
 #endif
-  cc = c_reg[0];
-  cc = SIMD_MUL_P(bb, cc);
-  dd = d_reg[0];
-  dd = SIMD_MUL_P(bb, dd);
+  cc    = c_reg[0];
+  cc    = SIMD_MUL_P(bb, cc);
+  dd    = d_reg[0];
+  dd    = SIMD_MUL_P(bb, dd);
   c2[0] = cc;
   d2[0] = dd;
 
@@ -193,8 +193,8 @@ void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
 #elif FPPREC == 1
     bb = SIMD_DIV_P(ones, bb);
 #endif
-    cc = SIMD_MUL_P(bb, c_reg[i]);
-    dd = SIMD_MUL_P(bb, dd);
+    cc        = SIMD_MUL_P(bb, c_reg[i]);
+    dd        = SIMD_MUL_P(bb, dd);
     c2[n + i] = cc;
     d2[n + i] = dd;
   }
@@ -218,8 +218,8 @@ void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
 #elif FPPREC == 1
       bb = SIMD_DIV_P(ones, bb);
 #endif
-      cc = SIMD_MUL_P(bb, c_reg[i]);
-      dd = SIMD_MUL_P(bb, dd);
+      cc        = SIMD_MUL_P(bb, c_reg[i]);
+      dd        = SIMD_MUL_P(bb, dd);
       c2[n + i] = cc;
       d2[n + i] = dd;
     }
@@ -245,14 +245,14 @@ void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
 #elif FPPREC == 1
       bb = SIMD_DIV_P(ones, bb);
 #endif
-      cc = SIMD_MUL_P(bb, c_reg[i]);
-      dd = SIMD_MUL_P(bb, dd);
+      cc        = SIMD_MUL_P(bb, c_reg[i]);
+      dd        = SIMD_MUL_P(bb, dd);
       c2[n + i] = cc;
       d2[n + i] = dd;
     }
     d_reg[i - 1] = dd;
     for (i = i - 2; i >= 0; i--) {
-      dd = SIMD_SUB_P(d2[n + i], SIMD_MUL_P(c2[n + i], dd));
+      dd       = SIMD_SUB_P(d2[n + i], SIMD_MUL_P(c2[n + i], dd));
       d_reg[i] = dd;
     }
     if (inc) {
@@ -270,7 +270,7 @@ void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
     d_reg[SIMD_VEC - 1] = dd;
     n -= SIMD_VEC;
     for (i = SIMD_VEC - 2; i >= 0; i--) {
-      dd = SIMD_SUB_P(d2[n + i], SIMD_MUL_P(c2[n + i], dd));
+      dd       = SIMD_SUB_P(d2[n + i], SIMD_MUL_P(c2[n + i], dd));
       d_reg[i] = dd;
     }
     if (inc) {
@@ -284,7 +284,7 @@ void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
 
   for (n = (sys_size / SIMD_VEC) * SIMD_VEC - SIMD_VEC; n >= 0; n -= SIMD_VEC) {
     for (i = (SIMD_VEC - 1); i >= 0; i--) {
-      dd = SIMD_SUB_P(d2[n + i], SIMD_MUL_P(c2[n + i], dd));
+      dd       = SIMD_SUB_P(d2[n + i], SIMD_MUL_P(c2[n + i], dd));
       d_reg[i] = dd;
     }
     if (inc) {
@@ -314,20 +314,20 @@ void trid_scalar_vec(const REAL *__restrict h_a, const REAL *__restrict h_b,
   //
   // forward pass
   //
-  bb = ones / SIMD_LOAD_P(&h_b[0*SIMD_VEC]);
-  cc = bb * SIMD_LOAD_P(&h_c[0*SIMD_VEC]);
-  dd = bb * SIMD_LOAD_P(&h_d[0*SIMD_VEC]);
+  bb    = ones / SIMD_LOAD_P(&h_b[0 * SIMD_VEC]);
+  cc    = bb * SIMD_LOAD_P(&h_c[0 * SIMD_VEC]);
+  dd    = bb * SIMD_LOAD_P(&h_d[0 * SIMD_VEC]);
   c2[0] = cc;
   d2[0] = dd;
 
   for (i = 1; i < N; i++) {
-    ind = ind + stride;
-    aa = SIMD_LOAD_P(&h_a[ind*SIMD_VEC]);
-    bb = SIMD_LOAD_P(&h_b[ind*SIMD_VEC]) - aa * cc;
-    dd = SIMD_LOAD_P(&h_d[ind*SIMD_VEC]) - aa * dd;
-    bb = ones / bb;
-    cc = bb * SIMD_LOAD_P(&h_c[ind*SIMD_VEC]);
-    dd = bb * dd;
+    ind   = ind + stride;
+    aa    = SIMD_LOAD_P(&h_a[ind * SIMD_VEC]);
+    bb    = SIMD_LOAD_P(&h_b[ind * SIMD_VEC]) - aa * cc;
+    dd    = SIMD_LOAD_P(&h_d[ind * SIMD_VEC]) - aa * dd;
+    bb    = ones / bb;
+    cc    = bb * SIMD_LOAD_P(&h_c[ind * SIMD_VEC]);
+    dd    = bb * dd;
     c2[i] = cc;
     d2[i] = dd;
   }
@@ -335,16 +335,17 @@ void trid_scalar_vec(const REAL *__restrict h_a, const REAL *__restrict h_b,
   // reverse pass
   //
   if (INC)
-    SIMD_STORE_P(&h_u[ind*SIMD_VEC], SIMD_LOAD_P(&h_u[ind*SIMD_VEC]) + dd);
+    SIMD_STORE_P(&h_u[ind * SIMD_VEC], SIMD_LOAD_P(&h_u[ind * SIMD_VEC]) + dd);
   else
-    SIMD_STORE_P(&h_d[ind*SIMD_VEC], dd);
+    SIMD_STORE_P(&h_d[ind * SIMD_VEC], dd);
   for (i = N - 2; i >= 0; i--) {
     ind = ind - stride;
-    dd = d2[i] - c2[i] * dd;
+    dd  = d2[i] - c2[i] * dd;
     if (INC)
-      SIMD_STORE_P(&h_u[ind*SIMD_VEC], SIMD_LOAD_P(&h_u[ind*SIMD_VEC]) + dd);
+      SIMD_STORE_P(&h_u[ind * SIMD_VEC],
+                   SIMD_LOAD_P(&h_u[ind * SIMD_VEC]) + dd);
     else
-      SIMD_STORE_P(&h_d[ind*SIMD_VEC], dd);
+      SIMD_STORE_P(&h_d[ind * SIMD_VEC], dd);
   }
 }
 
@@ -360,20 +361,20 @@ void trid_scalar(const FP *__restrict a, const FP *__restrict b,
   //
   // forward pass
   //
-  bb = 1.0F / b[0];
-  cc = bb * c[0];
-  dd = bb * d[0];
+  bb    = 1.0F / b[0];
+  cc    = bb * c[0];
+  dd    = bb * d[0];
   c2[0] = cc;
   d2[0] = dd;
 
   for (i = 1; i < N; i++) {
-    ind = ind + stride;
-    aa = a[ind];
-    bb = b[ind] - aa * cc;
-    dd = d[ind] - aa * dd;
-    bb = 1.0F / bb;
-    cc = bb * c[ind];
-    dd = bb * dd;
+    ind   = ind + stride;
+    aa    = a[ind];
+    bb    = b[ind] - aa * cc;
+    dd    = d[ind] - aa * dd;
+    bb    = 1.0F / bb;
+    cc    = bb * c[ind];
+    dd    = bb * dd;
     c2[i] = cc;
     d2[i] = dd;
   }
@@ -386,7 +387,7 @@ void trid_scalar(const FP *__restrict a, const FP *__restrict b,
     d[ind] = dd;
   for (i = N - 2; i >= 0; i--) {
     ind = ind - stride;
-    dd = d2[i] - c2[i] * dd;
+    dd  = d2[i] - c2[i] * dd;
     if (INC)
       u[ind] += dd;
     else
@@ -403,19 +404,21 @@ void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
 
   int dims[3] = {1, 1, 1};
   int pads[3] = {1, 1, 1};
-  for(int i = 0; i < ndim; i++) {
+  for (int i = 0; i < ndim; i++) {
     dims[i] = dims_p[i];
     pads[i] = pads_p[i];
   }
   if (solvedim == 0) {
     int sys_stride = 1; // Stride between the consecutive elements of a system
-    int sys_size = dims[0]; // Size (length) of a system
+    int sys_size   = dims[0]; // Size (length) of a system
     int sys_pads = pads[0]; // Padded sizes along each ndim number of dimensions
     int sys_n_lin =
         dims[1] * dims[2]; // = cumdims[solve] // Number of systems to be solved
 
     // FIXME fix and re-enable vectorisation in x-dim
-    if ((sys_pads % SIMD_VEC) == 0  && ((long)a & 0x3F)==0 && ((long)b & 0x3F)==0 && ((long)c & 0x3F)==0 && ((long)d & 0x3F)==0 && ((long)u & 0x3F)==0) {
+    if ((sys_pads % SIMD_VEC) == 0 && ((long)a & 0x3F) == 0 &&
+        ((long)b & 0x3F) == 0 && ((long)c & 0x3F) == 0 &&
+        ((long)d & 0x3F) == 0 && ((long)u & 0x3F) == 0) {
 #pragma omp parallel for collapse(2)
       for (int k = 0; k < dims[2]; k++) {
         for (int j = 0; j < ROUND_DOWN(dims[1], SIMD_VEC); j += SIMD_VEC) {

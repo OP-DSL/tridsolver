@@ -40,11 +40,11 @@
 
 #ifdef __AVX__
 // void transpose8x8_intrinsic(__m256 *ymm ) {
-#if defined(__clang__)
+#  if defined(__clang__)
 inline void transpose8x8_intrinsic(__m256 ymm[8]) {
-#else
+#  else
 inline void transpose8x8_intrinsic(__m256 __restrict__ ymm[8]) {
-#endif
+#  endif
   __m256 tmp[8];
 
   tmp[0] = _mm256_unpacklo_ps(ymm[0], ymm[1]);
@@ -85,11 +85,11 @@ inline void transpose8x8_intrinsic(__m256 __restrict__ ymm[8]) {
 }
 
 // void transpose4x4_intrinsic(__m256d *ymm ) {
-#if defined(__clang__)
+#  if defined(__clang__)
 inline void transpose4x4_intrinsic(__m256d ymm[4]) {
-#else
+#  else
 inline void transpose4x4_intrinsic(__m256d __restrict__ ymm[4]) {
-#endif
+#  endif
   __m256d tmp[4];
   tmp[0] = _mm256_permute2f128_pd(ymm[0], ymm[2], 0b00100000);
   tmp[1] = _mm256_permute2f128_pd(ymm[1], ymm[3], 0b00100000);
@@ -113,7 +113,7 @@ transpose16x16_intrinsic(__m512 __restrict__ zmm[16]) {
 // Transpose 2x2 blocks (block size is 8x8) within 16x16 matrix
 #    pragma unroll(16 / 2)
   for (int i = 0; i < 16 / 2; ++i) {
-    tmp[i] = _mm512_mask_permute4f128_ps(zmm[i], 0b1111111100000000,
+    tmp[i]            = _mm512_mask_permute4f128_ps(zmm[i], 0b1111111100000000,
                                          zmm[(16 / 2) + i], _MM_PERM_BACD);
     tmp[(16 / 2) + i] = _mm512_mask_permute4f128_ps(
         zmm[(16 / 2) + i], 0b0000000011111111, zmm[i], _MM_PERM_BADC);
