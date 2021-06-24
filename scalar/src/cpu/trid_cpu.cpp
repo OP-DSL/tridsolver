@@ -41,34 +41,10 @@
 #include <stdio.h>
 #define ROUND_DOWN(N, step) (((N) / (step)) * step)
 
-#ifdef __MIC__ // Or #ifdef __KNC__ - more general option, future proof,
-               // __INTEL_OFFLOAD is another option
-
-__attribute__((target(mic))) inline void
-load(SIMD_REG *__restrict__ dst, const FP *__restrict__ src, int n, int pad);
-
-__attribute__((target(mic))) inline void
-store(FP *__restrict__ dst, SIMD_REG *__restrict__ src, int n, int pad);
-
-__attribute__((target(mic))) void
-trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
-                 const FP *__restrict c, FP *__restrict d, FP *__restrict u,
-                 int sys_size, int sys_pad, int stride);
-
-__attribute__((target(mic))) void
-trid_scalar_vec(const REAL *__restrict h_a, const REAL *__restrict h_b,
-                const REAL *__restrict h_c, REAL *__restrict h_d,
-                REAL *__restrict h_u, int N, int stride);
-
-__attribute__((target(mic))) void
-trid_scalar(const FP *__restrict a, const FP *__restrict b,
-            const FP *__restrict c, FP *__restrict d, FP *__restrict u, int N,
-            int stride);
-
-#endif
-
 inline void load(SIMD_REG *__restrict__ dst, const FP *__restrict__ src, int n,
                  int pad) {
+  // FIXME src may not be aligned, shouldn't we use SIMD_LOAD_P (stores
+  // similarly)
   __assume_aligned(src, SIMD_WIDTH);
   __assume_aligned(dst, SIMD_WIDTH);
   for (int i = 0; i < SIMD_VEC; i++) {
@@ -85,7 +61,7 @@ inline void store(FP *__restrict__ dst, SIMD_REG *__restrict__ src, int n,
   }
 }
 
-#ifdef __MIC__
+#ifdef __AVX512F__
 #  if FPPREC == 0
 #    define LOAD(reg, array, n, N)                                             \
       load(reg, array, n, N);                                                  \
@@ -182,7 +158,7 @@ void trid_x_transpose(const REAL *__restrict a, const REAL *__restrict b,
 
   for (i = 1; i < SIMD_VEC; i++) {
     aa = a_reg[i];
-#ifdef __MIC__
+#ifdef __AVX512F__
     bb = SIMD_FNMADD_P(aa, cc, b_reg[i]);
     dd = SIMD_FNMADD_P(aa, dd, d_reg[i]);
 #else
@@ -207,7 +183,7 @@ void trid_x_transpose(const REAL *__restrict a, const REAL *__restrict b,
     LOAD(d_reg, d, n, sys_pad);
     for (i = 0; i < SIMD_VEC; i++) {
       aa = a_reg[i];
-#ifdef __MIC__
+#ifdef __AVX512F__
       bb = SIMD_FNMADD_P(aa, cc, b_reg[i]);
       dd = SIMD_FNMADD_P(aa, dd, d_reg[i]);
 #else
