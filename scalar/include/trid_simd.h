@@ -98,7 +98,7 @@
 #    define SIMD_SUB_EPI       _mm512_sub_epi32
 #    define SIMD_MUL_P         _mm512_mul_ps
 #    define SIMD_DIV_P         _mm512_div_ps
-#    define SIMD_RCP_P         _mm512_rcp28_ps
+#    define SIMD_RCP_P         _mm512_rcp14_ps
 #  elif FPPREC == 1
 // Xeon Phi double
 #    ifdef __INTEL_COMPILER
@@ -125,6 +125,7 @@
 #    define SIMD_SUB_EPI       _mm512_sub_epi32
 #    define SIMD_MUL_P         _mm512_mul_pd
 #    define SIMD_DIV_P         _mm512_div_pd
+#    define SIMD_RCP_P         _mm512_rcp14_pd
 #  else
 #    error "Macro definition FPPREC unrecognized for Xeon/Xeon Phi processors"
 #  endif
