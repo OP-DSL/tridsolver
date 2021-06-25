@@ -1,3 +1,4 @@
+#include <functional>
 #define CATCH_CONFIG_NOSTDOUT
 #include "catch.hpp"
 #include "catch_mpi_outputs.hpp"
@@ -57,8 +58,12 @@ void test_solver_from_file(const std::string &file_name) {
   }
 
   // Simulate distributed environment: only load our data
-  AlignedArray<Float, 1> a(domain_size), b(domain_size), c(domain_size),
-      u(domain_size), d(domain_size);
+  std::vector<Float> a, b, c, u, d;
+  a.reserve(domain_size);
+  b.reserve(domain_size);
+  c.reserve(domain_size);
+  d.reserve(domain_size);
+  u.reserve(domain_size);
   copy_strided(mesh.a(), a, local_sizes, domain_offsets, global_strides,
                local_sizes.size() - 1);
   copy_strided(mesh.b(), b, local_sizes, domain_offsets, global_strides,
@@ -69,7 +74,6 @@ void test_solver_from_file(const std::string &file_name) {
                local_sizes.size() - 1);
   copy_strided(mesh.u(), u, local_sizes, domain_offsets, global_strides,
                local_sizes.size() - 1);
-
   // Solve the equations
   tridStridedBatchWrapper<Float>(params, a.data(), b.data(), c.data(), d.data(),
                                  nullptr, mesh.dims().size(), mesh.solve_dim(),
@@ -122,8 +126,12 @@ void test_solver_from_file_padded(const std::string &file_name) {
   }
 
   // Simulate distributed environment: only load our data
-  AlignedArray<Float, 1> a(domain_size), b(domain_size), c(domain_size),
-      u(domain_size), d(domain_size);
+  std::vector<Float> a, b, c, u, d;
+  a.reserve(domain_size);
+  b.reserve(domain_size);
+  c.reserve(domain_size);
+  d.reserve(domain_size);
+  u.reserve(domain_size);
   copy_strided(mesh.a(), a, local_sizes, domain_offsets, global_strides,
                local_sizes.size() - 1);
   copy_strided(mesh.b(), b, local_sizes, domain_offsets, global_strides,
@@ -154,8 +162,12 @@ void test_solver_from_file_padded(const std::string &file_name) {
   copy_to_padded_array(d, d_p, local_sizes);
   copy_to_padded_array(u, u_p, local_sizes);
 
-  int offset_to_first_element =
-      padded_dims[1] * padded_dims[0] + padded_dims[0] + 1;
+  int offset_to_first_element = 1;
+  for (size_t i = 0; i < padded_dims.size() - 1; ++i) {
+    offset_to_first_element +=
+        std::accumulate(padded_dims.begin(), padded_dims.begin() + i + 1, 1,
+                        std::multiplies<int>());
+  }
 
   // Solve the equations
   tridStridedBatchWrapper<Float>(params, a_p.data() + offset_to_first_element,
@@ -166,7 +178,7 @@ void test_solver_from_file_padded(const std::string &file_name) {
                                  local_sizes.data(), padded_dims.data());
 
   // Check result
-  require_allclose_padded(u_p, d_p);
+  require_allclose(u_p, d_p);
 }
 
 enum ResDest { assign = 0, increment };
@@ -245,6 +257,20 @@ TEMPLATE_TEST_CASE_SIG("mpi: solver large padded", "[large][padded]",
                          MpiSolverParams::MPICommStrategy strategy),
                         TestType, INC, strategy),
                        PARAM_COMBOS) {
+  SECTION("ndims: 1") {
+    test_solver_from_file_padded<TestType, INC, strategy>(
+        "files/one_dim_large");
+  }
+  SECTION("ndims: 2") {
+    SECTION("solvedim: 0") {
+      test_solver_from_file_padded<TestType, INC, strategy>(
+          "files/two_dim_large_solve0");
+    }
+    SECTION("solvedim: 1") {
+      test_solver_from_file_padded<TestType, INC, strategy>(
+          "files/two_dim_large_solve1");
+    }
+  }
   SECTION("ndims: 3") {
     SECTION("solvedim: 0") {
       test_solver_from_file_padded<TestType, INC, strategy>(

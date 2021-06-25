@@ -10,14 +10,14 @@
 template <typename Float>
 tridStatus_t tridStridedBatchWrapper(const Float *a, const Float *b,
                                      const Float *c, Float *d, Float *u,
-                                     int ndim, int solvedim, int *dims,
-                                     int *pads);
+                                     int ndim, int solvedim, const int *dims,
+                                     const int *pads);
 
 template <>
 tridStatus_t tridStridedBatchWrapper<float>(const float *a, const float *b,
                                             const float *c, float *d, float *u,
-                                            int ndim, int solvedim, int *dims,
-                                            int *pads) {
+                                            int ndim, int solvedim,
+                                            const int *dims, const int *pads) {
   return tridSmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads);
 }
 
@@ -25,7 +25,7 @@ template <>
 tridStatus_t tridStridedBatchWrapper<double>(const double *a, const double *b,
                                              const double *c, double *d,
                                              double *u, int ndim, int solvedim,
-                                             int *dims, int *pads) {
+                                             const int *dims, const int *pads) {
   return tridDmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads);
 }
 
@@ -66,32 +66,72 @@ void trid_scalar_vec_wrapper<double>(const double *a, const double *b,
 
 template <typename Float> void test_from_file(const std::string &file_name) {
   MeshLoader<Float> mesh(file_name);
-  AlignedArray<Float, 1> d(mesh.d());
-  std::vector<int> dims = mesh.dims(); // Because it isn't const in the lib
-  // Fix num_dims workaround
-  while (dims.size() < 3) {
-    dims.push_back(1);
-  }
+  std::vector<Float> d(mesh.d());
 
   const tridStatus_t status =
-      tridStridedBatchWrapper<Float>(mesh.a().data(),    // a
-                                     mesh.b().data(),    // b
-                                     mesh.c().data(),    // c
-                                     d.data(),           // d
-                                     nullptr,            // u
-                                     mesh.dims().size(), // ndim
-                                     mesh.solve_dim(),   // solvedim
-                                     dims.data(),        // dims
-                                     dims.data());       // pads
+      tridStridedBatchWrapper<Float>(mesh.a().data(),     // a
+                                     mesh.b().data(),     // b
+                                     mesh.c().data(),     // c
+                                     d.data(),            // d
+                                     nullptr,             // u
+                                     mesh.dims().size(),  // ndim
+                                     mesh.solve_dim(),    // solvedim
+                                     mesh.dims().data(),  // dims
+                                     mesh.dims().data()); // pads
 
   CHECK(status == TRID_STATUS_SUCCESS);
   require_allclose(mesh.u(), d);
 }
 
 template <typename Float>
+void test_from_file_padded(const std::string &file_name) {
+  MeshLoader<Float> mesh(file_name);
+
+  std::vector<int> padded_dims = mesh.dims();
+  int padded_size              = 1;
+  for (size_t i = 0; i < padded_dims.size(); i++) {
+    padded_dims[i] += 2;
+    padded_size *= padded_dims[i];
+  }
+
+  std::vector<Float> a_p(padded_size);
+  std::vector<Float> b_p(padded_size);
+  std::vector<Float> c_p(padded_size);
+  std::vector<Float> d_p(padded_size);
+  std::vector<Float> u_p(padded_size);
+
+  copy_to_padded_array(mesh.a(), a_p, mesh.dims());
+  copy_to_padded_array(mesh.b(), b_p, mesh.dims());
+  copy_to_padded_array(mesh.c(), c_p, mesh.dims());
+  copy_to_padded_array(mesh.d(), d_p, mesh.dims());
+  copy_to_padded_array(mesh.u(), u_p, mesh.dims());
+
+  int offset_to_first_element = 1;
+  for (size_t i = 0; i < padded_dims.size() - 1; ++i) {
+    offset_to_first_element +=
+        std::accumulate(padded_dims.begin(), padded_dims.begin() + i + 1, 1,
+                        std::multiplies<int>());
+  }
+
+  const tridStatus_t status =
+      tridStridedBatchWrapper<Float>(a_p.data() + offset_to_first_element, // a
+                                     b_p.data() + offset_to_first_element, // b
+                                     c_p.data() + offset_to_first_element, // c
+                                     d_p.data() + offset_to_first_element, // d
+                                     nullptr,                              // u
+                                     mesh.dims().size(),  // ndim
+                                     mesh.solve_dim(),    // solvedim
+                                     mesh.dims().data(),  // dims
+                                     padded_dims.data()); // pads
+
+  CHECK(status == TRID_STATUS_SUCCESS);
+  require_allclose(u_p, d_p);
+}
+
+template <typename Float>
 void test_from_file_scalar(const std::string &file_name) {
   MeshLoader<Float> mesh(file_name);
-  AlignedArray<Float, 1> d(mesh.d());
+  std::vector<Float> d(mesh.d());
 
   int stride = 1;
   for (size_t i = 0; i < mesh.solve_dim(); ++i) {
@@ -112,7 +152,10 @@ void test_from_file_scalar(const std::string &file_name) {
 
 template <typename Float>
 void test_from_file_scalar_vec(const std::string &file_name) {
-  MeshLoader<Float, SIMD_WIDTH> mesh(file_name);
+  MeshLoader<Float> mesh(file_name);
+  AlignedArray<Float, SIMD_WIDTH> a(mesh.a());
+  AlignedArray<Float, SIMD_WIDTH> b(mesh.b());
+  AlignedArray<Float, SIMD_WIDTH> c(mesh.c());
   AlignedArray<Float, SIMD_WIDTH> d(mesh.d());
 
   int stride = 1;
@@ -121,16 +164,15 @@ void test_from_file_scalar_vec(const std::string &file_name) {
   }
   const size_t N = mesh.dims()[mesh.solve_dim()];
 
-  trid_scalar_vec_wrapper<Float>(mesh.a().data(), // a
-                                 mesh.b().data(), // b
-                                 mesh.c().data(), // c
-                                 d.data(),        // d
-                                 nullptr,         // u
-                                 N,               // N
-                                 stride /
-                                     (SIMD_WIDTH / sizeof(Float))); // stride
+  trid_scalar_vec_wrapper<Float>(a.data(), // a
+                                 b.data(), // b
+                                 c.data(), // c
+                                 d.data(), // d
+                                 nullptr,  // u
+                                 N,        // N
+                                 stride);  // stride
 
-  require_allclose(mesh.u(), d, N, stride);
+  require_allclose(mesh.u().data(), d.data(), N, stride);
 }
 
 TEST_CASE("cpu: strided batch small", "[small]") {
@@ -253,6 +295,61 @@ TEMPLATE_TEST_CASE("cpu: trid_scalar_vec large", "[large]", double, float) {
     }
     SECTION("solvedim: 2") {
       test_from_file_scalar_vec<TestType>("files/three_dim_large_solve2");
+    }
+  }
+}
+
+TEST_CASE("cpu: strided batch small padded", "[small][padded]") {
+  SECTION("double") {
+    SECTION("ndims: 1") {
+      test_from_file_padded<double>("files/one_dim_small");
+    }
+    SECTION("ndims: 2") {
+      SECTION("solvedim: 0") {
+        test_from_file_padded<double>("files/two_dim_small_solve0");
+      }
+      SECTION("solvedim: 1") {
+        test_from_file_padded<double>("files/two_dim_small_solve1");
+      }
+    }
+  }
+  SECTION("float") {
+    SECTION("ndims: 1") { test_from_file_padded<float>("files/one_dim_small"); }
+    SECTION("ndims: 2") {
+      SECTION("solvedim: 0") {
+        test_from_file_padded<float>("files/two_dim_small_solve0");
+      }
+      // This won't work because the array size is 8 and we don't test with
+      // padding at the end yet
+      /* SECTION("solvedim: 1") { */
+      /*  test_from_file<float>("files/two_dim_small_solve1"); */
+      /* } */
+    }
+  }
+}
+
+TEMPLATE_TEST_CASE("cpu: solver large padded", "[large][padded]", double,
+                   float) {
+  SECTION("ndims: 1") {
+    test_from_file_padded<TestType>("files/one_dim_large");
+  }
+  SECTION("ndims: 2") {
+    SECTION("solvedim: 0") {
+      test_from_file_padded<TestType>("files/two_dim_large_solve0");
+    }
+    SECTION("solvedim: 1") {
+      test_from_file_padded<TestType>("files/two_dim_large_solve1");
+    }
+  }
+  SECTION("ndims: 3") {
+    SECTION("solvedim: 0") {
+      test_from_file_padded<TestType>("files/three_dim_large_solve0");
+    }
+    SECTION("solvedim: 1") {
+      test_from_file_padded<TestType>("files/three_dim_large_solve1");
+    }
+    SECTION("solvedim: 2") {
+      test_from_file_padded<TestType>("files/three_dim_large_solve2");
     }
   }
 }

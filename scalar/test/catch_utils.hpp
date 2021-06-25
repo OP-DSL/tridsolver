@@ -1,5 +1,6 @@
 #ifndef CATCH_UTIL_FUNCTIONS_INCLUDED
 #define CATCH_UTIL_FUNCTIONS_INCLUDED
+#include <functional>
 #include <iomanip>
 
 #include "catch.hpp"
@@ -59,9 +60,9 @@ void require_allclose(const Float *expected, const Float *actual, size_t N,
 }
 
 template <typename Float>
-void require_allclose_padded(const std::vector<Float> &expected,
-                             const std::vector<Float> &actual, size_t N = 0,
-                             int stride = 1) {
+void require_allclose(const std::vector<Float> &expected,
+                      const std::vector<Float> &actual, size_t N = 0,
+                      int stride = 1) {
   if (N == 0) {
     assert(expected.size() == actual.size());
     N = expected.size();
@@ -83,28 +84,55 @@ void require_allclose_padded(const std::vector<Float> &expected,
 }
 
 // Adds 1 depth of padding to all dimensions
-template <typename Float, unsigned Align>
-void copy_to_padded_array(const AlignedArray<Float, Align> &original,
-                          std::vector<Float> &padded, std::vector<int> &dims) {
-  assert(dims.size() == 3);
+template <typename Float>
+void copy_to_padded_array(const std::vector<Float> &original,
+                          std::vector<Float> &padded,
+                          const std::vector<int> &dims) {
+  assert(dims.size() <= 3);
   std::vector<int> padded_dims = dims;
   for (size_t i = 0; i < padded_dims.size(); i++) {
     // -1 and 1 padding
     padded_dims[i] += 2;
   }
-  assert(padded.size() == padded_dims[0] * padded_dims[1] * padded_dims[2]);
+  assert(padded.size() == std::accumulate(padded_dims.begin(),
+                                          padded_dims.end(), 1ul,
+                                          std::multiplies<size_t>()));
 
-  for (int z = -1; z < dims[2] + 1; z++) {
+  if (dims.size() == 1ul) {
+    for (int x = -1; x < dims[0] + 1; x++) {
+      int array_index = x + 1;
+      if (x == -1 || x == dims[0]) {
+        padded[array_index] = 0.0;
+      } else {
+        int aligned_array_index = x;
+        padded[array_index]     = original[aligned_array_index];
+      }
+    }
+  } else if (dims.size() == 2ul) {
     for (int y = -1; y < dims[1] + 1; y++) {
       for (int x = -1; x < dims[0] + 1; x++) {
-        int array_index = (z + 1) * padded_dims[1] * padded_dims[0] +
-                          (y + 1) * padded_dims[0] + (x + 1);
-        if (x == -1 || x == dims[0] || y == -1 || y == dims[1] || z == -1 ||
-            z == dims[2]) {
+        int array_index = (y + 1) * padded_dims[0] + (x + 1);
+        if (x == -1 || x == dims[0] || y == -1 || y == dims[1]) {
           padded[array_index] = 0.0;
         } else {
-          int aligned_array_index = z * dims[1] * dims[0] + y * dims[0] + x;
+          int aligned_array_index = y * dims[0] + x;
           padded[array_index]     = original[aligned_array_index];
+        }
+      }
+    }
+  } else {
+    for (int z = -1; z < dims[2] + 1; z++) {
+      for (int y = -1; y < dims[1] + 1; y++) {
+        for (int x = -1; x < dims[0] + 1; x++) {
+          int array_index = (z + 1) * padded_dims[1] * padded_dims[0] +
+                            (y + 1) * padded_dims[0] + (x + 1);
+          if (x == -1 || x == dims[0] || y == -1 || y == dims[1] || z == -1 ||
+              z == dims[2]) {
+            padded[array_index] = 0.0;
+          } else {
+            int aligned_array_index = z * dims[1] * dims[0] + y * dims[0] + x;
+            padded[array_index]     = original[aligned_array_index];
+          }
         }
       }
     }
@@ -119,9 +147,28 @@ void copy_to_padded_array(const AlignedArray<Float, Align> &original,
 //
 // `global_strides` is the product of the all global sizes in the lower
 // dimensions (e.g. `global_strides[0] == 1`).
-template <typename Float, unsigned Alignment>
+template <typename Float, int Alignment>
 void copy_strided(const AlignedArray<Float, Alignment> &src,
                   AlignedArray<Float, Alignment> &dest,
+                  const std::vector<int> &local_sizes,
+                  const std::vector<int> &offsets,
+                  const std::vector<int> &global_strides, size_t dim,
+                  int global_offset = 0) {
+  if (dim == 0) {
+    for (int i = 0; i < local_sizes[dim]; ++i) {
+      dest.push_back(src[global_offset + offsets[dim] + i]);
+    }
+  } else {
+    for (int i = 0; i < local_sizes[dim]; ++i) {
+      const int new_global_offset =
+          global_offset + (offsets[dim] + i) * global_strides[dim];
+      copy_strided(src, dest, local_sizes, offsets, global_strides, dim - 1,
+                   new_global_offset);
+    }
+  }
+}
+template <typename Float>
+void copy_strided(const std::vector<Float> &src, std::vector<Float> &dest,
                   const std::vector<int> &local_sizes,
                   const std::vector<int> &offsets,
                   const std::vector<int> &global_strides, size_t dim,

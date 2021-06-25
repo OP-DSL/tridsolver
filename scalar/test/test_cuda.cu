@@ -15,7 +15,7 @@ tridStatus_t tridStridedBatchWrapper<float>(const float *a, const float *b,
                                             const float *c, float *d, float *u,
                                             int ndim, int solvedim, int *dims,
                                             int *pads) {
-  int opts[] = {0, 0, 0};
+  int opts[] = {ndim == 1 ? 1 : 0, 0, 0};
   return tridSmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads, opts,
                                0);
 }
@@ -25,7 +25,7 @@ tridStatus_t tridStridedBatchWrapper<double>(const double *a, const double *b,
                                              const double *c, double *d,
                                              double *u, int ndim, int solvedim,
                                              int *dims, int *pads) {
-  int opts[] = {0, 0, 0};
+  int opts[] = {ndim == 1 ? 1 : 0, 0, 0};
   return tridDmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads, opts,
                                0);
 }
@@ -51,7 +51,7 @@ template <typename Float> void test_from_file(const std::string &file_name) {
 
   CHECK(status == TRID_STATUS_SUCCESS);
 
-  AlignedArray<Float, 1> d(mesh.d());
+  std::vector<Float> d(mesh.d().size());
   cudaMemcpy(d.data(), device_mesh.d().data(), d.size() * sizeof(Float),
              cudaMemcpyDeviceToHost);
   require_allclose(mesh.u(), d);
@@ -116,7 +116,7 @@ void test_from_file_padded(const std::string &file_name) {
   cudaFree(b_d);
   cudaFree(c_d);
   cudaFree(d_d);
-  require_allclose_padded(u, d);
+  require_allclose(u, d);
 }
 
 TEMPLATE_TEST_CASE("cuda: solveX", "[solvedim:0]", double, float) {
@@ -146,6 +146,17 @@ TEMPLATE_TEST_CASE("cuda: solveZ", "[solvedim:2]", double, float) {
 }
 
 TEMPLATE_TEST_CASE("cuda: padded", "[padded]", double, float) {
+  SECTION("ndims: 1") {
+    test_from_file_padded<TestType>("files/one_dim_large");
+  }
+  SECTION("ndims: 2") {
+    SECTION("solvedim: 0") {
+      test_from_file_padded<TestType>("files/two_dim_large_solve0");
+    }
+    SECTION("solvedim: 1") {
+      test_from_file_padded<TestType>("files/two_dim_large_solve1");
+    }
+  }
   SECTION("ndims: 3") {
     SECTION("solvedim: 0") {
       test_from_file_padded<TestType>("files/three_dim_large_solve0");

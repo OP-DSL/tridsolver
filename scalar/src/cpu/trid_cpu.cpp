@@ -123,10 +123,11 @@ inline void store(FP *__restrict__ dst, SIMD_REG *__restrict__ src, int n,
 // tridiagonal-x solver; vectorised solution where the system dimension is the
 // same as the vectorisation dimension
 //
-template <int inc>
-void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
-                      const FP *__restrict c, FP *__restrict d,
-                      FP *__restrict u, int sys_size, int sys_pad, int stride) {
+template <typename REAL, bool INC>
+void trid_x_transpose(const REAL *__restrict a, const REAL *__restrict b,
+                      const REAL *__restrict c, REAL *__restrict d,
+                      REAL *__restrict u, int sys_size, int sys_pad,
+                      int stride) {
 
   __assume_aligned(a, SIMD_WIDTH);
   __assume_aligned(b, SIMD_WIDTH);
@@ -158,7 +159,7 @@ void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
   //
   // forward pass
   //
-  int n = 0;
+  int n         = 0;
   SIMD_REG ones = SIMD_SET1_P(1.0F);
 
   LOAD(a_reg, a, n, sys_pad);
@@ -172,10 +173,10 @@ void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
 #elif FPPREC == 1
   bb = SIMD_DIV_P(ones, bb);
 #endif
-  cc = c_reg[0];
-  cc = SIMD_MUL_P(bb, cc);
-  dd = d_reg[0];
-  dd = SIMD_MUL_P(bb, dd);
+  cc    = c_reg[0];
+  cc    = SIMD_MUL_P(bb, cc);
+  dd    = d_reg[0];
+  dd    = SIMD_MUL_P(bb, dd);
   c2[0] = cc;
   d2[0] = dd;
 
@@ -193,8 +194,8 @@ void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
 #elif FPPREC == 1
     bb = SIMD_DIV_P(ones, bb);
 #endif
-    cc = SIMD_MUL_P(bb, c_reg[i]);
-    dd = SIMD_MUL_P(bb, dd);
+    cc        = SIMD_MUL_P(bb, c_reg[i]);
+    dd        = SIMD_MUL_P(bb, dd);
     c2[n + i] = cc;
     d2[n + i] = dd;
   }
@@ -218,8 +219,8 @@ void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
 #elif FPPREC == 1
       bb = SIMD_DIV_P(ones, bb);
 #endif
-      cc = SIMD_MUL_P(bb, c_reg[i]);
-      dd = SIMD_MUL_P(bb, dd);
+      cc        = SIMD_MUL_P(bb, c_reg[i]);
+      dd        = SIMD_MUL_P(bb, dd);
       c2[n + i] = cc;
       d2[n + i] = dd;
     }
@@ -245,17 +246,17 @@ void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
 #elif FPPREC == 1
       bb = SIMD_DIV_P(ones, bb);
 #endif
-      cc = SIMD_MUL_P(bb, c_reg[i]);
-      dd = SIMD_MUL_P(bb, dd);
+      cc        = SIMD_MUL_P(bb, c_reg[i]);
+      dd        = SIMD_MUL_P(bb, dd);
       c2[n + i] = cc;
       d2[n + i] = dd;
     }
     d_reg[i - 1] = dd;
     for (i = i - 2; i >= 0; i--) {
-      dd = SIMD_SUB_P(d2[n + i], SIMD_MUL_P(c2[n + i], dd));
+      dd       = SIMD_SUB_P(d2[n + i], SIMD_MUL_P(c2[n + i], dd));
       d_reg[i] = dd;
     }
-    if (inc) {
+    if (INC) {
       LOAD(u_reg, u, n, sys_pad);
       for (int j = 0; j < SIMD_VEC; j++)
         u_reg[j] = SIMD_ADD_P(u_reg[j], d_reg[j]);
@@ -270,10 +271,10 @@ void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
     d_reg[SIMD_VEC - 1] = dd;
     n -= SIMD_VEC;
     for (i = SIMD_VEC - 2; i >= 0; i--) {
-      dd = SIMD_SUB_P(d2[n + i], SIMD_MUL_P(c2[n + i], dd));
+      dd       = SIMD_SUB_P(d2[n + i], SIMD_MUL_P(c2[n + i], dd));
       d_reg[i] = dd;
     }
-    if (inc) {
+    if (INC) {
       LOAD(u_reg, u, n, sys_pad);
       for (int j = 0; j < SIMD_VEC; j++)
         u_reg[j] = SIMD_ADD_P(u_reg[j], d_reg[j]);
@@ -284,10 +285,10 @@ void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
 
   for (n = (sys_size / SIMD_VEC) * SIMD_VEC - SIMD_VEC; n >= 0; n -= SIMD_VEC) {
     for (i = (SIMD_VEC - 1); i >= 0; i--) {
-      dd = SIMD_SUB_P(d2[n + i], SIMD_MUL_P(c2[n + i], dd));
+      dd       = SIMD_SUB_P(d2[n + i], SIMD_MUL_P(c2[n + i], dd));
       d_reg[i] = dd;
     }
-    if (inc) {
+    if (INC) {
       LOAD(u_reg, u, n, sys_pad);
       for (int j = 0; j < SIMD_VEC; j++)
         u_reg[j] = SIMD_ADD_P(u_reg[j], d_reg[j]);
@@ -301,7 +302,7 @@ void trid_x_transpose(const FP *__restrict a, const FP *__restrict b,
 // tridiagonal solver; vectorised solution where the system dimension is not
 // the same as the vectorisation dimension
 //
-template <typename REAL, typename VECTOR, int INC>
+template <typename REAL, typename VECTOR, bool INC>
 void trid_scalar_vec(const REAL *__restrict h_a, const REAL *__restrict h_b,
                      const REAL *__restrict h_c, REAL *__restrict h_d,
                      REAL *__restrict h_u, int N, int stride) {
@@ -314,20 +315,20 @@ void trid_scalar_vec(const REAL *__restrict h_a, const REAL *__restrict h_b,
   //
   // forward pass
   //
-  bb = ones / SIMD_LOAD_P(&h_b[0*SIMD_VEC]);
-  cc = bb * SIMD_LOAD_P(&h_c[0*SIMD_VEC]);
-  dd = bb * SIMD_LOAD_P(&h_d[0*SIMD_VEC]);
+  bb    = ones / SIMD_LOAD_P(&h_b[0]);
+  cc    = bb * SIMD_LOAD_P(&h_c[0]);
+  dd    = bb * SIMD_LOAD_P(&h_d[0]);
   c2[0] = cc;
   d2[0] = dd;
 
   for (i = 1; i < N; i++) {
-    ind = ind + stride;
-    aa = SIMD_LOAD_P(&h_a[ind*SIMD_VEC]);
-    bb = SIMD_LOAD_P(&h_b[ind*SIMD_VEC]) - aa * cc;
-    dd = SIMD_LOAD_P(&h_d[ind*SIMD_VEC]) - aa * dd;
-    bb = ones / bb;
-    cc = bb * SIMD_LOAD_P(&h_c[ind*SIMD_VEC]);
-    dd = bb * dd;
+    ind   = ind + stride;
+    aa    = SIMD_LOAD_P(&h_a[ind]);
+    bb    = SIMD_LOAD_P(&h_b[ind]) - aa * cc;
+    dd    = SIMD_LOAD_P(&h_d[ind]) - aa * dd;
+    bb    = ones / bb;
+    cc    = bb * SIMD_LOAD_P(&h_c[ind]);
+    dd    = bb * dd;
     c2[i] = cc;
     d2[i] = dd;
   }
@@ -335,45 +336,45 @@ void trid_scalar_vec(const REAL *__restrict h_a, const REAL *__restrict h_b,
   // reverse pass
   //
   if (INC)
-    SIMD_STORE_P(&h_u[ind*SIMD_VEC], SIMD_LOAD_P(&h_u[ind*SIMD_VEC]) + dd);
+    SIMD_STORE_P(&h_u[ind], SIMD_LOAD_P(&h_u[ind]) + dd);
   else
-    SIMD_STORE_P(&h_d[ind*SIMD_VEC], dd);
+    SIMD_STORE_P(&h_d[ind], dd);
   for (i = N - 2; i >= 0; i--) {
     ind = ind - stride;
-    dd = d2[i] - c2[i] * dd;
+    dd  = d2[i] - c2[i] * dd;
     if (INC)
-      SIMD_STORE_P(&h_u[ind*SIMD_VEC], SIMD_LOAD_P(&h_u[ind*SIMD_VEC]) + dd);
+      SIMD_STORE_P(&h_u[ind], SIMD_LOAD_P(&h_u[ind]) + dd);
     else
-      SIMD_STORE_P(&h_d[ind*SIMD_VEC], dd);
+      SIMD_STORE_P(&h_d[ind], dd);
   }
 }
 
 //
 // tridiagonal solver; simple non-vectorised solution
 //
-template <int INC>
-void trid_scalar(const FP *__restrict a, const FP *__restrict b,
-                 const FP *__restrict c, FP *__restrict d, FP *__restrict u,
-                 int N, int stride) {
+template <typename REAL, bool INC>
+void trid_scalar(const REAL *__restrict a, const REAL *__restrict b,
+                 const REAL *__restrict c, REAL *__restrict d,
+                 REAL *__restrict u, int N, int stride) {
   int i, ind = 0;
-  FP aa, bb, cc, dd, c2[N_MAX], d2[N_MAX];
+  REAL aa, bb, cc, dd, c2[N_MAX], d2[N_MAX];
   //
   // forward pass
   //
-  bb = 1.0F / b[0];
-  cc = bb * c[0];
-  dd = bb * d[0];
+  bb    = 1.0F / b[0];
+  cc    = bb * c[0];
+  dd    = bb * d[0];
   c2[0] = cc;
   d2[0] = dd;
 
   for (i = 1; i < N; i++) {
-    ind = ind + stride;
-    aa = a[ind];
-    bb = b[ind] - aa * cc;
-    dd = d[ind] - aa * dd;
-    bb = 1.0F / bb;
-    cc = bb * c[ind];
-    dd = bb * dd;
+    ind   = ind + stride;
+    aa    = a[ind];
+    bb    = b[ind] - aa * cc;
+    dd    = d[ind] - aa * dd;
+    bb    = 1.0F / bb;
+    cc    = bb * c[ind];
+    dd    = bb * dd;
     c2[i] = cc;
     d2[i] = dd;
   }
@@ -386,7 +387,7 @@ void trid_scalar(const FP *__restrict a, const FP *__restrict b,
     d[ind] = dd;
   for (i = N - 2; i >= 0; i--) {
     ind = ind - stride;
-    dd = d2[i] - c2[i] * dd;
+    dd  = d2[i] - c2[i] * dd;
     if (INC)
       u[ind] += dd;
     else
@@ -397,33 +398,34 @@ void trid_scalar(const FP *__restrict a, const FP *__restrict b,
 //
 // Function for selecting the proper setup for solve in a specific dimension
 //
-void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
-                            int ndim, int solvedim, int *dims_p, int *pads,
-                            int inc) {
+template <typename REAL, bool INC>
+void tridMultiDimBatchSolve(const REAL *a, const REAL *b, const REAL *c,
+                            REAL *d, REAL *u, int ndim, int solvedim,
+                            const int *dims_p, const int *pads_p) {
 
   int dims[3] = {1, 1, 1};
-  for(int i = 0; i < ndim; i++) {
+  int pads[3] = {1, 1, 1};
+  for (int i = 0; i < ndim; i++) {
     dims[i] = dims_p[i];
+    pads[i] = pads_p[i];
   }
   if (solvedim == 0) {
     int sys_stride = 1; // Stride between the consecutive elements of a system
-    int sys_size = dims[0]; // Size (length) of a system
+    int sys_size   = dims[0]; // Size (length) of a system
     int sys_pads = pads[0]; // Padded sizes along each ndim number of dimensions
     int sys_n_lin =
         dims[1] * dims[2]; // = cumdims[solve] // Number of systems to be solved
 
     // FIXME fix and re-enable vectorisation in x-dim
-    if ((sys_pads % SIMD_VEC) == 0  && ((long)a & 0x3F)==0 && ((long)b & 0x3F)==0 && ((long)c & 0x3F)==0 && ((long)d & 0x3F)==0 && ((long)u & 0x3F)==0) {
+    if ((sys_pads % SIMD_VEC) == 0 && ((long)a & 0x3F) == 0 &&
+        ((long)b & 0x3F) == 0 && ((long)c & 0x3F) == 0 &&
+        ((long)d & 0x3F) == 0 && ((long)u & 0x3F) == 0) {
 #pragma omp parallel for collapse(2)
       for (int k = 0; k < dims[2]; k++) {
         for (int j = 0; j < ROUND_DOWN(dims[1], SIMD_VEC); j += SIMD_VEC) {
           int ind = k * pads[0] * pads[1] + j * pads[0];
-          if (inc)
-            trid_x_transpose<1>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
-                                sys_size, sys_pads, sys_stride);
-          else
-            trid_x_transpose<0>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
-                                sys_size, sys_pads, sys_stride);
+          trid_x_transpose<REAL, INC>(&a[ind], &b[ind], &c[ind], &d[ind],
+                                      &u[ind], sys_size, sys_pads, sys_stride);
         }
       }
       if (ROUND_DOWN(dims[1], SIMD_VEC) <
@@ -432,12 +434,8 @@ void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
         for (int k = 0; k < dims[2]; k++) {
           for (int j = ROUND_DOWN(dims[1], SIMD_VEC); j < dims[1]; j++) {
             int ind = k * pads[0] * pads[1] + j * pads[0];
-            if (inc)
-              trid_scalar<1>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
-                             sys_size, sys_stride);
-            else
-              trid_scalar<0>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
-                             sys_size, sys_stride);
+            trid_scalar<REAL, INC>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
+                                   sys_size, sys_stride);
           }
         }
       }
@@ -446,12 +444,8 @@ void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
       for (int k = 0; k < dims[2]; k++) {
         for (int j = 0; j < dims[1]; j++) {
           int ind = k * pads[0] * pads[1] + j * pads[0];
-          if (inc)
-            trid_scalar<1>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
-                           sys_size, sys_stride);
-          else
-            trid_scalar<0>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
-                           sys_size, sys_stride);
+          trid_scalar<REAL, INC>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
+                                 sys_size, sys_stride);
         }
       }
     }
@@ -464,14 +458,8 @@ void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
     for (int k = 0; k < dims[2]; k++) {
       for (int i = 0; i < ROUND_DOWN(dims[0], SIMD_VEC); i += SIMD_VEC) {
         int ind = k * pads[0] * pads[1] + i;
-        if (inc)
-          trid_scalar_vec<FP, VECTOR, 1>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                         &u[ind], sys_size,
-                                         sys_stride / SIMD_VEC);
-        else
-          trid_scalar_vec<FP, VECTOR, 0>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                         &u[ind], sys_size,
-                                         sys_stride / SIMD_VEC);
+        trid_scalar_vec<REAL, VECTOR, INC>(&a[ind], &b[ind], &c[ind], &d[ind],
+                                           &u[ind], sys_size, sys_stride);
       }
     }
     if (ROUND_DOWN(dims[0], SIMD_VEC) <
@@ -480,12 +468,8 @@ void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
       for (int k = 0; k < dims[2]; k++) {
         for (int i = ROUND_DOWN(dims[0], SIMD_VEC); i < dims[0]; i++) {
           int ind = k * pads[0] * pads[1] + i;
-          if (inc)
-            trid_scalar<1>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
-                           sys_size, sys_stride);
-          else
-            trid_scalar<0>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
-                           sys_size, sys_stride);
+          trid_scalar<REAL, INC>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
+                                 sys_size, sys_stride);
         }
       }
     }
@@ -500,14 +484,8 @@ void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
     for (int j = 0; j < dims[1]; j++) {
       for (int i = 0; i < ROUND_DOWN(dims[0], SIMD_VEC); i += SIMD_VEC) {
         int ind = j * pads[0] + i;
-        if (inc)
-          trid_scalar_vec<FP, VECTOR, 1>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                         &u[ind], sys_size,
-                                         (sys_stride) / SIMD_VEC);
-        else
-          trid_scalar_vec<FP, VECTOR, 0>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                         &u[ind], sys_size,
-                                         (sys_stride) / SIMD_VEC);
+        trid_scalar_vec<REAL, VECTOR, INC>(&a[ind], &b[ind], &c[ind], &d[ind],
+                                           &u[ind], sys_size, sys_stride);
       }
     }
     if (ROUND_DOWN(dims[0], SIMD_VEC) <
@@ -516,12 +494,8 @@ void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
       for (int j = 0; j < dims[1]; j++) {
         for (int i = ROUND_DOWN(dims[0], SIMD_VEC); i < dims[0]; i++) {
           int ind = j * pads[0] + i;
-          if (inc)
-            trid_scalar<1>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
-                           sys_size, sys_stride);
-          else
-            trid_scalar<0>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
-                           sys_size, sys_stride);
+          trid_scalar<REAL, INC>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
+                                 sys_size, sys_stride);
         }
       }
     }
@@ -532,16 +506,19 @@ void tridMultiDimBatchSolve(const FP *a, const FP *b, const FP *c, FP *d, FP *u,
 
 tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b,
                                    const float *c, float *d, float *u, int ndim,
-                                   int solvedim, int *dims, int *pads) {
-  tridMultiDimBatchSolve(a, b, c, d, NULL, ndim, solvedim, dims, pads, 0);
+                                   int solvedim, const int *dims,
+                                   const int *pads) {
+  tridMultiDimBatchSolve<float, false>(a, b, c, d, nullptr, ndim, solvedim,
+                                       dims, pads);
   return TRID_STATUS_SUCCESS;
 }
 
 tridStatus_t tridSmtsvStridedBatchInc(const float *a, const float *b,
                                       const float *c, float *d, float *u,
-                                      int ndim, int solvedim, int *dims,
-                                      int *pads) {
-  tridMultiDimBatchSolve(a, b, c, d, u, ndim, solvedim, dims, pads, 1);
+                                      int ndim, int solvedim, const int *dims,
+                                      const int *pads) {
+  tridMultiDimBatchSolve<float, true>(a, b, c, d, u, ndim, solvedim, dims,
+                                      pads);
   return TRID_STATUS_SUCCESS;
 }
 
@@ -549,7 +526,7 @@ void trid_scalarS(const float *__restrict a, const float *__restrict b,
                   const float *__restrict c, float *__restrict d,
                   float *__restrict u, int N, int stride) {
 
-  trid_scalar<0>(a, b, c, d, u, N, stride);
+  trid_scalar<float, false>(a, b, c, d, u, N, stride);
 }
 
 void trid_x_transposeS(const float *__restrict a, const float *__restrict b,
@@ -557,38 +534,40 @@ void trid_x_transposeS(const float *__restrict a, const float *__restrict b,
                        float *__restrict u, int sys_size, int sys_pad,
                        int stride) {
 
-  trid_x_transpose<0>(a, b, c, d, u, sys_size, sys_pad, stride);
+  trid_x_transpose<float, false>(a, b, c, d, u, sys_size, sys_pad, stride);
 }
 
 void trid_scalar_vecS(const float *__restrict a, const float *__restrict b,
                       const float *__restrict c, float *__restrict d,
                       float *__restrict u, int N, int stride) {
 
-  trid_scalar_vec<FP, VECTOR, 0>(a, b, c, d, u, N, stride);
+  trid_scalar_vec<FP, VECTOR, false>(a, b, c, d, u, N, stride);
 }
 
 void trid_scalar_vecSInc(const float *__restrict a, const float *__restrict b,
                          const float *__restrict c, float *__restrict d,
                          float *__restrict u, int N, int stride) {
 
-  trid_scalar_vec<FP, VECTOR, 1>(a, b, c, d, u, N, stride);
+  trid_scalar_vec<FP, VECTOR, true>(a, b, c, d, u, N, stride);
 }
 
 #elif FPPREC == 1
 
 tridStatus_t tridDmtsvStridedBatch(const double *a, const double *b,
                                    const double *c, double *d, double *u,
-                                   int ndim, int solvedim, int *dims,
-                                   int *pads) {
-  tridMultiDimBatchSolve(a, b, c, d, NULL, ndim, solvedim, dims, pads, 0);
+                                   int ndim, int solvedim, const int *dims,
+                                   const int *pads) {
+  tridMultiDimBatchSolve<double, false>(a, b, c, d, nullptr, ndim, solvedim,
+                                        dims, pads);
   return TRID_STATUS_SUCCESS;
 }
 
 tridStatus_t tridDmtsvStridedBatchInc(const double *a, const double *b,
                                       const double *c, double *d, double *u,
-                                      int ndim, int solvedim, int *dims,
-                                      int *pads) {
-  tridMultiDimBatchSolve(a, b, c, d, u, ndim, solvedim, dims, pads, 1);
+                                      int ndim, int solvedim, const int *dims,
+                                      const int *pads) {
+  tridMultiDimBatchSolve<double, true>(a, b, c, d, u, ndim, solvedim, dims,
+                                       pads);
   return TRID_STATUS_SUCCESS;
 }
 
@@ -596,7 +575,7 @@ void trid_scalarD(const double *__restrict a, const double *__restrict b,
                   const double *__restrict c, double *__restrict d,
                   double *__restrict u, int N, int stride) {
 
-  trid_scalar<0>(a, b, c, d, u, N, stride);
+  trid_scalar<double, false>(a, b, c, d, u, N, stride);
 }
 
 void trid_x_transposeD(const double *__restrict a, const double *__restrict b,
@@ -604,20 +583,20 @@ void trid_x_transposeD(const double *__restrict a, const double *__restrict b,
                        double *__restrict u, int sys_size, int sys_pad,
                        int stride) {
 
-  trid_x_transpose<0>(a, b, c, d, u, sys_size, sys_pad, stride);
+  trid_x_transpose<double, false>(a, b, c, d, u, sys_size, sys_pad, stride);
 }
 
 void trid_scalar_vecD(const double *__restrict a, const double *__restrict b,
                       const double *__restrict c, double *__restrict d,
                       double *__restrict u, int N, int stride) {
 
-  trid_scalar_vec<FP, VECTOR, 0>(a, b, c, d, u, N, stride);
+  trid_scalar_vec<FP, VECTOR, false>(a, b, c, d, u, N, stride);
 }
 
 void trid_scalar_vecDInc(const double *__restrict a, const double *__restrict b,
                          const double *__restrict c, double *__restrict d,
                          double *__restrict u, int N, int stride) {
 
-  trid_scalar_vec<FP, VECTOR, 1>(a, b, c, d, u, N, stride);
+  trid_scalar_vec<FP, VECTOR, true>(a, b, c, d, u, N, stride);
 }
 #endif

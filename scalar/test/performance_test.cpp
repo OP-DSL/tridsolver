@@ -18,7 +18,7 @@
 template <typename Float>
 void run_tridsolver(const MpiSolverParams &params,
                     const RandomMesh<Float> &mesh, int num_iters) {
-  AlignedArray<Float, 1> d(mesh.d());
+  std::vector<Float> d(mesh.d());
 
   // Dry run
   PROFILE_SUSPEND();
