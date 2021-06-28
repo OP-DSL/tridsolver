@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.18)
 project(libtrid CXX)
 
 option(BUILD_FOR_CPU "Build library for CPU architecture." OFF)
-option(BUILD_FOR_MIC "Build library for MIC architecture." OFF)
 option(BUILD_FOR_GPU "Build library for GPU architecture." OFF)
 option(BUILD_FOR_MPI "Build library for MPI combnied with the above architectures." OFF)
 option(BUILD_FOR_SN "Build library for a single node combnied with the above architectures." OFF)
