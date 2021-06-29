@@ -59,7 +59,7 @@ if (BUILD_FOR_GPU)
   target_compile_options(tridcuda PRIVATE ${cuda_flags})
   set_target_properties(tridcuda PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-  target_include_directories(tridcuda PRIVATE ${PROJECT_SOURCE_DIR}/src/cuda/ ${PROJECT_SOURCE_DIR}/src/cuda/generics/)
+  target_include_directories(tridcuda PRIVATE ${PROJECT_SOURCE_DIR}/src/cuda/)
 
   install(
     TARGETS tridcuda
@@ -94,8 +94,7 @@ if (BUILD_FOR_GPU)
         PARENT_SCOPE)
     add_library(tridcuda_mpi ${BUILD_TYPE} ./trid_cuda_mpi.cu)
     add_library(${PROJECT_NAME}::tridcuda_mpi ALIAS tridcuda_mpi)
-    target_include_directories(tridcuda_mpi PRIVATE ${PROJECT_SOURCE_DIR}/src/cuda/
-                                                    ${PROJECT_SOURCE_DIR}/src/cuda/generics/)
+    target_include_directories(tridcuda_mpi PRIVATE ${PROJECT_SOURCE_DIR}/src/cuda/)
     target_compile_options(tridcuda_mpi PRIVATE ${cuda_flags})
     set_target_properties(tridcuda_mpi PROPERTIES POSITION_INDEPENDENT_CODE ON)
 

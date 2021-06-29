@@ -35,7 +35,6 @@
 #include <stdio.h>
 #include "trid_thomaspcr_small.h"
 #include "trid_thomaspcr_large.hpp"
-#include "generics/generics/shfl.h"
 
 // This is an extension of Mike Giles' 1D Black Scholes work (http://people.maths.ox.ac.uk/gilesm/codes/BS_1D/).
 // The original code iterated over time within the kenrel without global memory interaction. This version
@@ -88,82 +87,6 @@ __device__ void loadDataIntoRegisters_contig(volatile REAL *smem, REAL *regArray
 //
 //   for (int i=0; i<regStoreSize; i++) {
 //      regArray[i] = smem[i + tid * (regStoreSize+1) + smemOff];
-//   }
-}
-
-#define VEC 8
-typedef union {
-  float4 vec[VEC/4];
-  float  f[VEC];
-} float8;
-
-inline __device__ void transpose2x2xor(float8* la) {
-// Butterfly transpose with XOR
-//  float4 tmp1;
-//  if (threadIdx.x&1) {
-//    tmp1 = (*la).vec[0];
-//  } else {
-//    tmp1 = (*la).vec[1];
-//  }
-//
-//  tmp1.x = __shfl_xor(tmp1.x,1);
-//  tmp1.y = __shfl_xor(tmp1.y,1);
-//  tmp1.z = __shfl_xor(tmp1.z,1);
-//  tmp1.w = __shfl_xor(tmp1.w,1);
-//
-//  if (threadIdx.x&1) {
-//    (*la).vec[0] = tmp1;
-//  } else {
-//    (*la).vec[1] = tmp1;
-//  }
-
-  // Transpose with cyclic shuffle
-  float4 tmp;
-  (*la).vec[0] = gen_trid_shfl((*la).vec[0],(threadIdx.x+1) % WARP_SIZE); // __shfl_down() could not be used, since it doesn't work in a round buffer fashion -> data would be lost
-  if(threadIdx.x%2 == 0) {
-    tmp = (*la).vec[0];
-    (*la).vec[0] = (*la).vec[1];
-    (*la).vec[1] = tmp;
-  }
-  (*la).vec[0] = gen_trid_shfl((*la).vec[0],(threadIdx.x-1) % WARP_SIZE);
-}
-
-template <typename REAL, int regStoreSize, int t_warpSize>
-__device__ void loadDataIntoRegisters_contig_shfl(volatile REAL *smem, REAL *regArray, const REAL* __restrict__ devArray,
-                                      int tid, int smemOff, const int length, int ID, int numTrids, REAL blank) {
-
-   //float8 *regArray8 = (float8*) regArray;
-   //float8 *devArray8 = (float8*) devArray;
-
-   //REAL regTmp[regStoreSize];
-   //float8 regTmp8;
-
-   // This step is required due to the volatile keyword. We want to pipeline the loads
-   // but the volatile store into shared memory would forbid this if we went there directly.
-   for (int i=0; i<regStoreSize/4; i++) {
-//      int gmemIdx = i * t_warpSize + tid;
-     int gmemIdx = i * regStoreSize/4 + (tid/2)*4 + tid%2;
-     //int gmemIdx = tid * regStoreSize/4 + i;
-
-//      if (gmemIdx < length) regTmp[i] = devArray[gmemIdx];
-//      else                  regTmp[i] = blank;
-      //if (gmemIdx*4 < length) (*regArray8).vec[i] = ((float4*)devArray)[gmemIdx];
-     ((float8*)regArray)->vec[i] = ((const float4* __restrict__)devArray)[gmemIdx];
-      //if (gmemIdx < length) ((float8*)regArray)->vec[i] = ((float4*)devArray)[gmemIdx];
-      //else                    regTmp8.vec[i] = blank;
-   }
-
-
-   transpose2x2xor((float8*)regArray);
-//   for (int i=0; i<regStoreSize; i++) {
-//      int smemIdx = i * t_warpSize + tid;
-//
-//      smem[smemIdx + smemOff] = regTmp8.f[i];
-//   }
-
-//   for (int i=0; i<regStoreSize; i++) {
-//      //regArray[i] = smem[i + tid * regStoreSize + smemOff];
-//      regArray[i] = regTmp8.f[i];
 //   }
 }
 
@@ -231,12 +154,6 @@ __global__ void batchedTrid_contig_ker(REAL*  x, const REAL* __restrict__ a, con
    loadDataIntoRegisters_contig<REAL, regStoreSize, t_warpSize>(smem, b_reg, b, tid, smemOff, length, ID, numTrids, (REAL)1.);
    loadDataIntoRegisters_contig<REAL, regStoreSize, t_warpSize>(smem, c_reg, c, tid, smemOff, length, ID, numTrids, (REAL)0.);
    loadDataIntoRegisters_contig<REAL, regStoreSize, t_warpSize>(smem, d_reg, d, tid, smemOff, length, ID, numTrids, (REAL)0.);
-
-//   loadDataIntoRegisters_contig_shfl<REAL, regStoreSize, t_warpSize>(smem, a_reg, a, tid, smemOff, length, ID, numTrids, (REAL)0.);
-//   loadDataIntoRegisters_contig_shfl<REAL, regStoreSize, t_warpSize>(smem, b_reg, b, tid, smemOff, length, ID, numTrids, (REAL)1.);
-//   loadDataIntoRegisters_contig_shfl<REAL, regStoreSize, t_warpSize>(smem, c_reg, c, tid, smemOff, length, ID, numTrids, (REAL)0.);
-//   loadDataIntoRegisters_contig_shfl<REAL, regStoreSize, t_warpSize>(smem, d_reg, d, tid, smemOff, length, ID, numTrids, (REAL)0.);
-
 
    if (regStoreSize >= 2) {
      for (int i=0; i<2; i++) {
