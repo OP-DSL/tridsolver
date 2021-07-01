@@ -198,7 +198,7 @@ void test_solver_from_file_padded(const std::string &file_name) {
       params, a_d + offset_to_first_element, b_d + offset_to_first_element,
       c_d + offset_to_first_element, d_d + offset_to_first_element,
       u_d + offset_to_first_element, mesh.dims().size(), mesh.solve_dim(),
-      local_sizes.data(), padded_dims.data(), offset_to_first_element);
+      local_sizes.data(), padded_dims.data());
 
   if (!INC) {
     cudaMemcpy(d_p.data(), d_d, sizeof(Float) * d_p.size(),

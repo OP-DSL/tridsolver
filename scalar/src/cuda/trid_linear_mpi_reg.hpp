@@ -282,7 +282,7 @@ __global__ void trid_linear_forward_unaligned(
   // Check that this is an active thread
   if (active_thread) {
     // Check that this thread can perform an optimized solve
-    if (optimized_solve && sys_size >= 192 / sizeof(REAL) && false) {
+    if (optimized_solve && sys_size >= 192 / sizeof(REAL)) {
       // Memory is unaligned
       int ind_floor = ((ind + offset) / align<REAL>)*align<REAL> - offset;
       int sys_off   = ind - ind_floor;
@@ -635,7 +635,7 @@ __global__ void trid_linear_backward_unaligned(
     load_d_from_boundary_linear<REAL, boundary_SOA>(boundaries, dd0, ddn, tid,
                                                     sys_n);
     // Check if optimized solve
-    if (optimized_solve && sys_size >= 192 / sizeof(REAL) && false) {
+    if (optimized_solve && sys_size >= 192 / sizeof(REAL)) {
       // Unaligned memory
 
       // If in padding, do dummy loads and stores without changing values in
@@ -769,10 +769,13 @@ template <typename REAL, bool boundary_SOA = false>
 void trid_linear_forward_reg(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *a,
                              const REAL *b, const REAL *c, REAL *d, REAL *aa,
                              REAL *cc, REAL *boundaries, int sys_size,
-                             int sys_pads, int sys_n, int offset, int start_sys,
-                             int y_size, int y_pads, cudaStream_t stream) {
+                             int sys_pads, int sys_n, int start_sys, int y_size,
+                             int y_pads, cudaStream_t stream) {
+  const size_t offset = ((size_t)d / sizeof(REAL)) % align<REAL>;
+
   const int aligned =
       (sys_pads % align<REAL>) == 0 && (offset % align<REAL>) == 0;
+
   if (aligned) {
     trid_linear_forward_aligned<REAL, boundary_SOA>
         <<<dimGrid_x, dimBlock_x, 0, stream>>>(a, b, c, d, aa, cc,
@@ -795,9 +798,10 @@ template <typename REAL, int INC, bool boundary_SOA = false>
 void trid_linear_backward_reg(dim3 dimGrid_x, dim3 dimBlock_x, const REAL *aa,
                               const REAL *cc, REAL *d, REAL *u,
                               const REAL *boundaries, int sys_size,
-                              int sys_pads, int sys_n, int offset,
-                              int start_sys, int y_size, int y_pads,
-                              cudaStream_t stream) {
+                              int sys_pads, int sys_n, int start_sys,
+                              int y_size, int y_pads, cudaStream_t stream) {
+  const size_t offset = ((size_t)d / sizeof(REAL)) % align<REAL>;
+
   const int aligned =
       (sys_pads % align<REAL>) == 0 && (offset % align<REAL>) == 0;
   if (aligned) {
