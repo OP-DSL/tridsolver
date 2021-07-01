@@ -36,17 +36,6 @@
 #include "trid_common.h"
 #include "trid_cuda.h"
 
-//#define WARP_SIZE 32
-//#define ALIGN 32               // 32 byte alignment is required
-//#define ALIGN_FLOAT  (ALIGN/4) // 32 byte/ 4bytes/float = 8
-////#define ALIGN_DOUBLE (ALIGN/2) // 32 byte/ 8bytes/float = 4
-//#define ALIGN_DOUBLE (ALIGN/8) // 32 byte/ 8bytes/float = 4
-//
-//#define MAXDIM 8 // Maximal dimension that can be used in the library. Defines
-//static arrays
-//
-//#define CUDA_ALIGN_BYTE 32 // 32 byte alignment is used on CUDA-enabled GPUs
-
 // CUDA constant memory setup for multidimension related index calculations
 
 #include "trid_linear.hpp"
@@ -56,15 +45,12 @@
 #include "trid_linear_reg.hpp"
 #include "trid_thomaspcr.hpp"
 //#endif
-//#include "trid_cusparse.hpp"
 #include "trid_strided_multidim.hpp"
 
 #include "cutil_inline.h"
-#include <cusparse_v2.h>
 #include <cublas_v2.h>
 #include <cuda_runtime_api.h>
 
-// cusparseHandle_t handle_sp; // Handle for cuSPARSE setup
 
 
 
@@ -132,11 +118,6 @@ void trid_linearlayout_cuda(const REAL **d_ax, const REAL **d_bx,
     //#else
     //  printf("This option is only valid for __CUDA_ARCH__ >= 300\n");
     //#endif
-    break;
-  case 5:
-    // trid_linear_cusparse(handle_sp, d_ax, d_bx, d_cx, d_du, d_u, sys_stride,
-    // sys_size, sys_pads, sys_n);
-    cudaCheckMsg("trid_linear_cusparse execution failed\n");
     break;
   default:
     printf("Wrong optimization argument OPT is given. Exiting.\n");
