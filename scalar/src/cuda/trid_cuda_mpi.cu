@@ -522,7 +522,7 @@ void tridMultiDimBatchSolveMPI_pcr(
     const REAL *b, const int *b_pads, const REAL *c, const int *c_pads, REAL *d,
     const int *d_pads, REAL *u, const int *u_pads, int ndim, int solvedim,
     const int *dims, REAL *aa, REAL *cc, REAL *boundaries, REAL *recv_buf,
-    int sys_n, int offset, REAL *send_buf_h = nullptr,
+    int sys_n, REAL *send_buf_h = nullptr,
     REAL *recv_buf_h = nullptr) {
   BEGIN_PROFILING2("host-overhead");
 
@@ -541,7 +541,7 @@ void tridMultiDimBatchSolveMPI_pcr(
   BEGIN_PROFILING_CUDA2("forward", 0);
   forward_batched_pass<REAL, true>(
       dimGrid_x, dimBlock_x, params, a, a_pads, b, b_pads, c, c_pads, d, d_pads,
-      aa, cc, boundaries, dims, ndim, solvedim, 0, sys_n, offset);
+      aa, cc, boundaries, dims, ndim, solvedim, 0, sys_n);
   cudaSafeCall(cudaDeviceSynchronize());
   END_PROFILING_CUDA2("forward", 0);
 
@@ -555,7 +555,7 @@ void tridMultiDimBatchSolveMPI_pcr(
   BEGIN_PROFILING_CUDA2("backward", 0);
   backward_batched_pass<REAL, INC, true>(
       dimGrid_x, dimBlock_x, params, aa, a_pads, cc, c_pads, boundaries, d,
-      d_pads, u, u_pads, dims, ndim, solvedim, 0, sys_n, offset);
+      d_pads, u, u_pads, dims, ndim, solvedim, 0, sys_n);
   END_PROFILING_CUDA2("backward", 0);
 }
 
@@ -565,7 +565,7 @@ void tridMultiDimBatchSolveMPI_jacobi(
     const REAL *b, const int *b_pads, const REAL *c, const int *c_pads, REAL *d,
     const int *d_pads, REAL *u, const int *u_pads, int ndim, int solvedim,
     const int *dims, REAL *aa, REAL *cc, REAL *boundaries, REAL *recv_buf,
-    int sys_n, int offset, REAL *send_buf_h = nullptr,
+    int sys_n, REAL *send_buf_h = nullptr,
     REAL *recv_buf_h = nullptr) {
   BEGIN_PROFILING2("host-overhead");
 
@@ -584,7 +584,7 @@ void tridMultiDimBatchSolveMPI_jacobi(
   BEGIN_PROFILING_CUDA2("forward", 0);
   forward_batched_pass<REAL, true, false>(
       dimGrid_x, dimBlock_x, params, a, a_pads, b, b_pads, c, c_pads, d, d_pads,
-      aa, cc, boundaries, dims, ndim, solvedim, 0, sys_n, offset);
+      aa, cc, boundaries, dims, ndim, solvedim, 0, sys_n);
   cudaSafeCall(cudaDeviceSynchronize());
   END_PROFILING_CUDA2("forward", 0);
 
@@ -598,7 +598,7 @@ void tridMultiDimBatchSolveMPI_jacobi(
   BEGIN_PROFILING_CUDA2("backward", 0);
   backward_batched_pass<REAL, INC, true, false>(
       dimGrid_x, dimBlock_x, params, aa, a_pads, cc, c_pads, boundaries, d,
-      d_pads, u, u_pads, dims, ndim, solvedim, 0, sys_n, offset);
+      d_pads, u, u_pads, dims, ndim, solvedim, 0, sys_n);
   END_PROFILING_CUDA2("backward", 0);
 }
 
@@ -717,14 +717,14 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   case MpiSolverParams::JACOBI:
     tridMultiDimBatchSolveMPI_jacobi<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
-        solvedim, dims, aa + offset, cc + offset, boundaries, mpi_buf, sys_n,
-        offset, send_buf, receive_buf);
+        solvedim, dims, aa, cc, boundaries, mpi_buf, sys_n, send_buf,
+        receive_buf);
     break;
   case MpiSolverParams::PCR:
     tridMultiDimBatchSolveMPI_pcr<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
-        solvedim, dims, aa + offset, cc + offset, boundaries, mpi_buf, sys_n,
-        offset, send_buf, receive_buf);
+        solvedim, dims, aa, cc, boundaries, mpi_buf, sys_n, send_buf,
+        receive_buf);
     break;
   case MpiSolverParams::LATENCY_HIDING_INTERLEAVED:
     tridMultiDimBatchSolveMPI_interleaved<REAL, INC>(

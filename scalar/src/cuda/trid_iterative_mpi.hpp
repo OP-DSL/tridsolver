@@ -1160,8 +1160,9 @@ void trid_linear_forward_pass_reg(dim3 dimGrid_x, dim3 dimBlock_x,
                                   const REAL *a, const REAL *b, const REAL *c,
                                   REAL *d, REAL *aa, REAL *cc, REAL *boundaries,
                                   int sys_size, int sys_pads, int sys_n,
-                                  int offset, int rank, int nproc,
-                                  cudaStream_t stream) {
+                                  int rank, int nproc, cudaStream_t stream) {
+  const size_t offset = ((size_t)d / sizeof(REAL)) % align<REAL>;
+
   const int aligned =
       (sys_pads % align<REAL>) == 0 && (offset % align<REAL>) == 0;
   if (aligned) {
@@ -1186,8 +1187,9 @@ void trid_linear_backward_pass_reg(dim3 dimGrid_x, dim3 dimBlock_x,
                                    const REAL *aa, const REAL *cc, REAL *d,
                                    REAL *u, const REAL *boundaries,
                                    int sys_size, int sys_pads, int sys_n,
-                                   int offset, int rank, int nproc,
-                                   cudaStream_t stream) {
+                                   int rank, int nproc, cudaStream_t stream) {
+  const size_t offset = ((size_t)d / sizeof(REAL)) % align<REAL>;
+
   const int aligned =
       (sys_pads % align<REAL>) == 0 && (offset % align<REAL>) == 0;
   if (aligned) {
@@ -1210,9 +1212,8 @@ inline void forward_batched_pass(
     const REAL *a, const int *a_pads, const REAL *b, const int *b_pads,
     const REAL *c, const int *c_pads, REAL *d, const int *d_pads, REAL *aa,
     REAL *cc, REAL *boundaries, const int *dims, int ndim, int solvedim,
-    int start_sys, int bsize, int offset, cudaStream_t stream = nullptr) {
+    int start_sys, int bsize, cudaStream_t stream = nullptr) {
   if (solvedim == 0) {
-    // assert(offset == 0 && "I think we do not need the offset");
     assert(a_pads[0] == b_pads[0] && a_pads[0] == c_pads[0] &&
            a_pads[0] == d_pads[0] && "different paddings are not supported");
     if (ndim > 1) {
@@ -1232,7 +1233,7 @@ inline void forward_batched_pass(
         dimGrid_x, dimBlock_x, a + batch_offset, b + batch_offset,
         c + batch_offset, d + batch_offset, aa + batch_offset,
         cc + batch_offset, boundaries + start_sys * 3 * 2, dims[solvedim],
-        a_pads[solvedim], bsize, offset, params.mpi_coords[solvedim],
+        a_pads[solvedim], bsize, params.mpi_coords[solvedim],
         params.num_mpi_procs[solvedim], stream);
   } else {
     DIM_V k_pads, k_dims; // TODO
@@ -1257,12 +1258,11 @@ inline void backward_batched_pass(dim3 dimGrid_x, dim3 dimBlock_x,
                                   REAL *d, const int *d_pads, REAL *u,
                                   const int *u_pads, const int *dims, int ndim,
                                   int solvedim, int start_sys, int bsize,
-                                  int offset, cudaStream_t stream = nullptr) {
+                                  cudaStream_t stream = nullptr) {
   assert(start_sys == 0 &&
          "check the whole process for boundaries if indexing is correct for "
          "batches then remove this");
   if (solvedim == 0) {
-    // assert(offset == 0 && "I think we do not need the offset");
     assert(a_pads[0] == c_pads[0] && a_pads[0] == d_pads[0] &&
            "different paddings are not supported");
     if (ndim > 1) {
@@ -1286,8 +1286,8 @@ inline void backward_batched_pass(dim3 dimGrid_x, dim3 dimBlock_x,
                                   is_c0_cleared_on_rank0>(
         dimGrid_x, dimBlock_x, aa + batch_offset, cc + batch_offset,
         d + batch_offset, u + batch_offset, boundaries + start_sys * 2 * 3,
-        dims[solvedim], a_pads[solvedim], bsize, offset,
-        params.mpi_coords[solvedim], params.num_mpi_procs[solvedim], stream);
+        dims[solvedim], a_pads[solvedim], bsize, params.mpi_coords[solvedim],
+        params.num_mpi_procs[solvedim], stream);
   } else {
     DIM_V k_pads, k_dims; // TODO
     for (int i = 0; i < ndim; ++i) {
