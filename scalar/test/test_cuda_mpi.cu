@@ -6,6 +6,7 @@
 #include "cuda_mpi_wrappers.hpp"
 
 #include "trid_cuda_mpi_pcr.hpp"
+#include "trid_iterative_mpi.hpp"
 
 #include <trid_common.h>
 #include <trid_cuda.h>
@@ -210,7 +211,7 @@ void test_solver_from_file_padded(const std::string &file_name) {
       params, a_d + offset_to_first_element, b_d + offset_to_first_element,
       c_d + offset_to_first_element, d_d + offset_to_first_element,
       u_d + offset_to_first_element, mesh.dims().size(), mesh.solve_dim(),
-      local_sizes.data(), padded_dims.data(), offset_to_first_element);
+      local_sizes.data(), padded_dims.data());
 
   if (!INC) {
     cudaMemcpy(d_p.data(), d_d, sizeof(Float) * d_p.size(),
@@ -311,6 +312,380 @@ void test_PCR_on_reduced(const std::string &file_name) {
   require_allclose(result, result_batched);
 }
 
+template <typename Float>
+void test_short_forward_pass(const std::string &file_name) {
+  // The dimension of the MPI decomposition is the same as solve_dim
+  MeshLoader<Float> mesh(file_name);
+
+  int num_proc, rank;
+  MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  // Create rectangular grid
+  std::vector<int> mpi_dims(mesh.dims().size(), 0),
+      periods(mesh.dims().size(), 0);
+  mpi_dims[mesh.solve_dim()] = num_proc;
+  MPI_Dims_create(num_proc, mesh.dims().size(), mpi_dims.data());
+
+  // Create communicator for grid
+  MPI_Comm cart_comm;
+  MPI_Cart_create(MPI_COMM_WORLD, mesh.dims().size(), mpi_dims.data(),
+                  periods.data(), 0, &cart_comm);
+
+  MpiSolverParams params(cart_comm, mesh.dims().size(), mpi_dims.data(), 256,
+                         MpiSolverParams::PCR);
+
+  // The size of the local domain.
+  std::vector<int> local_sizes(mesh.dims().size());
+  // The starting indices of the local domain in each dimension.
+  std::vector<int> domain_offsets(mesh.dims().size());
+  // The strides in the mesh for each dimension.
+  std::vector<int> global_strides(mesh.dims().size());
+  std::vector<int> local_strides(mesh.dims().size());
+  int domain_size = 1;
+  for (size_t i = 0; i < local_sizes.size(); ++i) {
+    const int global_dim = mesh.dims()[i];
+    domain_offsets[i]    = params.mpi_coords[i] * (global_dim / mpi_dims[i]);
+    local_sizes[i]       = params.mpi_coords[i] == mpi_dims[i] - 1
+                               ? global_dim - domain_offsets[i]
+                               : global_dim / mpi_dims[i];
+    global_strides[i] = i == 0 ? 1 : global_strides[i - 1] * mesh.dims()[i - 1];
+    domain_size *= local_sizes[i];
+    local_strides[i] = i == 0 ? 1 : local_strides[i - 1] * local_sizes[i - 1];
+  }
+
+  // Simulate distributed environment: only load our data
+  std::vector<Float> a, b, c, u, d;
+  a.reserve(domain_size);
+  b.reserve(domain_size);
+  c.reserve(domain_size);
+  d.reserve(domain_size);
+  u.reserve(domain_size);
+  copy_strided(mesh.a(), a, local_sizes, domain_offsets, global_strides,
+               local_sizes.size() - 1);
+  copy_strided(mesh.b(), b, local_sizes, domain_offsets, global_strides,
+               local_sizes.size() - 1);
+  copy_strided(mesh.c(), c, local_sizes, domain_offsets, global_strides,
+               local_sizes.size() - 1);
+  copy_strided(mesh.d(), d, local_sizes, domain_offsets, global_strides,
+               local_sizes.size() - 1);
+  copy_strided(mesh.u(), u, local_sizes, domain_offsets, global_strides,
+               local_sizes.size() - 1);
+
+  GPUMesh<Float> local_device_mesh(a, b, c, d, local_sizes);
+  int n_sys = domain_size / local_sizes[mesh.solve_dim()];
+
+  // Solve the equations
+  std::vector<Float> host_init(domain_size, 0);
+  DeviceArray<Float> aa(host_init.data(), domain_size);
+  DeviceArray<Float> cc(host_init.data(), domain_size);
+  DeviceArray<Float> boundaries(host_init.data(), 2 * 3 * n_sys);
+  // tridmtsvStridedBatchMPIWrapper<Float, 0>(
+  //     params, local_device_mesh.a().data(), local_device_mesh.b().data(),
+  //     local_device_mesh.c().data(), local_device_mesh.d().data(), u_d.data(),
+  //     mesh.dims().size(), mesh.solve_dim(), local_sizes.data(),
+  //     local_sizes.data());
+
+  dim3 dimBlock_x(128, 1);
+  int dimgrid = 1 + (n_sys - 1) / dimBlock_x.x; // can go up to 65535
+  dim3 dimGrid_x(dimgrid % 65536, 1 + dimgrid / 65536);
+  forward_batched_pass<Float, true>(
+      dimGrid_x, dimBlock_x, params, local_device_mesh.a().data(),
+      local_sizes.data(), local_device_mesh.b().data(), local_sizes.data(),
+      local_device_mesh.c().data(), local_sizes.data(),
+      local_device_mesh.d().data(), local_sizes.data(), aa.data(), cc.data(),
+      boundaries.data(), local_sizes.data(), mesh.dims().size(),
+      mesh.solve_dim(), 0, n_sys, 0);
+  std::vector<Float> a_loc(a.data(), a.data() + domain_size);
+  std::vector<Float> c_loc(c.data(), c.data() + domain_size);
+  std::vector<Float> d_loc(d.data(), d.data() + domain_size);
+  // ref
+  int stride = local_strides[mesh.solve_dim()];
+  for (int sys_idx = 0; sys_idx < n_sys; ++sys_idx) {
+    size_t sys_index =
+        get_sys_start_idx(sys_idx, mesh.solve_dim(), local_sizes.data(),
+                          local_sizes.data(), local_sizes.size());
+    // i = 0:
+    Float b_0 = b[sys_index];
+    Float c_0 = c[sys_index];
+    Float d_0 = d[sys_index];
+    // i = 1
+    if (rank == 0) {
+      int ind      = sys_index + stride;
+      Float factor = a[ind] / b_0;
+      Float bbi    = static_cast<Float>(1.0) / (b[ind] - factor * c_0);
+      d_loc[ind]   = bbi * (d[ind] - factor * d_0);
+      c_loc[ind]   = bbi * c[ind];
+      a_loc[ind]   = 0;
+      d_0          = d_0 - c_0 * d_loc[ind];
+      c_0          = -c_0 * c_loc[ind];
+    } else {
+      d_loc[sys_index + stride] = d[sys_index + stride] / b[sys_index + stride];
+      c_loc[sys_index + stride] = c[sys_index + stride] / b[sys_index + stride];
+      a_loc[sys_index + stride] = a[sys_index + stride] / b[sys_index + stride];
+      b_0                       = b_0 - c_0 * a_loc[sys_index + stride];
+      d_0                       = d_0 - c_0 * d_loc[sys_index + stride];
+      if (rank == params.num_mpi_procs[mesh.solve_dim()] - 1 &&
+          local_sizes[mesh.solve_dim()] == 2) {
+        c_0 = 0;
+      } else {
+        c_0 = -c_0 * c_loc[sys_index + stride];
+      }
+    }
+
+    // Eliminate lower off-diagonal
+    for (int i = 2; i < local_sizes[mesh.solve_dim()]; i++) {
+      int ind = sys_index + i * stride;
+      Float bbi =
+          static_cast<Float>(1.0) / (b[ind] - a[ind] * c_loc[ind - stride]);
+      d_loc[ind] = bbi * (d[ind] - a[ind] * d_loc[ind - stride]);
+      if (i == local_sizes[mesh.solve_dim()] - 1 &&
+          rank == params.num_mpi_procs[mesh.solve_dim()] - 1) {
+        c_loc[ind] = 0.0;
+      } else {
+        c_loc[ind] = bbi * c[ind];
+      }
+      if (rank == 0) {
+        a_loc[ind] = 0;
+      } else {
+        a_loc[ind] = bbi * (-a[ind] * a_loc[ind - stride]);
+        b_0        = b_0 - c_0 * a_loc[ind];
+      }
+      d_0 = d_0 - c_0 * d_loc[ind];
+      c_0 = -c_0 * c_loc[ind];
+    }
+    if (rank == 0)
+      a_loc[sys_index] = 0.0;
+    else
+      a_loc[sys_index] = a[sys_index] / b_0;
+    c_loc[sys_index] = c_0 / b_0;
+    d_loc[sys_index] = d_0 / b_0;
+  }
+
+  cudaMemcpy(d.data(), local_device_mesh.d().data(),
+             sizeof(Float) * domain_size, cudaMemcpyDeviceToHost);
+  cudaMemcpy(a.data(), aa.data(), sizeof(Float) * domain_size,
+             cudaMemcpyDeviceToHost);
+  cudaMemcpy(c.data(), cc.data(), sizeof(Float) * domain_size,
+             cudaMemcpyDeviceToHost);
+  // Check result
+  // print_array("a_loc", a_loc);
+  // print_array("aa   ", a);
+  require_allclose(a_loc.data(), a.data(), domain_size, 1);
+  // print_array("c_loc", c_loc);
+  // print_array("cc   ", c);
+  require_allclose(c_loc.data(), c.data(), domain_size, 1);
+  // print_array("d_loc", d_loc);
+  // print_array("dd   ", d);
+  require_allclose(d_loc.data(), d.data(), domain_size, 1);
+}
+
+template <typename Float>
+void test_iterative_pcr_on_reduced(const std::string &file_name) {
+  // The dimension of the MPI decomposition is the same as solve_dim
+  MeshLoader<Float> mesh(file_name);
+
+  int num_proc, rank;
+  MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  // Create rectangular grid
+  std::vector<int> mpi_dims(mesh.dims().size(), 0),
+      periods(mesh.dims().size(), 0);
+  mpi_dims[mesh.solve_dim()] = num_proc;
+  MPI_Dims_create(num_proc, mesh.dims().size(), mpi_dims.data());
+
+  // Create communicator for grid
+  MPI_Comm cart_comm;
+  MPI_Cart_create(MPI_COMM_WORLD, mesh.dims().size(), mpi_dims.data(),
+                  periods.data(), 0, &cart_comm);
+
+  MpiSolverParams params(cart_comm, mesh.dims().size(), mpi_dims.data(), 256,
+                         MpiSolverParams::PCR);
+
+  // The size of the local domain.
+  std::vector<int> local_sizes(mesh.dims().size());
+  // The starting indices of the local domain in each dimension.
+  std::vector<int> domain_offsets(mesh.dims().size());
+  // The strides in the mesh for each dimension.
+  std::vector<int> global_strides(mesh.dims().size());
+  std::vector<int> local_strides(mesh.dims().size());
+  int domain_size = 1;
+  for (size_t i = 0; i < local_sizes.size(); ++i) {
+    const int global_dim = mesh.dims()[i];
+    domain_offsets[i]    = params.mpi_coords[i] * (global_dim / mpi_dims[i]);
+    local_sizes[i]       = params.mpi_coords[i] == mpi_dims[i] - 1
+                               ? global_dim - domain_offsets[i]
+                               : global_dim / mpi_dims[i];
+    global_strides[i] = i == 0 ? 1 : global_strides[i - 1] * mesh.dims()[i - 1];
+    domain_size *= local_sizes[i];
+    local_strides[i] = i == 0 ? 1 : local_strides[i - 1] * local_sizes[i - 1];
+  }
+
+  // Simulate distributed environment: only load our data
+  std::vector<Float> a, b, c, u, d;
+  a.reserve(domain_size);
+  b.reserve(domain_size);
+  c.reserve(domain_size);
+  d.reserve(domain_size);
+  u.reserve(domain_size);
+  copy_strided(mesh.a(), a, local_sizes, domain_offsets, global_strides,
+               local_sizes.size() - 1);
+  copy_strided(mesh.b(), b, local_sizes, domain_offsets, global_strides,
+               local_sizes.size() - 1);
+  copy_strided(mesh.c(), c, local_sizes, domain_offsets, global_strides,
+               local_sizes.size() - 1);
+  copy_strided(mesh.d(), d, local_sizes, domain_offsets, global_strides,
+               local_sizes.size() - 1);
+  copy_strided(mesh.u(), u, local_sizes, domain_offsets, global_strides,
+               local_sizes.size() - 1);
+
+  int n_sys = domain_size / local_sizes[mesh.solve_dim()];
+  std::vector<Float> boundaries_h(2 * 3 * n_sys, 0);
+  GPUMesh<Float> local_device_mesh(a, b, c, d, local_sizes);
+
+  // Solve the equations
+  std::vector<Float> host_init(domain_size, 0);
+  DeviceArray<Float> aa(host_init.data(), domain_size);
+  DeviceArray<Float> cc(host_init.data(), domain_size);
+  DeviceArray<Float> boundaries(boundaries_h.data(), 2 * 3 * n_sys);
+
+  dim3 dimBlock_x(128, 1);
+  int dimgrid = 1 + (n_sys - 1) / dimBlock_x.x; // can go up to 65535
+  dim3 dimGrid_x(dimgrid % 65536, 1 + dimgrid / 65536);
+  forward_batched_pass<Float, true>(
+      dimGrid_x, dimBlock_x, params, local_device_mesh.a().data(),
+      local_sizes.data(), local_device_mesh.b().data(), local_sizes.data(),
+      local_device_mesh.c().data(), local_sizes.data(),
+      local_device_mesh.d().data(), local_sizes.data(), aa.data(), cc.data(),
+      boundaries.data(), local_sizes.data(), mesh.dims().size(),
+      mesh.solve_dim(), 0, n_sys, 0);
+  // std::vector<Float> a_loc(a.data(), a.data() + domain_size);
+  // std::vector<Float> c_loc(c.data(), c.data() + domain_size);
+  // std::vector<Float> d_loc(d.data(), d.data() + domain_size);
+  //
+  // cudaMemcpy(a_loc.data(), aa.data(), sizeof(Float) * domain_size,
+  //            cudaMemcpyDeviceToHost);
+  // cudaMemcpy(c_loc.data(), cc.data(), sizeof(Float) * domain_size,
+  //            cudaMemcpyDeviceToHost);
+  // cudaMemcpy(d_loc.data(), local_device_mesh.d().data(),
+  //            sizeof(Float) * domain_size, cudaMemcpyDeviceToHost);
+  // cudaMemcpy(boundaries_h.data(), boundaries.data(),
+  //            sizeof(Float) * 2 * 3 * n_sys, cudaMemcpyDeviceToHost);
+  // print_array("a    ", a_loc);
+  // print_array("c    ", c_loc);
+  // print_array("d    ", d_loc);
+  // print_array("bound", boundaries_h);
+  DeviceArray<Float> rcv_m1_d(host_init.data(), 3 * n_sys);
+  Float *rcv_m1_h, *snd_h;
+  cudaSafeCall(cudaMallocHost(&rcv_m1_h, 3 * n_sys * sizeof(Float)));
+  cudaSafeCall(cudaMallocHost(&snd_h, 3 * n_sys * sizeof(Float)));
+  // snd_buf_h, rcv_buf_h
+  iterative_pcr_on_reduced<Float>(dimGrid_x, dimBlock_x, params,
+                                  boundaries.data(), n_sys, mesh.solve_dim(),
+                                  rcv_m1_d.data(), rcv_m1_h, snd_h);
+  // boundaries stores the result to the first row for each node at this
+  // point.
+  cudaMemcpy(boundaries_h.data(), boundaries.data(),
+             sizeof(Float) * 2 * 3 * n_sys, cudaMemcpyDeviceToHost);
+  cudaFreeHost(snd_h);
+  cudaFreeHost(rcv_m1_h);
+  // Check result
+  // print_array("bound", boundaries_h);
+  // print_array("u    ", u);
+  int stride   = local_strides[mesh.solve_dim()];
+  int sys_size = local_sizes[mesh.solve_dim()];
+  for (int sys_idx = 0; sys_idx < n_sys; ++sys_idx) {
+    size_t sys_index =
+        get_sys_start_idx(sys_idx, mesh.solve_dim(), local_sizes.data(),
+                          local_sizes.data(), local_sizes.size());
+    CAPTURE(sys_idx);
+    CAPTURE(n_sys);
+    CAPTURE(boundaries_h[n_sys * 2 + sys_idx]);
+    CAPTURE(u[sys_index]);
+    Float exp     = u[sys_index];
+    Float act     = boundaries_h[n_sys * 2 + sys_idx];
+    Float min_val = std::min(std::abs(exp), std::abs(act));
+    const double tolerance =
+        abs_tolerance<Float> + rel_tolerance<Float> * min_val;
+    CAPTURE(tolerance);
+    const double diff = std::abs(static_cast<double>(exp) - act);
+    CAPTURE(diff);
+    REQUIRE(diff <= tolerance);
+  }
+}
+
+
+TEMPLATE_TEST_CASE("short forward pass small X", "[forward][small][solvedim:0]",
+                   double, float) {
+  SECTION("ndims: 1") {
+    test_short_forward_pass<TestType>("files/one_dim_small");
+  }
+  SECTION("ndims: 2") {
+    test_short_forward_pass<TestType>("files/two_dim_small_solve0");
+  }
+}
+
+TEMPLATE_TEST_CASE("short forward pass solveX", "[forward][large][solvedim:0]",
+                   double, float) {
+  SECTION("ndims: 1") {
+    test_short_forward_pass<TestType>("files/one_dim_large");
+  }
+  SECTION("ndims: 2") {
+    test_short_forward_pass<TestType>("files/two_dim_large_solve0");
+  }
+  SECTION("ndims: 3") {
+    test_short_forward_pass<TestType>("files/three_dim_large_solve0");
+  }
+}
+
+TEMPLATE_TEST_CASE("short forward pass small Y", "[forward][small][solvedim:1]",
+                   double, float) {
+  SECTION("ndims: 2") {
+    test_short_forward_pass<TestType>("files/two_dim_small_solve1");
+  }
+}
+
+TEMPLATE_TEST_CASE("short forward pass solveY", "[forward][large][solvedim:1]",
+                   double, float) {
+  SECTION("ndims: 2") {
+    test_short_forward_pass<TestType>("files/two_dim_large_solve1");
+  }
+  SECTION("ndims: 3") {
+    test_short_forward_pass<TestType>("files/three_dim_large_solve1");
+  }
+}
+
+TEMPLATE_TEST_CASE("short forward pass solveZ", "[forward][large][solvedim:2]",
+                   double, float) {
+  SECTION("ndims: 3") {
+    test_short_forward_pass<TestType>("files/three_dim_large_solve2");
+  }
+}
+
+TEMPLATE_TEST_CASE("iterative reduced solve with PCR small", "[reduced][small]",
+                   double, float) {
+  SECTION("ndims: 1") {
+    test_iterative_pcr_on_reduced<TestType>("files/one_dim_small");
+  }
+  SECTION("ndims: 2") {
+    test_iterative_pcr_on_reduced<TestType>("files/two_dim_small_solve0");
+  }
+}
+
+TEMPLATE_TEST_CASE("iterative reduced solve with PCR", "[reduced][large]",
+                   double, float) {
+  SECTION("ndims: 1") {
+    test_iterative_pcr_on_reduced<TestType>("files/one_dim_large");
+  }
+  SECTION("ndims: 2") {
+    test_iterative_pcr_on_reduced<TestType>("files/two_dim_large_solve0");
+  }
+  SECTION("ndims: 3") {
+    test_iterative_pcr_on_reduced<TestType>("files/three_dim_large_solve0");
+  }
+}
+
 TEMPLATE_TEST_CASE("PCR on reduced", "[reduced]", double, float) {
   test_PCR_on_reduced<TestType>("files/reduced_test_small");
 }
@@ -321,15 +696,23 @@ enum ResDest { assign = 0, increment };
   (double, assign, MpiSolverParams::ALLGATHER),                                \
       (double, assign, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),           \
       (double, assign, MpiSolverParams::LATENCY_HIDING_TWO_STEP),              \
+      (double, assign, MpiSolverParams::PCR),                                  \
+      (double, assign, MpiSolverParams::JACOBI),                               \
       (float, assign, MpiSolverParams::ALLGATHER),                             \
       (float, assign, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),            \
       (float, assign, MpiSolverParams::LATENCY_HIDING_TWO_STEP),               \
+      (float, assign, MpiSolverParams::PCR),                                   \
+      (float, assign, MpiSolverParams::JACOBI),                                \
       (double, increment, MpiSolverParams::ALLGATHER),                         \
       (double, increment, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),        \
       (double, increment, MpiSolverParams::LATENCY_HIDING_TWO_STEP),           \
+      (double, increment, MpiSolverParams::PCR),                               \
+      (double, increment, MpiSolverParams::JACOBI),                            \
       (float, increment, MpiSolverParams::ALLGATHER),                          \
       (float, increment, MpiSolverParams::LATENCY_HIDING_INTERLEAVED),         \
-      (float, increment, MpiSolverParams::LATENCY_HIDING_TWO_STEP)
+      (float, increment, MpiSolverParams::LATENCY_HIDING_TWO_STEP),            \
+      (float, increment, MpiSolverParams::PCR),                                \
+      (float, increment, MpiSolverParams::JACOBI)
 
 TEMPLATE_TEST_CASE_SIG("cuda solver mpi: solveX", "[solver][solvedim:0]",
                        ((typename TestType, ResDest INC,

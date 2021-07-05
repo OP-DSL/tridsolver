@@ -1,3 +1,4 @@
+#include <array>
 #include <cctype>
 #include <chrono>
 #include <iostream>
@@ -145,13 +146,14 @@ void test_solver_with_generated(const char *execname,
                                 const std::vector<int> &global_dims,
                                 int solvedim, std::vector<int> mpi_strat_idxs,
                                 int batch_size, int mpi_parts_in_s,
-                                int num_iters) {
+                                std::array<int, 3> mpi_dims_, int num_iters) {
   int num_proc, rank;
   MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   // Create rectangular grid
-  std::vector<int> mpi_dims(global_dims.size(), 0),
+  std::vector<int> mpi_dims(mpi_dims_.data(),
+                            mpi_dims_.data() + global_dims.size()),
       periods(global_dims.size(), 0);
   mpi_dims[solvedim] = std::min(num_proc, mpi_parts_in_s);
   MPI_Dims_create(num_proc, global_dims.size(), mpi_dims.data());
@@ -203,14 +205,15 @@ int main(int argc, char *argv[]) {
   MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
 
   int opt;
-  int size[]         = {256, 256, 256};
-  int ndims          = 2;
-  int solvedim       = 0;
-  int batch_size     = 32;
-  int num_iters      = 1;
-  int mpi_parts_in_s = 0; // 0 means automatic
+  int size[]                  = {256, 256, 256};
+  int ndims                   = 2;
+  int solvedim                = 0;
+  int batch_size              = 32;
+  int num_iters               = 1;
+  int mpi_parts_in_s          = 0; // 0 means automatic
+  std::array<int, 3> mpi_dims = {0, 0, 0};
   std::vector<int> mpi_strat_idxs;
-  while ((opt = getopt(argc, argv, "x:y:z:s:d:b:m:p:n:")) != -1) {
+  while ((opt = getopt(argc, argv, "x:y:z:s:d:b:m:p:n:X:Y:Z:")) != -1) {
     switch (opt) {
     case 'x': size[0] = atoi(optarg); break;
     case 'y': size[1] = atoi(optarg); break;
@@ -221,6 +224,9 @@ int main(int argc, char *argv[]) {
     case 'm': mpi_strat_idxs.push_back(atoi(optarg)); break;
     case 'n': num_iters = atoi(optarg); break;
     case 'p': mpi_parts_in_s = atoi(optarg); break;
+    case 'X': mpi_dims[0] = atoi(optarg); break;
+    case 'Y': mpi_dims[1] = atoi(optarg); break;
+    case 'Z': mpi_dims[2] = atoi(optarg); break;
     default:
       if (rank == 0) usage(argv[0]);
       return 2;
@@ -249,7 +255,8 @@ int main(int argc, char *argv[]) {
   }
 
   test_solver_with_generated<double>(argv[0], dims, solvedim, mpi_strat_idxs,
-                                     batch_size, mpi_parts_in_s, num_iters);
+                                     batch_size, mpi_parts_in_s, mpi_dims,
+                                     num_iters);
 
   MPI_Finalize();
   return 0;

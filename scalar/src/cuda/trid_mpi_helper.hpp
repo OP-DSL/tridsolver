@@ -97,9 +97,11 @@ __device__ inline void
 load_d_from_boundary_linear(const REAL *__restrict__ boundaries, REAL &dd0,
                             REAL &ddn, int tid, int sys_n) {
   if (!boundary_SOA) {
-    dd0 = boundaries[2 * tid], ddn = boundaries[2 * tid + 1];
+    dd0 = boundaries[2 * tid];
+    ddn = boundaries[2 * tid + 1];
   } else {
-    dd0 = boundaries[2 * sys_n + tid], ddn = boundaries[5 * sys_n + tid];
+    dd0 = boundaries[2 * sys_n + tid];
+    ddn = boundaries[5 * sys_n + tid];
   }
 }
 #endif

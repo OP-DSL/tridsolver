@@ -187,4 +187,27 @@ void copy_strided(const std::vector<Float> &src, std::vector<Float> &dest,
   }
 }
 
+
+template <int MAXDIM = 3>
+inline int get_sys_start_idx(int sys_idx, int solvedim, const int *dims,
+                             const int *pads, int ndim) {
+  static_assert(MAXDIM == 3,
+                "Index calculation onlz implemented for at most 3D problems");
+  assert(solvedim < ndim && ndim <= MAXDIM);
+  int start_pad = pads[0];
+  if (solvedim == 1) start_pad *= pads[1];
+  int start;
+  if (solvedim == 0) {
+    if (ndim == 1) {
+      start = sys_idx * pads[0];
+    } else {
+      start = (sys_idx / dims[1]) * pads[1] * pads[0] +
+              (sys_idx % dims[1]) * pads[0];
+    }
+  } else {
+    start = (sys_idx / dims[0]) * start_pad + (sys_idx % dims[0]);
+  }
+  return start;
+}
+
 #endif /* ifndef CATCH_UTIL_FUNCTIONS_INCLUDED */

@@ -102,8 +102,7 @@ if (BUILD_FOR_GPU)
     if (USE_PROFILING)
       add_executable(cuda_mpi_perf_test performance_test.cpp)
       set_source_files_properties(performance_test.cpp PROPERTIES LANGUAGE CUDA)
-      target_include_directories(cuda_mpi_perf_test PRIVATE ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/test/
-                                                            ${PROJECT_SOURCE_DIR}/src/cuda)
+      target_include_directories(cuda_mpi_perf_test PRIVATE ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/test/)
       target_compile_definitions(cuda_mpi_perf_test PRIVATE TRID_PERF_CUDA)
 
       target_link_libraries(
