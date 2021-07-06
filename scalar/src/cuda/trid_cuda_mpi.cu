@@ -704,6 +704,7 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   MPI_Barrier(MPI_COMM_WORLD);
   BEGIN_PROFILING("tridMultiDimBatchSolveMPI");
 #endif
+const size_t offset = ((size_t)d / sizeof(REAL)) % align<REAL>;
   switch (params.strategy) {
   case MpiSolverParams::GATHER_SCATTER:
     assert(false && "GATHER_SCATTER is not implemented for CUDA");
@@ -711,31 +712,31 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams &params, const REAL *a,
   case MpiSolverParams::ALLGATHER:
     tridMultiDimBatchSolveMPI_allgather<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
-        solvedim, dims, aa, cc, boundaries, mpi_buf, sys_n, send_buf,
+        solvedim, dims, aa + offset, cc + offset, boundaries, mpi_buf, sys_n, send_buf,
         receive_buf);
     break;
   case MpiSolverParams::JACOBI:
     tridMultiDimBatchSolveMPI_jacobi<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
-        solvedim, dims, aa, cc, boundaries, mpi_buf, sys_n, send_buf,
+        solvedim, dims, aa + offset, cc + offset, boundaries, mpi_buf, sys_n, send_buf,
         receive_buf);
     break;
   case MpiSolverParams::PCR:
     tridMultiDimBatchSolveMPI_pcr<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
-        solvedim, dims, aa, cc, boundaries, mpi_buf, sys_n, send_buf,
+        solvedim, dims, aa + offset, cc + offset, boundaries, mpi_buf, sys_n, send_buf,
         receive_buf);
     break;
   case MpiSolverParams::LATENCY_HIDING_INTERLEAVED:
     tridMultiDimBatchSolveMPI_interleaved<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
-        solvedim, dims, aa, cc, boundaries, mpi_buf, sys_n, send_buf,
+        solvedim, dims, aa + offset, cc + offset, boundaries, mpi_buf, sys_n, send_buf,
         receive_buf);
     break;
   case MpiSolverParams::LATENCY_HIDING_TWO_STEP:
     tridMultiDimBatchSolveMPI_simple<REAL, INC>(
         params, a, a_pads, b, b_pads, c, c_pads, d, d_pads, u, u_pads, ndim,
-        solvedim, dims, aa, cc, boundaries, mpi_buf, sys_n, send_buf,
+        solvedim, dims, aa + offset, cc + offset, boundaries, mpi_buf, sys_n, send_buf,
         receive_buf);
     break;
   default: assert(false && "Unknown communication strategy");
