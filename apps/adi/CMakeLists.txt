@@ -113,6 +113,9 @@ endif (BUILD_FOR_MIC)
 # cmake-format: on
 
 if (BUILD_FOR_GPU)
+  set(CMAKE_CUDA_COMPILER nvcc)
+  set(CMAKE_CUDA_HOST_COMPILER ${CMAKE_CXX_COMPILER})
+
   include(CheckLanguage)
   check_language(CUDA)
   if (CMAKE_CUDA_COMPILER)
@@ -132,10 +135,12 @@ if (BUILD_FOR_GPU)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --ptxas-options=-v -Xptxas -dlcm=cg")
   set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG}   -g -G -O0 ")
 
+  if(BUILD_FOR_SN)
   add_executable(adi_cuda src/adi_cuda.cu src/preproc.cu)
   target_compile_definitions(adi_cuda PUBLIC -DN_MAX=${TRIDSOLVER_N_MAX})
   target_include_directories(adi_cuda PRIVATE ${PROJECT_SOURCE_DIR}/include)
   target_link_libraries(adi_cuda libtrid::tridcuda CUDA::cublas)
+  endif(BUILD_FOR_SN)
 
   if (BUILD_FOR_MPI)
     find_package(MPI REQUIRED)
@@ -176,13 +181,13 @@ endif (BUILD_FOR_GPU)
 #LIBS_PHI_LAPACKE = -L./libtrid/lib -limf -lintlc -lsvml -lirng #-L$(INTEL_PATH)/mkl/lib/mic -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_rt -liomp5 -lpthread -lm -lgfortran #-ltrid_phi
 # cmake-format: on
 
-#add_executable(adi_orig ${PROJECT_SOURCE_DIR}/src/adi_orig.c)
-#target_compile_definitions(adi_orig PUBLIC -DN_MAX=$<IF:$<BOOL:${TRIDSOLVER_N_MAX}>,${TRIDSOLVER_N_MAX},1024>)
+add_executable(adi_orig ${PROJECT_SOURCE_DIR}/src/adi_orig.c)
+target_compile_definitions(adi_orig PUBLIC -DN_MAX=$<IF:$<BOOL:${TRIDSOLVER_N_MAX}>,${TRIDSOLVER_N_MAX},1024>)
 
-#if (BUILD_FOR_CPU)
-#  add_executable(compare ${PROJECT_SOURCE_DIR}/src/compare.c)
-#  target_link_libraries(compare PRIVATE libtrid::tridcpu) # uses trid_common.h
-#endif (BUILD_FOR_CPU)
+if (BUILD_FOR_CPU)
+  add_executable(compare ${PROJECT_SOURCE_DIR}/src/compare.c)
+  target_link_libraries(compare PRIVATE libtrid::tridcpu) # uses trid_common.h
+endif (BUILD_FOR_CPU)
 
 # cmake-format: off
 #install(TARGETS libtridcuda DESTINATION lib)

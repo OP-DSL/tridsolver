@@ -30,8 +30,8 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014 
- 
+// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <getopt.h>
@@ -50,7 +50,7 @@
 #  error "Macro definition FPPREC unrecognized for CUDA"
 #endif
 
-inline double elapsed_time(double *et) {
+double elapsed_time(double *et) {
   struct timeval t;
 
   double old_time = *et;
@@ -62,7 +62,7 @@ inline double elapsed_time(double *et) {
 }
 
 extern char *optarg;
-extern int  optind, opterr, optopt; 
+extern int  optind, opterr, optopt;
 static struct option options[] = {
   {"nx",   required_argument, 0,  0   },
   {"ny",   required_argument, 0,  0   },
@@ -84,16 +84,16 @@ void print_help() {
 
 //__attribute__((target(mic)))
 void timing_start(int prof, double *timer) {
-  if(prof==1) elapsed_time(timer); 
+  if(prof==1) elapsed_time(timer);
 }
 
 //__attribute__((target(mic)))
 void timing_end(int prof, double *timer, double *elapsed_accumulate, char *str) {
   double elapsed;
   if(prof==1) {
-    elapsed = elapsed_time(timer); 
-    *elapsed_accumulate += elapsed; 
-    printf("\n elapsed %s (sec): %1.10f (s) \n", str,elapsed); 
+    elapsed = elapsed_time(timer);
+    *elapsed_accumulate += elapsed;
+    printf("\n elapsed %s (sec): %1.10f (s) \n", str,elapsed);
   }
 }
 
@@ -165,7 +165,7 @@ void adi_cpu(FP lambda, FP* __restrict u, FP* __restrict du, FP* __restrict ax, 
         else {
           d = lambda*(  u[ind-1    ] + u[ind+1]
                       + u[ind-nx   ] + u[ind+nx]
-                      + u[ind-nx*ny] + u[ind+nx*ny] 
+                      + u[ind-nx*ny] + u[ind+nx*ny]
                       - 6.0f*u[ind]);
           a = -0.5f * lambda;
           b =  1.0f + lambda;
@@ -185,7 +185,7 @@ void adi_cpu(FP lambda, FP* __restrict u, FP* __restrict du, FP* __restrict ax, 
         cz[ind] = c;
       }
     }
-  } 
+  }
   timing_end(prof,&timer,elapsed_preproc,"preproc");
 
   //
@@ -241,7 +241,7 @@ void adi_cpu(FP lambda, FP* __restrict u, FP* __restrict du, FP* __restrict ax, 
   timing_end(prof,&timer,elapsed_trid_z,"trid_z");
 }
 
-int main(int argc, char* argv[]) { 
+int main(int argc, char* argv[]) {
   double timer, timer2, elapsed, elapsed_total, elapsed_preproc, elapsed_trid_x, elapsed_trid_y, elapsed_trid_z;
 
   // 'h_' prefix - CPU (host) memory space
@@ -249,10 +249,10 @@ int main(int argc, char* argv[]) {
   int i, j, k, ind, it;
   int nx, ny, nz, iter, opt, prof;
   FP  *__restrict__ h_u, *__restrict__ h_du,
-      *__restrict__ h_ax, *__restrict__ h_bx, *__restrict__ h_cx, 
-      *__restrict__ h_ay, *__restrict__ h_by, *__restrict__ h_cy, 
-      *__restrict__ h_az, *__restrict__ h_bz, *__restrict__ h_cz, 
-      *__restrict__ tmp, 
+      *__restrict__ h_ax, *__restrict__ h_bx, *__restrict__ h_cx,
+      *__restrict__ h_ay, *__restrict__ h_by, *__restrict__ h_cy,
+      *__restrict__ h_az, *__restrict__ h_bz, *__restrict__ h_cz,
+      *__restrict__ tmp,
       err, lambda=1.0f; // lam = dt/dx^2
 
   // Set defaults options
@@ -260,8 +260,8 @@ int main(int argc, char* argv[]) {
   ny   = 256;
   nz   = 256;
   iter = 10;
-  opt  = 0; 
-  prof = 1; 
+  opt  = 0;
+  prof = 1;
 
   // Process arguments
   int opt_index = 0;
@@ -312,7 +312,7 @@ int main(int argc, char* argv[]) {
   // Compute sequentially
   elapsed_time(&timer);
   for(it =0; it<iter; it++) {
-    adi_cpu(lambda, h_u, h_du, h_ax, h_bx, h_cx, h_ay, h_by, h_cy, h_az, h_bz, h_cz, nx, ny, nz, &elapsed_preproc, &elapsed_trid_x, &elapsed_trid_y, &elapsed_trid_z, prof); 
+    adi_cpu(lambda, h_u, h_du, h_ax, h_bx, h_cx, h_ay, h_by, h_cy, h_az, h_bz, h_cz, nx, ny, nz, &elapsed_preproc, &elapsed_trid_x, &elapsed_trid_y, &elapsed_trid_z, prof);
   }
   elapsed_total = elapsed_time(&timer);
   printf("\nComputing ADI on CPU(seq): %f (s) \n", elapsed_total);
@@ -331,11 +331,11 @@ int main(int argc, char* argv[]) {
   free(h_az);
   free(h_bz);
   free(h_cz);
-  
+
   printf("Done.\n");
 
   // Print execution times
-  if(prof == 0) { 
+  if(prof == 0) {
     printf("Avg(per iter) \n[total]\n");
     printf("%f\n", elapsed_total/iter);
   }

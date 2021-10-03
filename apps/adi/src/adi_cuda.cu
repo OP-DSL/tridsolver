@@ -269,8 +269,6 @@ int main(int argc, char* argv[]) {
   pads[1] = dims[1];
   pads[2] = dims[2];
 
-  initTridMultiDimBatchSolve(ndim, dims, pads);
-
   int solvedim;   // user chosen dimension for which the solution is performed
 
   int opts[MAXDIM];// = {nx, ny, nz,...};
