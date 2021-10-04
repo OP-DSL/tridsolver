@@ -5,7 +5,8 @@
 #include "utils.hpp"
 #include "catch_utils.hpp"
 
-#include <trid_mpi_cpu.h>
+#include <tridsolver.h>
+#include <trid_mpi_solver_params.hpp>
 #include "cpu_mpi_wrappers.hpp"
 
 #include <mpi.h>
@@ -75,7 +76,7 @@ void test_solver_from_file(const std::string &file_name) {
   copy_strided(mesh.u(), u, local_sizes, domain_offsets, global_strides,
                local_sizes.size() - 1);
   // Solve the equations
-  tridStridedBatchWrapper<Float>(params, a.data(), b.data(), c.data(), d.data(),
+  tridStridedBatchWrapper<Float>(&params, a.data(), b.data(), c.data(), d.data(),
                                  nullptr, mesh.dims().size(), mesh.solve_dim(),
                                  local_sizes.data(), local_sizes.data());
 
@@ -170,7 +171,7 @@ void test_solver_from_file_padded(const std::string &file_name) {
   }
 
   // Solve the equations
-  tridStridedBatchWrapper<Float>(params, a_p.data() + offset_to_first_element,
+  tridStridedBatchWrapper<Float>(&params, a_p.data() + offset_to_first_element,
                                  b_p.data() + offset_to_first_element,
                                  c_p.data() + offset_to_first_element,
                                  d_p.data() + offset_to_first_element, nullptr,

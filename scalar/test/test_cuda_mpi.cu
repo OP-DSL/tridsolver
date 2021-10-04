@@ -9,8 +9,8 @@
 #include "trid_iterative_mpi.hpp"
 
 #include <trid_common.h>
-#include <trid_cuda.h>
-#include <trid_mpi_cuda.hpp>
+#include <tridsolver.h>
+#include <trid_mpi_solver_params.hpp>
 
 
 #include <mpi.h>
@@ -88,7 +88,7 @@ void test_solver_from_file(const std::string &file_name) {
   std::vector<Float> host_init(domain_size, 0);
   DeviceArray<Float> u_d(host_init.data(), domain_size);
   tridmtsvStridedBatchMPIWrapper<Float, INC>(
-      params, local_device_mesh.a().data(), local_device_mesh.b().data(),
+      &params, local_device_mesh.a().data(), local_device_mesh.b().data(),
       local_device_mesh.c().data(), local_device_mesh.d().data(), u_d.data(),
       mesh.dims().size(), mesh.solve_dim(), local_sizes.data(),
       local_sizes.data());
@@ -208,7 +208,7 @@ void test_solver_from_file_padded(const std::string &file_name) {
              cudaMemcpyHostToDevice);
 
   tridmtsvStridedBatchMPIWrapper<Float, INC>(
-      params, a_d + offset_to_first_element, b_d + offset_to_first_element,
+      &params, a_d + offset_to_first_element, b_d + offset_to_first_element,
       c_d + offset_to_first_element, d_d + offset_to_first_element,
       u_d + offset_to_first_element, mesh.dims().size(), mesh.solve_dim(),
       local_sizes.data(), padded_dims.data());
@@ -390,7 +390,7 @@ void test_short_forward_pass(const std::string &file_name) {
   int dimgrid = 1 + (n_sys - 1) / dimBlock_x.x; // can go up to 65535
   dim3 dimGrid_x(dimgrid % 65536, 1 + dimgrid / 65536);
   forward_batched_pass<Float, true>(
-      dimGrid_x, dimBlock_x, params, local_device_mesh.a().data(),
+      dimGrid_x, dimBlock_x, &params, local_device_mesh.a().data(),
       local_sizes.data(), local_device_mesh.b().data(), local_sizes.data(),
       local_device_mesh.c().data(), local_sizes.data(),
       local_device_mesh.d().data(), local_sizes.data(), aa.data(), cc.data(),
@@ -554,7 +554,7 @@ void test_iterative_pcr_on_reduced(const std::string &file_name) {
   int dimgrid = 1 + (n_sys - 1) / dimBlock_x.x; // can go up to 65535
   dim3 dimGrid_x(dimgrid % 65536, 1 + dimgrid / 65536);
   forward_batched_pass<Float, true>(
-      dimGrid_x, dimBlock_x, params, local_device_mesh.a().data(),
+      dimGrid_x, dimBlock_x, &params, local_device_mesh.a().data(),
       local_sizes.data(), local_device_mesh.b().data(), local_sizes.data(),
       local_device_mesh.c().data(), local_sizes.data(),
       local_device_mesh.d().data(), local_sizes.data(), aa.data(), cc.data(),
@@ -581,7 +581,7 @@ void test_iterative_pcr_on_reduced(const std::string &file_name) {
   cudaSafeCall(cudaMallocHost(&rcv_m1_h, 3 * n_sys * sizeof(Float)));
   cudaSafeCall(cudaMallocHost(&snd_h, 3 * n_sys * sizeof(Float)));
   // snd_buf_h, rcv_buf_h
-  iterative_pcr_on_reduced<Float>(dimGrid_x, dimBlock_x, params,
+  iterative_pcr_on_reduced<Float>(dimGrid_x, dimBlock_x, &params,
                                   boundaries.data(), n_sys, mesh.solve_dim(),
                                   rcv_m1_d.data(), rcv_m1_h, snd_h);
   // boundaries stores the result to the first row for each node at this

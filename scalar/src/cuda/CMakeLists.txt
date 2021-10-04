@@ -68,8 +68,7 @@ if (BUILD_FOR_GPU)
     ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
 
   install(
-    FILES ${PROJECT_SOURCE_DIR}/include/trid_cuda.h
-          ${PROJECT_SOURCE_DIR}/include/trid_common.h
+    FILES ${PROJECT_SOURCE_DIR}/include/trid_common.h
           ${PROJECT_SOURCE_DIR}/include/trid_util.h
           ${PROJECT_SOURCE_DIR}/include/cutil_inline.h
     DESTINATION ${PROJECT_NAME}/include)
@@ -136,9 +135,7 @@ if (BUILD_FOR_GPU)
       ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
 
     install(
-      FILES ${PROJECT_SOURCE_DIR}/include/trid_cuda.h
-            ${PROJECT_SOURCE_DIR}/include/trid_common.h
-            ${PROJECT_SOURCE_DIR}/include/trid_mpi_cuda.hpp
+      FILES ${PROJECT_SOURCE_DIR}/include/trid_common.h
             ${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp
       DESTINATION ${PROJECT_NAME}/include)
     install(

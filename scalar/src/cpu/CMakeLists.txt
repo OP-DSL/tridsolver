@@ -94,7 +94,7 @@ if (BUILD_FOR_CPU)
       EXPORT tridcpuMPITarget
       LIBRARY DESTINATION ${PROJECT_NAME}/lib
       ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
-    install(FILES ${PROJECT_SOURCE_DIR}/include/trid_common.h ${PROJECT_SOURCE_DIR}/include/trid_mpi_cpu.h
+    install(FILES ${PROJECT_SOURCE_DIR}/include/trid_common.h
                   ${PROJECT_SOURCE_DIR}/include/trid_mpi_solver_params.hpp DESTINATION ${PROJECT_NAME}/include)
     install(
       EXPORT tridcpuMPITarget

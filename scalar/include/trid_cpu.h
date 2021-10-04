@@ -37,51 +37,6 @@
 #define TRID_CPU_H__
 #include "trid_common.h"
 
-//
-// Solve a batch of linear equation systems along a specified axis.
-//
-// `a`, `b`, `c`, `d` are the parameters of the systems. These must be arrays
-// with shape `dims`, the number of dimensions is `ndims`. These are padded
-// along each axis with pads of size `pads`.
-//
-// Solution will be along the axis `solvedim`, i.e. values along that axis will
-// form a system of equations to be solved. Separate systems will be solved
-// independently. The result is written to `d`.
-//
-// `u` is unused.
-EXTERN_C
-tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b,
-                                   const float *c, float *d, float *u, int ndim,
-                                   int solvedim, const int *dims,
-                                   const int *pads);
-EXTERN_C
-tridStatus_t tridDmtsvStridedBatch(const double *a, const double *b,
-                                   const double *c, double *d, double *u,
-                                   int ndim, int solvedim, const int *dims,
-                                   const int *pads);
-
-//
-// Solve a batch of linear equation systems along a specified axis.
-//
-// `a`, `b`, `c`, `d` are the parameters of the systems, `u` is the array to be
-// incremented with the results. These must be arrays with shape `dims`, the
-// number of dimensions is `ndims`. These are padded along each axis with pads
-// of size `pads`.
-//
-// Solution will be along the axis `solvedim`, i.e. values along that axis will
-// form a system of equations to be solved. Separate systems will be solved
-// independently. `u` is incremented with the results.
-EXTERN_C
-tridStatus_t tridSmtsvStridedBatchInc(const float *a, const float *b,
-                                      const float *c, float *d, float *u,
-                                      int ndim, int solvedim, const int *dims,
-                                      const int *pads);
-EXTERN_C
-tridStatus_t tridDmtsvStridedBatchInc(const double *a, const double *b,
-                                      const double *c, double *d, double *u,
-                                      int ndim, int solvedim, const int *dims,
-                                      const int *pads);
-
 EXTERN_C
 void trid_scalarS(const float *a, const float *b, const float *c, float *d,
                   float *u, int N, int stride);

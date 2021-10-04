@@ -71,6 +71,10 @@
 #  define __assume_aligned __builtin_assume_aligned
 #endif
 
+#ifdef __INTEL_COMPILER
+#include "dvec.h"
+#endif
+
 #ifdef __AVX512F__
 #  if FPPREC == 0
 // Xeon Phi float

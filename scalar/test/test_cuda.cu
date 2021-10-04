@@ -2,7 +2,7 @@
 #include "cuda_utils.hpp"
 #include "catch_utils.hpp"
 
-#include <trid_cuda.h>
+#include <tridsolver.h>
 
 template <typename Float>
 tridStatus_t tridStridedBatchWrapper(const Float *a, const Float *b,
@@ -15,9 +15,12 @@ tridStatus_t tridStridedBatchWrapper<float>(const float *a, const float *b,
                                             const float *c, float *d, float *u,
                                             int ndim, int solvedim, int *dims,
                                             int *pads) {
-  int opts[] = {ndim == 1 ? 1 : 0, 0, 0};
-  return tridSmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads, opts,
-                               0);
+  TridParams trid_params;
+  trid_params.opts[0] = ndim == 1 ? 1 : 0;
+  trid_params.opts[1] = 0;
+  trid_params.opts[2] = 0;
+  return tridSmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads,
+                               &trid_params);
 }
 
 template <>
@@ -25,9 +28,12 @@ tridStatus_t tridStridedBatchWrapper<double>(const double *a, const double *b,
                                              const double *c, double *d,
                                              double *u, int ndim, int solvedim,
                                              int *dims, int *pads) {
-  int opts[] = {ndim == 1 ? 1 : 0, 0, 0};
-  return tridDmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads, opts,
-                               0);
+  TridParams trid_params;
+  trid_params.opts[0] = ndim == 1 ? 1 : 0;
+  trid_params.opts[1] = 0;
+  trid_params.opts[2] = 0;
+  return tridDmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads,
+                               &trid_params);
 }
 
 template <typename Float> void test_from_file(const std::string &file_name) {

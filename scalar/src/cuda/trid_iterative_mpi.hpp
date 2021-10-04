@@ -1231,7 +1231,7 @@ void trid_linear_backward_pass_reg(dim3 dimGrid_x, dim3 dimBlock_x,
 
 template <typename REAL, bool boundary_SOA, bool shift_c0_on_rank0 = true>
 inline void forward_batched_pass(
-    dim3 dimGrid_x, dim3 dimBlock_x, const MpiSolverParams &params,
+    dim3 dimGrid_x, dim3 dimBlock_x, const MpiSolverParams *params,
     const REAL *a, const int *a_pads, const REAL *b, const int *b_pads,
     const REAL *c, const int *c_pads, REAL *d, const int *d_pads, REAL *aa,
     REAL *cc, REAL *boundaries, const int *dims, int ndim, int solvedim,
@@ -1249,8 +1249,8 @@ inline void forward_batched_pass(
         dimGrid_x, dimBlock_x, a + batch_offset, b + batch_offset,
         c + batch_offset, d + batch_offset, aa + batch_offset,
         cc + batch_offset, boundaries + start_sys * 3 * 2, dims[solvedim],
-        a_pads[solvedim], bsize, params.mpi_coords[solvedim],
-        params.num_mpi_procs[solvedim], y_size, y_pads, stream);
+        a_pads[solvedim], bsize, params->mpi_coords[solvedim],
+        params->num_mpi_procs[solvedim], y_size, y_pads, stream);
     // trid_linear_forward_pass<REAL, boundary_SOA, shift_c0_on_rank0>
     //     <<<dimGrid_x, dimBlock_x, 0, stream>>>(
     //         a + batch_offset, b + batch_offset, c + batch_offset,
@@ -1267,15 +1267,15 @@ inline void forward_batched_pass(
     trid_strided_multidim_forward_pass<REAL, boundary_SOA, shift_c0_on_rank0>
         <<<dimGrid_x, dimBlock_x, 0, stream>>>(
             a, k_pads, b, k_pads, c, k_pads, d, k_pads, aa, cc, boundaries,
-            ndim, solvedim, bsize, k_dims, params.mpi_coords[solvedim],
-            params.num_mpi_procs[solvedim], start_sys);
+            ndim, solvedim, bsize, k_dims, params->mpi_coords[solvedim],
+            params->num_mpi_procs[solvedim], start_sys);
   }
 }
 
 template <typename REAL, int INC, bool boundary_SOA,
           bool is_c0_cleared_on_rank0 = true>
 inline void backward_batched_pass(dim3 dimGrid_x, dim3 dimBlock_x,
-                                  const MpiSolverParams &params, const REAL *aa,
+                                  const MpiSolverParams *params, const REAL *aa,
                                   const int *a_pads, const REAL *cc,
                                   const int *c_pads, const REAL *boundaries,
                                   REAL *d, const int *d_pads, REAL *u,
@@ -1298,8 +1298,8 @@ inline void backward_batched_pass(dim3 dimGrid_x, dim3 dimBlock_x,
                                   is_c0_cleared_on_rank0>(
         dimGrid_x, dimBlock_x, aa + batch_offset, cc + batch_offset,
         d + batch_offset, u + batch_offset, boundaries + start_sys * 2 * 3,
-        dims[solvedim], a_pads[solvedim], bsize, params.mpi_coords[solvedim],
-        params.num_mpi_procs[solvedim], y_size, y_pads, stream);
+        dims[solvedim], a_pads[solvedim], bsize, params->mpi_coords[solvedim],
+        params->num_mpi_procs[solvedim], y_size, y_pads, stream);
     // trid_linear_backward_pass<REAL, INC, boundary_SOA, is_c0_cleared_on_rank0>
     //     <<<dimGrid_x, dimBlock_x, 0, stream>>>(
     //         aa + batch_offset, cc + batch_offset, d + batch_offset,
@@ -1316,8 +1316,8 @@ inline void backward_batched_pass(dim3 dimGrid_x, dim3 dimBlock_x,
                                         is_c0_cleared_on_rank0>
         <<<dimGrid_x, dimBlock_x, 0, stream>>>(
             aa, k_pads, cc, k_pads, d, k_pads, u, k_pads, boundaries, ndim,
-            solvedim, bsize, k_dims, params.mpi_coords[solvedim],
-            params.num_mpi_procs[solvedim], start_sys);
+            solvedim, bsize, k_dims, params->mpi_coords[solvedim],
+            params->num_mpi_procs[solvedim], start_sys);
   }
 }
 
@@ -1325,7 +1325,7 @@ template <typename REAL, bool snd_down = true, bool snd_up = true>
 void trid_cuda_pcr_exchange_line(REAL *snd_d, REAL *snd_h, REAL *rcv_m1_d,
                                  REAL *rcv_m1_h, REAL *rcv_p1_d, REAL *rcv_p1_h,
                                  int line_size, int nproc, int rank_m1,
-                                 int rank_p1, const MpiSolverParams &params,
+                                 int rank_p1, const MpiSolverParams *params,
                                  int solvedim, MPI_Request *rcv_requests,
                                  MPI_Request *snd_requests) {
   BEGIN_PROFILING2("mpi_communication");
@@ -1336,19 +1336,19 @@ void trid_cuda_pcr_exchange_line(REAL *snd_d, REAL *snd_h, REAL *rcv_m1_d,
   if (rank_m1 >= 0 && rank_m1 < nproc) {
     if (snd_down)
       MPI_Irecv(rcv_m1_d, line_size, MPI_DATATYPE(REAL), rank_m1, tag,
-                params.communicators[solvedim], &rcv_requests[0]);
+                params->communicators[solvedim], &rcv_requests[0]);
     if (snd_up)
       MPI_Isend(snd_d, line_size, MPI_DATATYPE(REAL), rank_m1, tag,
-                params.communicators[solvedim], &snd_requests[0]);
+                params->communicators[solvedim], &snd_requests[0]);
   }
   // Exchange line with lower process
   if (rank_p1 < nproc && rank_p1 >= 0) {
     if (snd_up)
       MPI_Irecv(rcv_p1_d, line_size, MPI_DATATYPE(REAL), rank_p1, tag,
-                params.communicators[solvedim], &rcv_requests[1]);
+                params->communicators[solvedim], &rcv_requests[1]);
     if (snd_down)
       MPI_Isend(snd_d, line_size, MPI_DATATYPE(REAL), rank_p1, tag,
-                params.communicators[solvedim], &snd_requests[1]);
+                params->communicators[solvedim], &snd_requests[1]);
   }
   MPI_Waitall(2, rcv_requests, MPI_STATUS_IGNORE);
 #elif defined(TRID_NCCL)
@@ -1357,19 +1357,19 @@ void trid_cuda_pcr_exchange_line(REAL *snd_d, REAL *snd_h, REAL *rcv_m1_d,
   if (rank_m1 >= 0 && rank_m1 < nproc) {
     if (snd_down)
       NCCLCHECK(ncclRecv(rcv_m1_d, line_size * sizeof(REAL), ncclChar, rank_m1,
-                         params.ncclComms[solvedim], 0));
+                         params->ncclComms[solvedim], 0));
     if (snd_up)
       NCCLCHECK(ncclSend(snd_d, line_size * sizeof(REAL), ncclChar, rank_m1,
-                         params.ncclComms[solvedim], 0));
+                         params->ncclComms[solvedim], 0));
   }
   // Exchange line with lower process
   if (rank_p1 < nproc && rank_p1 >= 0) {
     if (snd_up)
       NCCLCHECK(ncclRecv(rcv_p1_d, line_size * sizeof(REAL), ncclChar, rank_p1,
-                         params.ncclComms[solvedim], 0));
+                         params->ncclComms[solvedim], 0));
     if (snd_down)
       NCCLCHECK(ncclSend(snd_d, line_size * sizeof(REAL), ncclChar, rank_p1,
-                         params.ncclComms[solvedim], 0));
+                         params->ncclComms[solvedim], 0));
   }
   NCCLCHECK(ncclGroupEnd());
   if ((rank_m1 >= 0 && rank_m1 < nproc) || (rank_p1 < nproc && rank_p1 >= 0)) {
@@ -1379,12 +1379,12 @@ void trid_cuda_pcr_exchange_line(REAL *snd_d, REAL *snd_h, REAL *rcv_m1_d,
   // Exchange line with upper process
   if (snd_down && rank_m1 >= 0 && rank_m1 < nproc) {
     MPI_Irecv(rcv_m1_h, line_size, MPI_DATATYPE(REAL), rank_m1, tag,
-              params.communicators[solvedim], &rcv_requests[0]);
+              params->communicators[solvedim], &rcv_requests[0]);
   }
   // Exchange line with lower process
   if (snd_up && rank_p1 >= 0 && rank_p1 < nproc) {
     MPI_Irecv(rcv_p1_h, line_size, MPI_DATATYPE(REAL), rank_p1, tag,
-              params.communicators[solvedim], &rcv_requests[1]);
+              params->communicators[solvedim], &rcv_requests[1]);
   }
 
   // copy send buffer to host
@@ -1396,12 +1396,12 @@ void trid_cuda_pcr_exchange_line(REAL *snd_d, REAL *snd_h, REAL *rcv_m1_d,
   // Exchange line with upper process
   if (snd_up && rank_m1 >= 0 && rank_m1 < nproc) {
     MPI_Isend(snd_h, line_size, MPI_DATATYPE(REAL), rank_m1, tag,
-              params.communicators[solvedim], &snd_requests[0]);
+              params->communicators[solvedim], &snd_requests[0]);
   }
   // Exchange line with lower process
   if (snd_down && rank_p1 >= 0 && rank_p1 < nproc) {
     MPI_Isend(snd_h, line_size, MPI_DATATYPE(REAL), rank_p1, tag,
-              params.communicators[solvedim], &snd_requests[1]);
+              params->communicators[solvedim], &snd_requests[1]);
   }
   MPI_Waitall(2, rcv_requests, MPI_STATUS_IGNORE);
   // Exchange line with upper process
@@ -1433,15 +1433,15 @@ void trid_cuda_pcr_exchange_line(REAL *snd_d, REAL *snd_h, REAL *rcv_m1_d,
 
 template <typename REAL>
 inline void iterative_pcr_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
-                                     const MpiSolverParams &params,
+                                     const MpiSolverParams *params,
                                      REAL *boundaries, int sys_n, int solvedim,
                                      REAL *recv_buf_d, REAL *recv_buf_h,
                                      REAL *send_buf_h) {
 
   MPI_Request rcv_requests[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
   MPI_Request snd_requests[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
-  const int rank              = params.mpi_coords[solvedim];
-  const int nproc             = params.num_mpi_procs[solvedim];
+  const int rank              = params->mpi_coords[solvedim];
+  const int nproc             = params->num_mpi_procs[solvedim];
   constexpr int nvar_per_sys  = 3; // a, c, d
   const int line_size         = sys_n * nvar_per_sys;
 
@@ -1461,7 +1461,7 @@ inline void iterative_pcr_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
 #endif
 
   // PCR iterations
-  int P = (int)ceil(log2((REAL)params.num_mpi_procs[solvedim]));
+  int P = (int)ceil(log2((REAL)params->num_mpi_procs[solvedim]));
 
   for (int p = 0, s = 1; p < P; p++, s <<= 1) {
     int rank_ms = rank - s;
@@ -1494,15 +1494,15 @@ inline void iterative_pcr_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
 
 template <typename REAL>
 inline void iterative_jacobi_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
-                                        const MpiSolverParams &params,
+                                        const MpiSolverParams *params,
                                         REAL *boundaries, int sys_n,
                                         int solvedim, REAL *recv_buf_d,
                                         REAL *recv_buf_h, REAL *send_buf_h) {
 
   MPI_Request rcv_requests[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
   MPI_Request snd_requests[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
-  const int rank              = params.mpi_coords[solvedim];
-  const int nproc             = params.num_mpi_procs[solvedim];
+  const int rank              = params->mpi_coords[solvedim];
+  const int nproc             = params->num_mpi_procs[solvedim];
   constexpr int nvar_per_sys  = 3; // a, c, d
   const int line_size         = sys_n * nvar_per_sys;
 
@@ -1528,7 +1528,7 @@ inline void iterative_jacobi_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
 #endif
 
   // norm comp
-  int global_sys_len    = params.num_mpi_procs[solvedim];
+  int global_sys_len    = params->num_mpi_procs[solvedim];
   REAL local_norm_send  = -1.0;
   REAL global_norm_recv = -1.0;
   REAL global_norm      = -1.0;
@@ -1537,7 +1537,7 @@ inline void iterative_jacobi_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
 
   MPI_Request norm_req = MPI_REQUEST_NULL;
   int iter             = 0;
-  while ((params.jacobi_maxiter < 0 || iter < params.jacobi_maxiter) &&
+  while ((params->jacobi_maxiter < 0 || iter < params->jacobi_maxiter) &&
          need_iter) {
     REAL local_norm = 0.0;
     // send res to neighbours
@@ -1579,12 +1579,12 @@ inline void iterative_jacobi_on_reduced(dim3 dimGrid_x, dim3 dimBlock_x,
     if (norm0 < 0) norm0 = global_norm;
     local_norm_send = local_norm;
     iter++;
-    need_iter = global_norm < 0.0 || (params.jacobi_atol < global_norm &&
-                                      params.jacobi_rtol < global_norm / norm0);
-    if ((params.jacobi_maxiter < 0 || iter + 1 < params.jacobi_maxiter) &&
+    need_iter = global_norm < 0.0 || (params->jacobi_atol < global_norm &&
+                                      params->jacobi_rtol < global_norm / norm0);
+    if ((params->jacobi_maxiter < 0 || iter + 1 < params->jacobi_maxiter) &&
         need_iter) { // if norm is not enough and next is not last iteration
       MPI_Iallreduce(&local_norm_send, &global_norm_recv, 1, MPI_DATATYPE(REAL),
-                     MPI_SUM, params.communicators[solvedim], &norm_req);
+                     MPI_SUM, params->communicators[solvedim], &norm_req);
     }
     END_PROFILING("mpi_communication");
   }

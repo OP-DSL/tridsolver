@@ -34,7 +34,8 @@
 // 2013-2014
 
 #include "trid_common.h"
-#include "trid_cuda.h"
+// #include "trid_cuda.h"
+#include "tridsolver.h"
 
 // CUDA constant memory setup for multidimension related index calculations
 
@@ -418,38 +419,35 @@ void tridMultiDimBatchSolve(const REAL *d_a, const int *a_pads, const REAL *d_b,
 tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b,
                                    const float *c, float *d, float *u, int ndim,
                                    int solvedim, const int *dims,
-                                   const int *pads, const int *opts, int sync) {
+                                   const int *pads, const TridParams *ctx) {
   tridMultiDimBatchSolve<float, 0>(a, pads, b, pads, c, pads, d, pads, NULL,
-                                   pads, ndim, solvedim, dims, opts, 1);
+                                   pads, ndim, solvedim, dims, ctx->opts, 1);
   return TRID_STATUS_SUCCESS;
 }
 
 tridStatus_t tridDmtsvStridedBatch(const double *a, const double *b,
                                    const double *c, double *d, double *u,
                                    int ndim, int solvedim, const int *dims,
-                                   const int *pads, const int *opts, int sync) {
+                                   const int *pads, const TridParams *ctx) {
   tridMultiDimBatchSolve<double, 0>(a, pads, b, pads, c, pads, d, pads, NULL,
-                                    pads, ndim, solvedim, dims, opts, 1);
+                                    pads, ndim, solvedim, dims, ctx->opts, 1);
   return TRID_STATUS_SUCCESS;
 }
 
 tridStatus_t tridSmtsvStridedBatchInc(const float *a, const float *b,
                                       const float *c, float *d, float *u,
                                       int ndim, int solvedim, const int *dims,
-                                      const int *pads, const int *opts,
-                                      int sync) {
+                                      const int *pads, const TridParams *ctx) {
   tridMultiDimBatchSolve<float, 1>(a, pads, b, pads, c, pads, d, pads, u, pads,
-                                   ndim, solvedim, dims, opts, 1);
+                                   ndim, solvedim, dims, ctx->opts, 1);
   return TRID_STATUS_SUCCESS;
 }
 
 tridStatus_t tridDmtsvStridedBatchInc(const double *a, const double *b,
                                       const double *c, double *d, double *u,
                                       int ndim, int solvedim, const int *dims,
-                                      const int *pads, const int *opts,
-                                      int sync) {
+                                      const int *pads, const TridParams *ctx) {
   tridMultiDimBatchSolve<double, 1>(a, pads, b, pads, c, pads, d, pads, u, pads,
-                                    ndim, solvedim, dims, opts, 1);
+                                    ndim, solvedim, dims, ctx->opts, 1);
   return TRID_STATUS_SUCCESS;
 }
-
