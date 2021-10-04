@@ -38,7 +38,7 @@
 #include <float.h>
 #include <sys/time.h>
 
-#include "trid_mpi_cuda.hpp"
+#include "tridsolver.h"
 #include "trid_mpi_solver_params.hpp"
 #include "trid_common.h"
 #include "cutil_inline.h"
@@ -350,6 +350,9 @@ int main(int argc, char* argv[]) {
   FP *h_u = (FP *) malloc(sizeof(FP) * app.size[0] * app.size[1] * app.size[2]);
   FP *du = (FP *) malloc(sizeof(FP) * app.size[0] * app.size[1] * app.size[2]);
 
+  TridParams trid_params;
+  trid_params.mpi_params = (void *)app.params;
+
   // Iterate over specified number of time steps
   for(int it = 0; it < iter; it++) {
     // Preprocess
@@ -366,9 +369,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.size);
+    tridSmtsvStridedBatch(app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.size, &trid_params);
 #else
-    tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.size);
+    tridDmtsvStridedBatch(app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.size, &trid_params);
 #endif
 
     timing_end(&timer, &elapsed_trid_x);
@@ -378,9 +381,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.size);
+    tridSmtsvStridedBatch(app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.size, &trid_params);
 #else
-    tridDmtsvStridedBatchMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.size);
+    tridDmtsvStridedBatch(app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.size, &trid_params);
 #endif
     timing_end(&timer, &elapsed_trid_y);
 
@@ -389,9 +392,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatchIncMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.size);
+    tridSmtsvStridedBatchInc(app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.size, &trid_params);
 #else
-    tridDmtsvStridedBatchIncMPI(*(app.params), app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.size);
+    tridDmtsvStridedBatchInc(app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.size, &trid_params);
 #endif
     timing_end(&timer, &elapsed_trid_z);
   }

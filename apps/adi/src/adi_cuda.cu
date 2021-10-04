@@ -39,7 +39,7 @@
 
 #include "trid_common.h"
 #include "trid_util.h"
-#include "trid_cuda.h"
+#include "tridsolver.h"
 #include "cutil_inline.h"
 
 #define ROUND_DOWN(N,step) (((N)/(step))*step)
@@ -271,13 +271,12 @@ int main(int argc, char* argv[]) {
 
   int solvedim;   // user chosen dimension for which the solution is performed
 
-  int opts[MAXDIM];// = {nx, ny, nz,...};
-  //int *opts = get_opts();
-  opts[0] = optx;
-  opts[1] = opty;
-  opts[2] = optz;
+  TridParams trid_params;
+  trid_params.opts[0] = optx;
+  trid_params.opts[1] = opty;
+  trid_params.opts[2] = optz;
 
-  int sync = 1; // Host-synchronous kernel execution
+  trid_params.sync = 1; // Host-synchronous kernel execution
 
   elapsed_time(&timer2);
   for(it = 0; it<iter; it++) {
@@ -292,9 +291,9 @@ int main(int argc, char* argv[]) {
       solvedim = 0;
       //tridMultiDimBatchSolve<FP,0>(d_ax, d_bx, d_cx, d_du, d_u, ndim, solvedim, dims, pads, opts, sync);
       #if FPPREC==0
-        tridSmtsvStridedBatch(d_ax, d_bx, d_cx, d_du, d_u, ndim, solvedim, dims, pads, opts, sync);
+        tridSmtsvStridedBatch(d_ax, d_bx, d_cx, d_du, d_u, ndim, solvedim, dims, pads, &trid_params);
       #elif FPPREC==1
-        tridDmtsvStridedBatch(d_ax, d_bx, d_cx, d_du, d_u, ndim, solvedim, dims, pads, opts, sync);
+        tridDmtsvStridedBatch(d_ax, d_bx, d_cx, d_du, d_u, ndim, solvedim, dims, pads, &trid_params);
       #endif
     timing_end(prof,&timer,&elapsed_trid_x,"trid_x");
 
@@ -304,9 +303,9 @@ int main(int argc, char* argv[]) {
       //else           tridMultiDimBatchSolve<FP,0>(d_ay, d_by, d_cy, d_du, d_u, ndim, solvedim, dims, pads, opts, &d_buffer, sync);
       //tridMultiDimBatchSolve<FP,0>(d_ay, d_by, d_cy, d_du, d_u, ndim, solvedim, dims, pads, opts, sync);
       #if FPPREC==0
-        tridSmtsvStridedBatch(d_ay, d_by, d_cy, d_du, d_u, ndim, solvedim, dims, pads, opts, sync);
+        tridSmtsvStridedBatch(d_ay, d_by, d_cy, d_du, d_u, ndim, solvedim, dims, pads, &trid_params);
       #elif FPPREC==1
-        tridDmtsvStridedBatch(d_ay, d_by, d_cy, d_du, d_u, ndim, solvedim, dims, pads, opts, sync);
+        tridDmtsvStridedBatch(d_ay, d_by, d_cy, d_du, d_u, ndim, solvedim, dims, pads, &trid_params);
       #endif
     timing_end(prof,&timer,&elapsed_trid_y,"trid_y");
 
@@ -319,9 +318,9 @@ int main(int argc, char* argv[]) {
       //else           tridMultiDimBatchSolve<FP,1>(d_az, d_bz, d_cz, d_du, d_u, ndim, solvedim, dims, pads, opts, &d_buffer, sync);
       //tridMultiDimBatchSolve<FP,1>(d_az, d_bz, d_cz, d_du, d_u, ndim, solvedim, dims, pads, opts, sync);
       #if FPPREC==0
-        tridSmtsvStridedBatchInc(d_az, d_bz, d_cz, d_du, d_u, ndim, solvedim, dims, pads, opts, sync);
+        tridSmtsvStridedBatchInc(d_az, d_bz, d_cz, d_du, d_u, ndim, solvedim, dims, pads, &trid_params);
       #elif FPPREC==1
-        tridDmtsvStridedBatchInc(d_az, d_bz, d_cz, d_du, d_u, ndim, solvedim, dims, pads, opts, sync);
+        tridDmtsvStridedBatchInc(d_az, d_bz, d_cz, d_du, d_u, ndim, solvedim, dims, pads, &trid_params);
       #endif
     timing_end(prof,&timer,&elapsed_trid_z,"trid_z");
   }

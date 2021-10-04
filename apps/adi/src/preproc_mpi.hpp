@@ -33,7 +33,7 @@
 // Written by Toby Flynn, University of Warwick, T.Flynn@warwick.ac.uk, 2020
 
 #include "mpi.h"
-#include "trid_mpi_cpu.h"
+#include "trid_common.h"
 #include "adi_mpi.h"
 
 template<typename REAL>

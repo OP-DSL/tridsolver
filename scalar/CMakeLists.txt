@@ -78,7 +78,10 @@ install(
   LIBRARY DESTINATION ${PROJECT_NAME}/lib
   ARCHIVE DESTINATION ${PROJECT_NAME}/lib)
 
-install(FILES ${PROJECT_SOURCE_DIR}/include/trid_common.h ${PROJECT_SOURCE_DIR}/include/tridsolver.h DESTINATION ${PROJECT_NAME}/include)
+install(FILES ${PROJECT_SOURCE_DIR}/include/trid_common.h
+              ${PROJECT_SOURCE_DIR}/include/tridsolver.h
+              ${PROJECT_SOURCE_DIR}/include/trid_params.h 
+              DESTINATION ${PROJECT_NAME}/include)
 
 install(
   EXPORT tridCommonTarget
