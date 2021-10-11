@@ -457,19 +457,19 @@ void tridMultiDimBatchSolve(const REAL *a, const REAL *b, const REAL *c,
 
 #if FPPREC == 0
 
-tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b,
-                                   const float *c, float *d, float *u, int ndim,
-                                   int solvedim, const int *dims,
-                                   const int *pads, const TridParams *ctx) {
+tridStatus_t tridSmtsvStridedBatch(const TridParams *, const float *a,
+                                   const float *b, const float *c, float *d,
+                                   float *u, int ndim, int solvedim,
+                                   const int *dims, const int *pads) {
   tridMultiDimBatchSolve<float, false>(a, b, c, d, u, ndim, solvedim, dims,
                                        pads);
   return TRID_STATUS_SUCCESS;
 }
 
-tridStatus_t tridSmtsvStridedBatchInc(const float *a, const float *b,
-                                      const float *c, float *d, float *u,
-                                      int ndim, int solvedim, const int *dims,
-                                      const int *pads, const TridParams *ctx) {
+tridStatus_t tridSmtsvStridedBatchInc(const TridParams *, const float *a,
+                                      const float *b, const float *c, float *d,
+                                      float *u, int ndim, int solvedim,
+                                      const int *dims, const int *pads) {
   tridMultiDimBatchSolve<float, true>(a, b, c, d, u, ndim, solvedim, dims,
                                       pads);
   return TRID_STATUS_SUCCESS;
@@ -505,19 +505,20 @@ void trid_scalar_vecSInc(const float *__restrict a, const float *__restrict b,
 
 #elif FPPREC == 1
 
-tridStatus_t tridDmtsvStridedBatch(const double *a, const double *b,
-                                   const double *c, double *d, double *u,
-                                   int ndim, int solvedim, const int *dims,
-                                   const int *pads, const TridParams *ctx) {
+tridStatus_t tridDmtsvStridedBatch(const TridParams *, const double *a,
+                                   const double *b, const double *c, double *d,
+                                   double *u, int ndim, int solvedim,
+                                   const int *dims, const int *pads) {
   tridMultiDimBatchSolve<double, false>(a, b, c, d, u, ndim, solvedim, dims,
                                         pads);
   return TRID_STATUS_SUCCESS;
 }
 
-tridStatus_t tridDmtsvStridedBatchInc(const double *a, const double *b,
-                                      const double *c, double *d, double *u,
-                                      int ndim, int solvedim, const int *dims,
-                                      const int *pads, const TridParams *ctx) {
+tridStatus_t tridDmtsvStridedBatchInc(const TridParams *, const double *a,
+                                      const double *b, const double *c,
+                                      double *d, double *u, int ndim,
+                                      int solvedim, const int *dims,
+                                      const int *pads) {
   tridMultiDimBatchSolve<double, true>(a, b, c, d, u, ndim, solvedim, dims,
                                        pads);
   return TRID_STATUS_SUCCESS;

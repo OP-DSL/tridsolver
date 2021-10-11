@@ -1471,19 +1471,19 @@ void tridMultiDimBatchSolve(const MpiSolverParams *params, const REAL *a,
 // The result is written to 'd'. 'u' is unused.
 
 #if FPPREC == 1
-tridStatus_t tridDmtsvStridedBatch(const double *a, const double *b,
-                                   const double *c, double *d, double *u,
-                                   int ndim, int solvedim, const int *dims,
-                                   const int *pads, const TridParams *ctx) {
+tridStatus_t tridDmtsvStridedBatch(const TridParams *ctx, const double *a,
+                                   const double *b, const double *c, double *d,
+                                   double *u, int ndim, int solvedim,
+                                   const int *dims, const int *pads) {
   tridMultiDimBatchSolve<double, 0>((MpiSolverParams *)ctx->mpi_params, a, b, c,
                                     d, u, ndim, solvedim, dims, pads);
   return TRID_STATUS_SUCCESS;
 }
 #else
-tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b,
-                                   const float *c, float *d, float *u, int ndim,
-                                   int solvedim, const int *dims,
-                                   const int *pads, const TridParams *ctx) {
+tridStatus_t tridSmtsvStridedBatch(const TridParams *ctx, const float *a,
+                                   const float *b, const float *c, float *d,
+                                   float *u, int ndim, int solvedim,
+                                   const int *dims, const int *pads) {
   tridMultiDimBatchSolve<float, 0>((MpiSolverParams *)ctx->mpi_params, a, b, c,
                                    d, u, ndim, solvedim, dims, pads);
   return TRID_STATUS_SUCCESS;
@@ -1498,19 +1498,20 @@ tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b,
 //
 // 'u' is incremented with the results.
 #if FPPREC == 1
-tridStatus_t tridDmtsvStridedBatchInc(const double *a, const double *b,
-                                      const double *c, double *d, double *u,
-                                      int ndim, int solvedim, const int *dims,
-                                      const int *pads, const TridParams *ctx) {
+tridStatus_t tridDmtsvStridedBatchInc(const TridParams *ctx, const double *a,
+                                      const double *b, const double *c,
+                                      double *d, double *u, int ndim,
+                                      int solvedim, const int *dims,
+                                      const int *pads) {
   tridMultiDimBatchSolve<double, 1>((MpiSolverParams *)ctx->mpi_params, a, b, c,
                                     d, u, ndim, solvedim, dims, pads);
   return TRID_STATUS_SUCCESS;
 }
 #else
-tridStatus_t tridSmtsvStridedBatchInc(const float *a, const float *b,
-                                      const float *c, float *d, float *u,
-                                      int ndim, int solvedim, const int *dims,
-                                      const int *pads, const TridParams *ctx) {
+tridStatus_t tridSmtsvStridedBatchInc(const TridParams *ctx, const float *a,
+                                      const float *b, const float *c, float *d,
+                                      float *u, int ndim, int solvedim,
+                                      const int *dims, const int *pads) {
   tridMultiDimBatchSolve<float, 1>((MpiSolverParams *)ctx->mpi_params, a, b, c,
                                    d, u, ndim, solvedim, dims, pads);
   return TRID_STATUS_SUCCESS;

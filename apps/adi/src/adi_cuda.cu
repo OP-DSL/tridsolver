@@ -85,7 +85,7 @@ inline void timing_end(int prof, double *timer, double *elapsed_accumulate, std:
   }
 }
 
-void rms(char* name, FP* array, int nx, int ny, int nz, int padx) {
+void rms(const char* name, FP* array, int nx, int ny, int nz, int padx) {
   //Sum the square of values in app.h_u
   double sum = 0.0;
   for(int k = 0; k < nz; k++) {
@@ -291,9 +291,9 @@ int main(int argc, char* argv[]) {
       solvedim = 0;
       //tridMultiDimBatchSolve<FP,0>(d_ax, d_bx, d_cx, d_du, d_u, ndim, solvedim, dims, pads, opts, sync);
       #if FPPREC==0
-        tridSmtsvStridedBatch(d_ax, d_bx, d_cx, d_du, d_u, ndim, solvedim, dims, pads, &trid_params);
+        tridSmtsvStridedBatch(&trid_params, d_ax, d_bx, d_cx, d_du, d_u, ndim, solvedim, dims, pads);
       #elif FPPREC==1
-        tridDmtsvStridedBatch(d_ax, d_bx, d_cx, d_du, d_u, ndim, solvedim, dims, pads, &trid_params);
+        tridDmtsvStridedBatch(&trid_params, d_ax, d_bx, d_cx, d_du, d_u, ndim, solvedim, dims, pads);
       #endif
     timing_end(prof,&timer,&elapsed_trid_x,"trid_x");
 
@@ -303,9 +303,9 @@ int main(int argc, char* argv[]) {
       //else           tridMultiDimBatchSolve<FP,0>(d_ay, d_by, d_cy, d_du, d_u, ndim, solvedim, dims, pads, opts, &d_buffer, sync);
       //tridMultiDimBatchSolve<FP,0>(d_ay, d_by, d_cy, d_du, d_u, ndim, solvedim, dims, pads, opts, sync);
       #if FPPREC==0
-        tridSmtsvStridedBatch(d_ay, d_by, d_cy, d_du, d_u, ndim, solvedim, dims, pads, &trid_params);
+        tridSmtsvStridedBatch(&trid_params, d_ay, d_by, d_cy, d_du, d_u, ndim, solvedim, dims, pads);
       #elif FPPREC==1
-        tridDmtsvStridedBatch(d_ay, d_by, d_cy, d_du, d_u, ndim, solvedim, dims, pads, &trid_params);
+        tridDmtsvStridedBatch(&trid_params, d_ay, d_by, d_cy, d_du, d_u, ndim, solvedim, dims, pads);
       #endif
     timing_end(prof,&timer,&elapsed_trid_y,"trid_y");
 
@@ -318,9 +318,9 @@ int main(int argc, char* argv[]) {
       //else           tridMultiDimBatchSolve<FP,1>(d_az, d_bz, d_cz, d_du, d_u, ndim, solvedim, dims, pads, opts, &d_buffer, sync);
       //tridMultiDimBatchSolve<FP,1>(d_az, d_bz, d_cz, d_du, d_u, ndim, solvedim, dims, pads, opts, sync);
       #if FPPREC==0
-        tridSmtsvStridedBatchInc(d_az, d_bz, d_cz, d_du, d_u, ndim, solvedim, dims, pads, &trid_params);
+        tridSmtsvStridedBatchInc(&trid_params, d_az, d_bz, d_cz, d_du, d_u, ndim, solvedim, dims, pads);
       #elif FPPREC==1
-        tridDmtsvStridedBatchInc(d_az, d_bz, d_cz, d_du, d_u, ndim, solvedim, dims, pads, &trid_params);
+        tridDmtsvStridedBatchInc(&trid_params, d_az, d_bz, d_cz, d_du, d_u, ndim, solvedim, dims, pads);
       #endif
     timing_end(prof,&timer,&elapsed_trid_z,"trid_z");
   }

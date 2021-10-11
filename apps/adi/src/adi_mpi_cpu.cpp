@@ -134,7 +134,7 @@ inline void timing_end(double *timer, double *elapsed_accumulate) {
 }
 
 // Function to add up a distributed array and print the result
-void rms(char* name, FP* array, app_handle &handle) {
+void rms(const char* name, FP* array, app_handle &handle) {
   //Sum the square of values in app.h_u
   double sum = 0.0;
   for(int k = 0; k < handle.size[2]; k++) {
@@ -419,9 +419,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatch(app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.pads, &trid_params_x);
+    tridSmtsvStridedBatch(&trid_params_x, app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.pads);
 #else
-    tridDmtsvStridedBatch(app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.pads, &trid_params_x);
+    tridDmtsvStridedBatch(&trid_params_x, app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.pads);
 #endif
     timing_end(&timer, &elapsed_trid_x);
 
@@ -430,9 +430,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatch(app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.pads, &trid_params_y);
+    tridSmtsvStridedBatch(&trid_params_y, app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.pads);
 #else
-    tridDmtsvStridedBatch(app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.pads, &trid_params_y);
+    tridDmtsvStridedBatch(&trid_params_y, app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.pads);
 #endif
     timing_end(&timer, &elapsed_trid_y);
 
@@ -441,9 +441,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatchInc(app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.pads, &trid_params_z);
+    tridSmtsvStridedBatchInc(&trid_params_z, app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.pads);
 #else
-    tridDmtsvStridedBatchInc(app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.pads, &trid_params_z);
+    tridDmtsvStridedBatchInc(&trid_params_z, app.a, app.b, app.c, app.d, app.u, 3, 2, app.size, app.pads);
 #endif
     timing_end(&timer, &elapsed_trid_z);
   }

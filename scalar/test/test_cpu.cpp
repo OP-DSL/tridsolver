@@ -19,7 +19,7 @@ tridStatus_t tridStridedBatchWrapper<float>(const float *a, const float *b,
                                             const float *c, float *d, float *u,
                                             int ndim, int solvedim,
                                             const int *dims, const int *pads) {
-  return tridSmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads, nullptr);
+  return tridSmtsvStridedBatch(nullptr, a, b, c, d, u, ndim, solvedim, dims, pads);
 }
 
 template <>
@@ -27,7 +27,7 @@ tridStatus_t tridStridedBatchWrapper<double>(const double *a, const double *b,
                                              const double *c, double *d,
                                              double *u, int ndim, int solvedim,
                                              const int *dims, const int *pads) {
-  return tridDmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads, nullptr);
+  return tridDmtsvStridedBatch(nullptr, a, b, c, d, u, ndim, solvedim, dims, pads);
 }
 
 template <typename Float>

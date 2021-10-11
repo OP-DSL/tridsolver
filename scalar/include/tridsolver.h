@@ -20,7 +20,7 @@
  *
  */
 
- // Written by Toby Flynn, University of Warwick, T.Flynn@warwick.ac.uk, 2021
+// Written by Toby Flynn, University of Warwick, T.Flynn@warwick.ac.uk, 2021
 
 #ifndef TRIDSOLVER_H__
 #define TRIDSOLVER_H__
@@ -36,16 +36,16 @@
 //
 // The result is written to 'd'. 'u' is unused.
 EXTERN_C
-tridStatus_t tridDmtsvStridedBatch(const double *a, const double *b,
-                                   const double *c, double *d, double *u,
-                                   int ndim, int solvedim, const int *dims,
-                                   const int *pads, const TridParams *ctx);
+tridStatus_t tridDmtsvStridedBatch(const TridParams *ctx, const double *a,
+                                   const double *b, const double *c, double *d,
+                                   double *u, int ndim, int solvedim,
+                                   const int *dims, const int *pads);
 
 EXTERN_C
-tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b,
-                                   const float *c, float *d, float *u, int ndim,
-                                   int solvedim, const int *dims,
-                                   const int *pads, const TridParams *ctx);
+tridStatus_t tridSmtsvStridedBatch(const TridParams *ctx, const float *a,
+                                   const float *b, const float *c, float *d,
+                                   float *u, int ndim, int solvedim,
+                                   const int *dims, const int *pads);
 
 // Solve a batch of tridiagonal systems along a specified axis ('solvedim').
 // 'a', 'b', 'c', 'd' are the parameters of the tridiagonal systems which must
@@ -55,15 +55,16 @@ tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b,
 //
 // 'u' is incremented with the results.
 EXTERN_C
-tridStatus_t tridDmtsvStridedBatchInc(const double *a, const double *b,
-                                      const double *c, double *d, double *u,
-                                      int ndim, int solvedim, const int *dims,
-                                      const int *pads, const TridParams *ctx);
+tridStatus_t tridDmtsvStridedBatchInc(const TridParams *ctx, const double *a,
+                                      const double *b, const double *c,
+                                      double *d, double *u, int ndim,
+                                      int solvedim, const int *dims,
+                                      const int *pads);
 
 EXTERN_C
-tridStatus_t tridSmtsvStridedBatchInc(const float *a, const float *b,
-                                      const float *c, float *d, float *u,
-                                      int ndim, int solvedim, const int *dims,
-                                      const int *pads, const TridParams *ctx);
+tridStatus_t tridSmtsvStridedBatchInc(const TridParams *ctx, const float *a,
+                                      const float *b, const float *c, float *d,
+                                      float *u, int ndim, int solvedim,
+                                      const int *dims, const int *pads);
 
 #endif

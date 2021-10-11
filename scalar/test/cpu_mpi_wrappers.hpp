@@ -15,12 +15,12 @@ template <>
 tridStatus_t tridStridedBatchWrapper<float>(const MpiSolverParams *params,
                                             const float *a, const float *b,
                                             const float *c, float *d, float *u,
-                                            int ndim, int solvedim, const int *dims,
-                                            const int *pads) {
+                                            int ndim, int solvedim,
+                                            const int *dims, const int *pads) {
   TridParams trid_params;
   trid_params.mpi_params = (void *)params;
-  return tridSmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads,
-                               &trid_params);
+  return tridSmtsvStridedBatch(&trid_params, a, b, c, d, u, ndim, solvedim,
+                               dims, pads);
 }
 
 template <>
@@ -31,8 +31,8 @@ tridStatus_t tridStridedBatchWrapper<double>(const MpiSolverParams *params,
                                              const int *dims, const int *pads) {
   TridParams trid_params;
   trid_params.mpi_params = (void *)params;
-  return tridDmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads,
-                               &trid_params);
+  return tridDmtsvStridedBatch(&trid_params, a, b, c, d, u, ndim, solvedim,
+                               dims, pads);
 }
 
 

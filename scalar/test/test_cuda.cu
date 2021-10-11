@@ -19,8 +19,8 @@ tridStatus_t tridStridedBatchWrapper<float>(const float *a, const float *b,
   trid_params.opts[0] = ndim == 1 ? 1 : 0;
   trid_params.opts[1] = 0;
   trid_params.opts[2] = 0;
-  return tridSmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads,
-                               &trid_params);
+  return tridSmtsvStridedBatch(&trid_params, a, b, c, d, u, ndim, solvedim,
+                               dims, pads);
 }
 
 template <>
@@ -32,8 +32,8 @@ tridStatus_t tridStridedBatchWrapper<double>(const double *a, const double *b,
   trid_params.opts[0] = ndim == 1 ? 1 : 0;
   trid_params.opts[1] = 0;
   trid_params.opts[2] = 0;
-  return tridDmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads,
-                               &trid_params);
+  return tridDmtsvStridedBatch(&trid_params, a, b, c, d, u, ndim, solvedim,
+                               dims, pads);
 }
 
 template <typename Float> void test_from_file(const std::string &file_name) {

@@ -18,8 +18,8 @@ tridStatus_t tridmtsvStridedBatchMPIWrapper<float>(
     const int *pads) {
   TridParams trid_params;
   trid_params.mpi_params = (void *)params;
-  return tridSmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads,
-                               &trid_params);
+  return tridSmtsvStridedBatch(&trid_params, a, b, c, d, u, ndim, solvedim,
+                               dims, pads);
 }
 
 template <>
@@ -29,8 +29,8 @@ tridStatus_t tridmtsvStridedBatchMPIWrapper<double>(
     const int *dims, const int *pads) {
   TridParams trid_params;
   trid_params.mpi_params = (void *)params;
-  return tridDmtsvStridedBatch(a, b, c, d, u, ndim, solvedim, dims, pads,
-                               &trid_params);
+  return tridDmtsvStridedBatch(&trid_params, a, b, c, d, u, ndim, solvedim,
+                               dims, pads);
 }
 
 template <>
@@ -40,8 +40,8 @@ tridStatus_t tridmtsvStridedBatchMPIWrapper<float, true>(
     const int *pads) {
   TridParams trid_params;
   trid_params.mpi_params = (void *)params;
-  return tridSmtsvStridedBatchInc(a, b, c, d, u, ndim, solvedim, dims, pads,
-                                  &trid_params);
+  return tridSmtsvStridedBatchInc(&trid_params, a, b, c, d, u, ndim, solvedim,
+                                  dims, pads);
 }
 
 template <>
@@ -51,8 +51,8 @@ tridStatus_t tridmtsvStridedBatchMPIWrapper<double, true>(
     const int *dims, const int *pads) {
   TridParams trid_params;
   trid_params.mpi_params = (void *)params;
-  return tridDmtsvStridedBatchInc(a, b, c, d, u, ndim, solvedim, dims, pads,
-                                  &trid_params);
+  return tridDmtsvStridedBatchInc(&trid_params, a, b, c, d, u, ndim, solvedim,
+                                  dims, pads);
 }
 
 template <typename Float, bool INC = false>

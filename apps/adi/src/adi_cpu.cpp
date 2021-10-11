@@ -88,7 +88,7 @@ inline void timing_end(int prof, double *timer, double *elapsed_accumulate, char
   }
 }
 
-void rms(char* name, FP* array, int nx_pad, int nx, int ny, int nz) {
+void rms(const char* name, FP* array, int nx_pad, int nx, int ny, int nz) {
   //Sum the square of values in app.h_u
   double sum = 0.0;
   for(int k=0; k<nz; k++) {
@@ -233,9 +233,9 @@ int main(int argc, char* argv[]) {
 
     int solvedim = 0;   // user chosen dimension for which the solution is performed
     #if FPPREC == 0
-      tridSmtsvStridedBatch(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads, nullptr);
+      tridSmtsvStridedBatch(nullptr, h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
     #elif FPPREC == 1
-      tridDmtsvStridedBatch(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads, nullptr);
+      tridDmtsvStridedBatch(nullptr, h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
     #endif
 
     timing_end(prof, &timer, &elapsed_trid_x, "trid_x");
@@ -247,9 +247,9 @@ int main(int argc, char* argv[]) {
 
     solvedim = 1;   // user chosen dimension for which the solution is performed
     #if FPPREC == 0
-      tridSmtsvStridedBatch(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads, nullptr);
+      tridSmtsvStridedBatch(nullptr, h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
     #elif FPPREC == 1
-      tridDmtsvStridedBatch(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads, nullptr);
+      tridDmtsvStridedBatch(nullptr, h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
     #endif
 
     timing_end(prof, &timer, &elapsed_trid_y, "trid_y");
@@ -261,9 +261,9 @@ int main(int argc, char* argv[]) {
 
     solvedim = 2;   // user chosen dimension for which the solution is performed
     #if FPPREC == 0
-      tridSmtsvStridedBatchInc(h_az, h_bz, h_cz, h_du, h_u, ndim, solvedim, dims, pads, nullptr);
+      tridSmtsvStridedBatchInc(nullptr, h_az, h_bz, h_cz, h_du, h_u, ndim, solvedim, dims, pads);
     #elif FPPREC == 1
-      tridDmtsvStridedBatchInc(h_az, h_bz, h_cz, h_du, h_u, ndim, solvedim, dims, pads, nullptr);
+      tridDmtsvStridedBatchInc(nullptr, h_az, h_bz, h_cz, h_du, h_u, ndim, solvedim, dims, pads);
     #endif
 
     timing_end(prof, &timer, &elapsed_trid_z, "trid_z");
