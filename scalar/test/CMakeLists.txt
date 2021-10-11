@@ -22,6 +22,22 @@ if (BUILD_FOR_CPU)
       NAME catch_test
       COMMAND tests
       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    set(TEST_SOURCES catch_main.cpp test_cpu_strict_access.cpp)
+    add_executable(tests_strict_access ${TEST_SOURCES})
+    target_link_libraries(
+      tests_strict_access
+      Catch
+      tridcpu
+      OpenMP::OpenMP_CXX
+      test_common_options)
+    target_include_directories(tests_strict_access PRIVATE ${PROJECT_SOURCE_DIR}/include ./)
+
+    add_test(
+      NAME catch_test_strict_access
+      COMMAND tests_strict_access
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
   endif (BUILD_FOR_SN)
   if (BUILD_FOR_MPI)
     set(MPI_TEST_NUM_PROC
