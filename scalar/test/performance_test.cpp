@@ -12,7 +12,7 @@
 
 #ifndef TRID_PERF_CUDA
 #  include "timing.h"
-#  include <trid_mpi_cpu.h>
+#  include <tridsolver.h>
 #  include "utils.hpp"
 #  include "cpu_mpi_wrappers.hpp"
 
@@ -23,7 +23,7 @@ void run_tridsolver(const MpiSolverParams &params,
 
   // Dry run
   PROFILE_SUSPEND();
-  tridStridedBatchWrapper<Float>(params, mesh.a().data(), mesh.b().data(),
+  tridStridedBatchWrapper<Float>(&params, mesh.a().data(), mesh.b().data(),
                                  mesh.c().data(), d.data(), nullptr,
                                  mesh.dims().size(), mesh.solve_dim(),
                                  mesh.dims().data(), mesh.dims().data());
@@ -32,7 +32,7 @@ void run_tridsolver(const MpiSolverParams &params,
   d = mesh.d();
   MPI_Barrier(MPI_COMM_WORLD);
   while (num_iters--) {
-    tridStridedBatchWrapper<Float>(params, mesh.a().data(), mesh.b().data(),
+    tridStridedBatchWrapper<Float>(&params, mesh.a().data(), mesh.b().data(),
                                    mesh.c().data(), d.data(), nullptr,
                                    mesh.dims().size(), mesh.solve_dim(),
                                    mesh.dims().data(), mesh.dims().data());
@@ -42,7 +42,7 @@ void run_tridsolver(const MpiSolverParams &params,
 }
 #else
 #  include "cuda_timing.h"
-#  include <trid_mpi_cuda.hpp>
+#  include <tridsolver.h>
 #  include "cuda_utils.hpp"
 #  include "cuda_mpi_wrappers.hpp"
 
@@ -54,7 +54,7 @@ void run_tridsolver(const MpiSolverParams &params,
   // Dry run
   PROFILE_SUSPEND();
   tridmtsvStridedBatchMPIWrapper<Float>(
-      params, mesh_d.a().data(), mesh_d.b().data(), mesh_d.c().data(),
+      &params, mesh_d.a().data(), mesh_d.b().data(), mesh_d.c().data(),
       mesh_d.d().data(), nullptr, mesh_d.dims().size(), mesh.solve_dim(),
       mesh_d.dims().data(), mesh_d.dims().data());
   PROFILE_CONTINUE();
@@ -62,7 +62,7 @@ void run_tridsolver(const MpiSolverParams &params,
   MPI_Barrier(MPI_COMM_WORLD);
   while (num_iters--) {
     tridmtsvStridedBatchMPIWrapper<Float>(
-        params, mesh_d.a().data(), mesh_d.b().data(), mesh_d.c().data(),
+        &params, mesh_d.a().data(), mesh_d.b().data(), mesh_d.c().data(),
         mesh_d.d().data(), nullptr, mesh_d.dims().size(), mesh.solve_dim(),
         mesh_d.dims().data(), mesh_d.dims().data());
     MPI_Barrier(MPI_COMM_WORLD);
