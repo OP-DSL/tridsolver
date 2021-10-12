@@ -110,8 +110,8 @@ To functions are avaibale for use one stores the results in the `d` array,
 the other increments `u` with the result.
 
 
-trid<t>mtsvStridedBatch() function
--------------------------
+trid<t>mtsvStridedBatch() and trid<t>mtsvStridedBatchInc() function
+-------------------------------------------------------------------
 This function is used to solve a large number of tridiagonal systems of
 equations along multiple dimensions in a multidimensional datastructure, ie.
 one defines the multidimensional datastructure in *a,*b,*c,*d along with the
@@ -167,6 +167,35 @@ Limitations/Bugs/Issue Repoorts:
 
 3) transpose() function used in cuSPARSE functions only work on 32*N size
    square matrices! Out of dimension index checking is needed.
+
+
+Scalability
+===========
+
+The test/performance_test.cpp contains an application to measure the
+performance of the multinode library.
+
+Building the applications:
+$ mkdir build
+$ cd build
+$ cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_FOR_CPU=ON -DBUILD_FOR_GPU=ON
+-DBUILD_FOR_SN=ON -DBUILD_FOR_MPI=ON -DBUILD_TESTING=ON -DUSE_PROFILING=ON
+$ make
+
+Example run to measure 10 iterations of a problem size 512^3 on 128 process
+with a 8x4x4 decomposition along the X dimension (solvedim = 0) using the
+Jacobi and PCR algorithm on the reduced system.
+
+$ mpirun -np 128 ./test/mpi_perf_test -x 512 -y 512 -z 512 -d 3 -s 0 -p 8 -n 10 -m 2 -m 3
+
+  -x, y, z <d>  - Global problem size
+  -d <d>        - Dimensions of the problem - ndim
+  -s <d>        - index of the dimension to solve along
+  -p <d>        - number of MPI process along the solve dimension
+  -n <d>        - number of iterations to measure
+  -m <d>        - index of the algorithm to use for the reduced solve
+
+
 
 
 
