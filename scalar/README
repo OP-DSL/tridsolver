@@ -30,7 +30,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-Scalar tridiagonal solver for CPU, MIC and GPU 
+Scalar tridiagonal solver for CPU and GPU 
 ====================================================
 by Endre László12, Mike Giles1 and Jeremy Appleyard3
 laszlo.endre@itk.ppke.hu 
@@ -39,13 +39,14 @@ laszlo.endre@itk.ppke.hu
 2) Pázmány Péter Catholic University, Budapest, HU
 3) NVIDIA Corporation Ltd., San Jose, CA, US
 
-Last modified: 7th October 2015
+Last modified: 12th October 2021
 
 
 Introduction
 ============
 
-The present directory contains the library for scalar tridiagonal batch solvers. Two API is provided for convenient use: 1) a conventional batch tridiagonal solver and 2) a batch tridiagonal solver in multiple dimensions. 
+The present directory contains the library for scalar tridiagonal batch
+solvers. The API supports batch tridiagonal solver in multiple dimensions.
 
 The tridiagonal system to be solved is of the form Ax=d where
 
@@ -57,10 +58,24 @@ The tridiagonal system to be solved is of the form Ax=d where
      (                                             )      (   .    )      (   .    )
      (                               a[N-1] b[N-1] )      ( x[N-1] )      ( d[N-1] )
 
-This project is aimed to speed up the solution of tridiagonal systems of equations on Intel CPU, CUDA-enabled GPU and Intel MIC architectures. The available solver in the library is designed with the assuption that in certain engineering, scientific and financial problems the number of tridiagonal system of equations is large enough to saturate the memory bandwidth of the memory controllers. Since the solution of a tridiagonal system of equations is typically memory bounded, the obvious aim of an optimal implementation is to pursue the memery interface utilization. The current library provides different algorithms with different optimizations to achieve this goal. The base algorithm is the Thomas algorithm which is optimized using local data (register level) transposition techniques. Additionally, a new Thomas+PCR hybrid algorithm is also used to accelerate the solution. This implementation pushes the bandwidth limited problem closer to being compute limited by performing computation in registers.
+This project is aimed to speed up the solution of tridiagonal systems of
+equations on Intel CPU and CUDA-enabled GPU architectures. The available
+solver in the library is designed with the assumption that in certain
+engineering, scientific and financial problems the number of tridiagonal
+system of equations is large enough to saturate the memory bandwidth of the
+memory controllers. Since the solution of a tridiagonal system of equations is
+typically memory bounded, the obvious aim of an optimal implementation is to
+pursue the memery interface utilization. The current library provides
+different algorithms with different optimizations to achieve this goal. The
+base algorithm is the Thomas algorithm which is optimized using local data
+(register level) transposition techniques. Additionally, a new Thomas+PCR
+hybrid algorithm is also used to accelerate the solution. This implementation
+pushes the bandwidth limited problem closer to being compute limited by
+performing computation in registers.
 
 Software requirements
 ---------------------
+#TODO
 1. Intel compiler (version >=15.0)
 2. Intel Math Kernel Library (version >=11.2)
 3. NVIDIA CUDA compiler (version >=7.0) 
@@ -69,9 +84,8 @@ Software requirements
 
 Hardware requirements
 --------------------- 
-1. CPU: AVX or AVX2 support (Sandy Bridge architecture and beyond)
+1. CPU: AVX2 or AVX512 support
 2. GPU: CUDA Compute Capability >=3.5 (Kepler architecture and beyond)
-3. MIC: IMCI support (Knights Corner architecture and beyond)
 
 Building the project
 --------------------
@@ -79,52 +93,70 @@ The scalar tridiagonal solver project is built using the standard CMake procedur
 </home/user/tridsolver/scalar/>
 $ mkdir build
 $ cd build
-$ cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_FOR_CPU=ON -DBUILD_FOR_GPU=ON
+$ cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_FOR_CPU=ON -DBUILD_FOR_GPU=ON -DBUILD_FOR_SN=ON -DBUILD_FOR_MPI=ON
 $ make
 $ make install
 
 Notes
 -----
-1. `make install` copies files into the build library: build/include and build/lib
-2. By default building code for any architecture (CPU,GPU and MIC) is disabled. To enable the build for a specified architecture set the BUILD_FOR_<CPU|GPU|MIC> CMake definitions to ON as in the example above: -DBUILD_FOR_CPU=ON 
-3. Please note, that the build works only with Intel compilers as the dvec.h header file and its dependencies are not part of the GCC project.
-4. For debugging the build procedure use the `VERBOSE=1 make` instead of `make`. This will report all the steps (compile and link lines) made by the make build system.
+1. By default building code for any architecture (CPU, GPU) is disabled. To
+enable the build for a specified architecture set the BUILD_FOR_<CPU|GPU>
+CMake definitions to ON as in the example above: -DBUILD_FOR_CPU=ON
 
 
 API reference guide
 ===================
-In the following reference description REAL may refer both to single precision and double precision representation. To functions are avaibale for use: one with a more standard API signature and a new API function for convenient multidimensional use.
+To functions are avaibale for use one stores the results in the `d` array,
+the other increments `u` with the result.
 
 
-tridBatchSolve() function
+trid<t>mtsvStridedBatch() function
 -------------------------
-This function is used to solve a large number of tridiagonal systems of equations along a given dimension with the given coefficients of that particular dimension, ie. A matrices and d vectors are given for only one dimension. The function signature and usage is similar to the cuSPARSE gtsv?BatchStride() functions.
+This function is used to solve a large number of tridiagonal systems of
+equations along multiple dimensions in a multidimensional datastructure, ie.
+one defines the multidimensional datastructure in *a,*b,*c,*d along with the
+metadata (ndim,*dims,*dims_pad) and then chooses the dimension of solve
+(solvedim). 
+For `solvedim = 0` the operation is similar to the cuSPARSE
+cusparse<t>gtsv2StridedBatch() function, for `solvedim = MAXDIM - 1` the
+function solves the same systems an cusparse<t>gtsvInterleavedBatch().
 
-  tridBatchSolve<typename REAL, typename VECTOR, int INC>(REAL* a, REAL *b, REAL *c, REAL *d, REAL *u, int sys_size, int sys_stride, int sys_n) 
+tridDmtsvStridedBatch(const TridParams *ctx,
+					  double* a,
+					  double *b,
+					  double *c,
+					  double *d,
+					  double *u,
+					  int ndim,
+					  int solvedim,
+					  int *dims,
+					  int *pads) 
 
-  sys_size   - size or length of an individual tridiagonal system of equations, eg. size_sys=N in the example
-  sys_stride - stride between elements within a system. Eg. if the system is linearly layed out, then stride_sys=1
-  sys_n      - number of systems to be solved. 
-  INC        - flag signing if increments with *inc need to be done. 
+tridSmtsvStridedBatch(const TridParams *ctx,
+					  float* a,
+					  float *b,
+					  float *c,
+					  float *d,
+					  float *u,
+					  int ndim,
+					  int solvedim,
+					  int *dims,
+					  int *pads) 
 
-
-
-tridMultiDimBatchSolve() function
----------------------------------
-This function is used to solve a large number of tridiagonal systems of equations along multiple dimensions in a multidimensional datastructure, ie. one defines the multidimensional datastructure in *a,*b,*c,*d along with the metadata (ndim,*dims,*dims_pad) and then chooses the dimension of solve (solvedim). 
-
-  tridMultiDimBatchSolve<typename REAL, typename VECTOR, int INCFLAG>(int ndim, int solvedim, int *dims, int *pads, REAL* a, REAL *b, REAL *c, REAL *d, REAL *u)
-
-  ndim     - number of dimensions of the (hyper)cubic data structure. 
-             Note: ndim <= MAXDIM=8 is supposed
-  solvedim - user chosen dimension for which the solution is performed
-  *dims    - (?active working set) array containing the sizes of each ndim dimensions. size(dims) == ndim <=MAXDIM
-  *pads    - padded sizes along each ndim number of dimensions
-  *a,*b,*c - left hand side coefficients of a multidimensional problem. An array containing A matrices of individual problems
-  *d       - right hand side coefficients of a multidimensional problem. An array containing d column vectors of individual problems
-  *u       - incremental array if needed. Might be a NULL pointer if INC = 0.
-  INC      - flag signing if increments with *inc need to be done. 
-
+  ctx		 -  Tridsolver context holind optimization and communication
+			    informations
+  *a,*b,*c	 -  left hand side coefficients of a multidimensional problem.
+				An array containing A matrices of individual problems
+  *d		 -	right hand side coefficients of a multidimensional problem.
+				An array containing d column vectors of individual problems
+  *u		 -	incremental array. Unused for Batch functions, and used in
+				BatchInc.
+  ndim       -  number of dimensions of the (hyper)cubic data structure. 
+                Note: ndim <= MAXDIM=3 is supposed
+  *dims      -  array containing the sizes of each ndim dimensions.
+				size(dims) == ndim <=MAXDIM
+  *pads      -  array containing the padded sizes of each ndim dimensions.
+				size(pads) == ndim <=MAXDIM.
 
 Limitations/Bugs/Issue Repoorts:
 --------------------------------
@@ -133,9 +165,8 @@ Limitations/Bugs/Issue Repoorts:
 
 2) trid_linear_thomaspcr() is not equiped to work with sys_pads values
 
-3) Non of the tridiagonal solvers were tested to run with sys_pads != sys_size !
-
-4) transpose() function used in cuSPARSE functions only work on 32*N size square matrices! Out of dimension index checking is needed.
+3) transpose() function used in cuSPARSE functions only work on 32*N size
+   square matrices! Out of dimension index checking is needed.
 
 
 

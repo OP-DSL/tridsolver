@@ -47,22 +47,29 @@ NVIDIA Corporation
 jappleyard [at] nvidia.com
 
 
-Last modified: 7th October 2015
+Last modified: 12th October 2021
 
 
 TRIDIAGONAL SOLVERS
 -------------------
-The project includes batch scalar and block tridiagonal solver libraries for GPU, CPU and Intel MIC  -- in the /scalar and /block directories -- as well as test applications in the /apps directory.
+The project includes batch scalar and block tridiagonal solver libraries for
+GPU and CPU  -- in the /scalar and /block directories -- as well as test
+applications in the /apps directory.
 
-As the use cases of scalar and block tridiagonal solvers differ significantly in most applications the implementation of the two libraries is separated in two subprojects in /scalar and /block directories. These subprojects can be built from corresponding directories using CMake. Note: the scalar solver only supports Intel compiler as it relies on AVX and IMCI intrinsics.
-
+As the use cases of scalar and block tridiagonal solvers differ significantly
+in most applications the implementation of the two libraries is separated in
+two subprojects in /scalar and /block directories. These subprojects can be
+built from corresponding directories using CMake.
 
 TEST APPLICATIONS
 -----------------
-Test applications in /apps include: 1) the solution of the heat diffusion PDE using the ADI (Atlernating Direction Implicit) method and 2) the solution of a general block tridiagonal system of equations. 
+Test applications in /apps include: 1) the solution of the heat diffusion PDE
+using the ADI (Atlernating Direction Implicit) method and 2) the solution of a
+general block tridiagonal system of equations.
 
 
 BUILDING
 --------
-Details on building the subprojects (solvers and test applications) can be found in the README file of the appropriate subdirectories. 
+Details on building the subprojects (solvers and test applications) can be
+found in the README file of the appropriate subdirectories..
 
