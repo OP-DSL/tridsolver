@@ -64,7 +64,7 @@ set(N_MPI_MAX
     CACHE STRING "Maximum number of MPI processes in a dimension")
 # internal options that shouldn't be exported
 add_library(trid_common_options INTERFACE)
-target_compile_features(trid_common_options INTERFACE cxx_std_14)
+target_compile_features(trid_common_options INTERFACE cxx_std_17)
 target_compile_definitions(trid_common_options INTERFACE -DN_MAX=${N_MAX})
 target_compile_definitions(trid_common_options INTERFACE -DN_MPI_MAX=${N_MPI_MAX})
 # tridsolver public options that should be exported with the library

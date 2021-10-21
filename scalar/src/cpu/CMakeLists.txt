@@ -39,19 +39,13 @@ if (BUILD_FOR_CPU)
         ${${PROJECT_NAME}_components}
         PARENT_SCOPE)
 
-    add_library(tridcpu_sp OBJECT ./trid_cpu.cpp)
-    add_library(tridcpu_dp OBJECT ./trid_cpu.cpp)
-    add_library(tridcpu ${BUILD_TYPE} $<TARGET_OBJECTS:tridcpu_sp> $<TARGET_OBJECTS:tridcpu_dp>)
+    add_library(tridcpu ${BUILD_TYPE} ./trid_cpu.cpp)
     add_library(${PROJECT_NAME}::tridcpu ALIAS tridcpu)
 
-    target_link_libraries(tridcpu_dp PRIVATE ${CPU_LIBS})
-    target_link_libraries(tridcpu_sp PRIVATE ${CPU_LIBS})
+    target_link_libraries(tridcpu PRIVATE ${CPU_LIBS})
     target_link_libraries(tridcpu PUBLIC ${CPU_INTERFACE_LIBS})
 
-    set_property(TARGET tridcpu_sp tridcpu_dp PROPERTY POSITION_INDEPENDENT_CODE ON)
-
-    target_compile_definitions(tridcpu_sp PRIVATE -DFPPREC=0)
-    target_compile_definitions(tridcpu_dp PRIVATE -DFPPREC=1)
+    set_property(TARGET tridcpu PROPERTY POSITION_INDEPENDENT_CODE ON)
 
     install(
       TARGETS tridcpu

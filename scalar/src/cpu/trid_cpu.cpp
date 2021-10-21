@@ -39,214 +39,295 @@
 #include "trid_simd.h"
 #include <assert.h>
 #include <stdio.h>
-#define ROUND_DOWN(N, step) (((N) / (step)) * step)
 
-inline void load(SIMD_REG *__restrict__ dst, const FP *__restrict__ src, int n,
+template <typename REAL>
+inline void load(simd_reg_t<REAL> *__restrict__ dst, const REAL *__restrict__ src, int n,
                  int pad) {
-  for (int i = 0; i < SIMD_VEC; i++) {
-    dst[i] = SIMD_LOAD_P(&src[i * pad + n]);
+  for (int i = 0; i < simd_vec_l<REAL>; i++) {
+    dst[i] = simd_load_p(&src[i * pad + n]);
   }
 }
 
-inline void store(FP *__restrict__ dst, SIMD_REG *__restrict__ src, int n,
+template <typename REAL>
+inline void load_mask(simd_reg_t<REAL> *__restrict__ dst, const REAL *__restrict__ src,
+                      int n, int pad, const simd_mask_t<REAL> &m) {
+  for (int i = 0; i < simd_vec_l<REAL>; i++) {
+    dst[i] = simd_load_p_m(&src[i * pad + n], m);
+  }
+}
+
+template <typename REAL>
+inline void store(REAL *__restrict__ dst, simd_reg_t<REAL> *__restrict__ src, int n,
                   int pad) {
-  for (int i = 0; i < SIMD_VEC; i++) {
-    SIMD_STORE_P(&dst[i * pad + n], src[i]);
+  for (int i = 0; i < simd_vec_l<REAL>; i++) {
+    simd_store_p(&dst[i * pad + n], src[i]);
+  }
+}
+
+template <typename REAL>
+inline void store_mask(REAL *__restrict__ dst, simd_reg_t<REAL> *__restrict__ src, int n,
+                       int pad, const simd_mask_t<REAL> &m) {
+  for (int i = 0; i < simd_vec_l<REAL>; i++) {
+    simd_store_p_m(&dst[i * pad + n], m, src[i]);
   }
 }
 
 #ifdef __AVX512F__
-#  if FPPREC == 0
-#    define LOAD(reg, array, n, N)                                             \
-      load(reg, array, n, N);                                                  \
-      transpose16x16_intrinsic(reg);
-#    define STORE(array, reg, n, N)                                            \
-      transpose16x16_intrinsic(reg);                                           \
-      store(array, reg, n, N);
-#  elif FPPREC == 1
-#    define LOAD(reg, array, n, N)                                             \
-      load(reg, array, n, N);                                                  \
-      transpose8x8_intrinsic(reg);
-#    define STORE(array, reg, n, N)                                            \
-      transpose8x8_intrinsic(reg);                                             \
-      store(array, reg, n, N);
-#  endif
+template <typename REAL>
+void transpose(simd_reg_t<REAL> reg[simd_vec_l<REAL>]){
+  if constexpr(std::is_same_v<REAL, double>) {
+    transpose8x8_intrinsic(reg);
+  } else {
+    transpose16x16_intrinsic(reg);
+  }
+}
 #elif __AVX__
-#  if FPPREC == 0
-#    define LOAD(reg, array, n, N)                                             \
-      load(reg, array, n, N);                                                  \
-      transpose8x8_intrinsic(reg);
-#    define STORE(array, reg, n, N)                                            \
-      transpose8x8_intrinsic(reg);                                             \
-      store(array, reg, n, N);
-#  elif FPPREC == 1
-#    define LOAD(reg, array, n, N)                                             \
-      load(reg, array, n, N);                                                  \
-      transpose4x4_intrinsic(reg);
-#    define STORE(array, reg, n, N)                                            \
-      transpose4x4_intrinsic(reg);                                             \
-      store(array, reg, n, N);
-#  endif
+template <typename REAL>
+void transpose(simd_reg_t<REAL> reg[simd_vec_l<REAL>]){
+  if constexpr(std::is_same_v<REAL, double>) {
+    transpose4x4_intrinsic(reg);
+  } else {
+    transpose8x8_intrinsic(reg);
+  }
+}
 #endif
+
+#define LOAD(reg, array, n, N)                                                 \
+  load(reg, array, n, N);                                                      \
+  transpose<REAL>(reg);
+#define LOAD_M2(reg, array, n, N, endmask)                                     \
+  load_mask(reg, array, n, N, endmask);                                        \
+  transpose<REAL>(reg);
+#define STORE(array, reg, n, N)                                                \
+  transpose<REAL>(reg);                                                        \
+  store(array, reg, n, N);
+#define STORE_M2(array, reg, n, N, endmask)                                    \
+  transpose<REAL>(reg);                                                        \
+  store_mask(array, reg, n, N, endmask);
+
+//
+// tridiagonal-x solver; vectorised solution where the system dimension is the
+// same as the vectorisation and sys_size < SIMD_VEC
+//
+template <typename REAL, bool INC, typename MASKTYPE>
+void trid_x_transpose_short(const REAL *__restrict a, const REAL *__restrict b,
+                            const REAL *__restrict c, REAL *__restrict d,
+                            REAL *__restrict u, int sys_size, int sys_pad,
+                            const MASKTYPE &endmask, const MASKTYPE &cmask) {
+
+  assert(sys_pad % simd_vec_l<REAL> == 0);
+  assert(sys_size <= simd_vec_l<REAL>);
+
+  simd_reg_t<REAL> aa;
+  simd_reg_t<REAL> bb;
+  simd_reg_t<REAL> cc;
+  simd_reg_t<REAL> dd;
+
+  simd_reg_t<REAL> a_reg[simd_vec_l<REAL>];
+  simd_reg_t<REAL> b_reg[simd_vec_l<REAL>];
+  simd_reg_t<REAL> c_reg[simd_vec_l<REAL>];
+  simd_reg_t<REAL> d_reg[simd_vec_l<REAL>];
+  simd_reg_t<REAL> u_reg[simd_vec_l<REAL>];
+
+  simd_reg_t<REAL> c2[simd_vec_l<REAL>];
+  simd_reg_t<REAL> d2[simd_vec_l<REAL>];
+
+  //
+  // forward pass
+  //
+  simd_reg_t<REAL> ones = simd_set1_p<REAL>(1.0F);
+
+  LOAD_M2(a_reg, a, 0, sys_pad, simd_mask_and<REAL>(mask_first<REAL>(), endmask));
+  LOAD_M2(b_reg, b, 0, sys_pad, endmask);
+  LOAD_M2(c_reg, c, 0, sys_pad, cmask);
+  LOAD_M2(d_reg, d, 0, sys_pad, endmask);
+
+  bb    = b_reg[0];
+  bb    = ones / bb;
+  cc    = c_reg[0];
+  cc    = bb * cc;
+  dd    = d_reg[0];
+  dd    = bb * dd;
+  c2[0] = cc;
+  d2[0] = dd;
+
+  for (int i = 1; i < sys_size; i++) {
+    aa    = a_reg[i];
+    bb    = b_reg[i] - aa * cc;
+    dd    = d_reg[i] - aa * dd;
+    bb    = ones / bb;
+    cc    = bb * c_reg[i];
+    dd    = bb * dd;
+    c2[i] = cc;
+    d2[i] = dd;
+  }
+
+  //
+  // backward pass
+  //
+
+  // backward on last chunk
+  d_reg[sys_size - 1] = dd;
+  for (int i = sys_size - 2; i >= 0; i--) {
+    dd       = d2[i] - c2[i] * dd;
+    d_reg[i] = dd;
+  }
+  if (INC) {
+    LOAD_M2(u_reg, u, 0, sys_pad, endmask);
+    for (int j = 0; j < sys_size; j++)
+      u_reg[j] = u_reg[j] + d_reg[j];
+    STORE_M2(u, u_reg, 0, sys_pad, endmask);
+  } else {
+    STORE_M2(d, d_reg, 0, sys_pad, endmask);
+  }
+}
 
 //
 // tridiagonal-x solver; vectorised solution where the system dimension is the
 // same as the vectorisation dimension
 //
-template <typename REAL, bool INC>
+template <typename REAL, bool INC, typename MASKTYPE>
 void trid_x_transpose(const REAL *__restrict a, const REAL *__restrict b,
                       const REAL *__restrict c, REAL *__restrict d,
-                      REAL *__restrict u, int sys_size, int sys_pad) {
-  assert(sys_pad % SIMD_VEC == 0);
+                      REAL *__restrict u, int sys_size, int sys_pad,
+                      const MASKTYPE &endmask, const MASKTYPE &cmask) {
+  assert(sys_pad % simd_vec_l<REAL> == 0);
 
-  SIMD_REG aa;
-  SIMD_REG bb;
-  SIMD_REG cc;
-  SIMD_REG dd;
+  if (sys_size <= simd_vec_l<REAL>) {
+    trid_x_transpose_short<REAL, INC>(a, b, c, d, u, sys_size, sys_pad, endmask,
+                                      cmask);
+    return;
+  }
 
-  SIMD_REG a_reg[SIMD_VEC];
-  SIMD_REG b_reg[SIMD_VEC];
-  SIMD_REG c_reg[SIMD_VEC];
-  SIMD_REG d_reg[SIMD_VEC];
-  SIMD_REG u_reg[SIMD_VEC];
+  simd_reg_t<REAL> aa;
+  simd_reg_t<REAL> bb;
+  simd_reg_t<REAL> cc;
+  simd_reg_t<REAL> dd;
 
-  SIMD_REG c2[N_MAX];
-  SIMD_REG d2[N_MAX];
+  simd_reg_t<REAL> a_reg[simd_vec_l<REAL>];
+  simd_reg_t<REAL> b_reg[simd_vec_l<REAL>];
+  simd_reg_t<REAL> c_reg[simd_vec_l<REAL>];
+  simd_reg_t<REAL> d_reg[simd_vec_l<REAL>];
+  simd_reg_t<REAL> u_reg[simd_vec_l<REAL>];
+
+  simd_reg_t<REAL> c2[N_MAX];
+  simd_reg_t<REAL> d2[N_MAX];
 
   //
   // forward pass
   //
-  SIMD_REG ones = SIMD_SET1_P(1.0F);
+  simd_reg_t<REAL> ones = simd_set1_p<REAL>(1.0F);
 
-  LOAD(a_reg, a, 0, sys_pad);
-  LOAD(b_reg, b, 0, sys_pad);
+  LOAD_M2(a_reg, a, 0, sys_pad, mask_first<REAL>());
+  LOAD(b_reg, b, 0, sys_pad); // load this way all except a, and do a separately
   LOAD(c_reg, c, 0, sys_pad);
   LOAD(d_reg, d, 0, sys_pad);
 
   bb    = b_reg[0];
-  bb    = SIMD_DIV_P(ones, bb);
+  bb    = ones / bb;
   cc    = c_reg[0];
-  cc    = SIMD_MUL_P(bb, cc);
+  cc    = bb * cc;
   dd    = d_reg[0];
-  dd    = SIMD_MUL_P(bb, dd);
+  dd    = bb * dd;
   c2[0] = cc;
   d2[0] = dd;
 
-  for (int i = 1; i < SIMD_VEC; i++) {
+  for (int i = 1; i < simd_vec_l<REAL>; i++) {
     aa = a_reg[i];
-#ifdef __AVX512F__
-    bb = SIMD_FNMADD_P(aa, cc, b_reg[i]);
-    dd = SIMD_FNMADD_P(aa, dd, d_reg[i]);
-#else
-    bb = SIMD_SUB_P(b_reg[i], SIMD_MUL_P(aa, cc));
-    dd = SIMD_SUB_P(d_reg[i], SIMD_MUL_P(aa, dd));
-#endif
-    bb    = SIMD_DIV_P(ones, bb);
-    cc    = SIMD_MUL_P(bb, c_reg[i]);
-    dd    = SIMD_MUL_P(bb, dd);
+    bb = b_reg[i] - aa * cc;
+    dd = d_reg[i] - aa * dd;
+    bb    = ones / bb;
+    cc    = bb * c_reg[i];
+    dd    = bb * dd;
     c2[i] = cc;
     d2[i] = dd;
   }
 
-  for (int n = SIMD_VEC; n < ROUND_DOWN(sys_size, SIMD_VEC); n += SIMD_VEC) {
+  // forward pass on inner SIMD vectors
+  for (int n = simd_vec_l<REAL>; n < ROUND_DOWN(sys_size - 1, simd_vec_l<REAL>);
+       n += simd_vec_l<REAL>) {
     LOAD(a_reg, a, n, sys_pad);
     LOAD(b_reg, b, n, sys_pad);
     LOAD(c_reg, c, n, sys_pad);
     LOAD(d_reg, d, n, sys_pad);
-    for (int i = 0; i < SIMD_VEC; i++) {
+    for (int i = 0; i < simd_vec_l<REAL>; i++) {
       aa = a_reg[i];
-#ifdef __AVX512F__
-      bb = SIMD_FNMADD_P(aa, cc, b_reg[i]);
-      dd = SIMD_FNMADD_P(aa, dd, d_reg[i]);
-#else
-      bb = SIMD_SUB_P(b_reg[i], SIMD_MUL_P(aa, cc));
-      dd = SIMD_SUB_P(d_reg[i], SIMD_MUL_P(aa, dd));
-#endif
-      bb        = SIMD_DIV_P(ones, bb);
-      cc        = SIMD_MUL_P(bb, c_reg[i]);
-      dd        = SIMD_MUL_P(bb, dd);
+      bb = b_reg[i] - aa * cc;
+      dd = d_reg[i] - aa * dd;
+      bb        = ones / bb;
+      cc        = bb * c_reg[i];
+      dd        = bb * dd;
       c2[n + i] = cc;
       d2[n + i] = dd;
     }
   }
 
   // forward on remainder
-
-  if (sys_size != sys_pad) {
-    // perform a noncomplete forward
-    // Loads are safe since sys_pads must be a multiple of SIMD_WIDTH, and we
-    // don't use data in paddings
-    assert(sys_pad % SIMD_VEC == 0);
-
-    int n = ROUND_DOWN(sys_size, SIMD_VEC);
-    LOAD(a_reg, a, n, sys_pad);
-    LOAD(b_reg, b, n, sys_pad);
-    LOAD(c_reg, c, n, sys_pad);
-    LOAD(d_reg, d, n, sys_pad);
-    for (int i = 0; (n + i) < sys_size; i++) {
-      aa = a_reg[i];
-#ifdef __AVX512F__
-      bb = SIMD_FNMADD_P(aa, cc, b_reg[i]);
-      dd = SIMD_FNMADD_P(aa, dd, d_reg[i]);
-#else
-      bb = SIMD_SUB_P(b_reg[i], SIMD_MUL_P(aa, cc));
-      dd = SIMD_SUB_P(d_reg[i], SIMD_MUL_P(aa, dd));
-#endif
-      bb        = SIMD_DIV_P(ones, bb);
-      cc        = SIMD_MUL_P(bb, c_reg[i]);
-      dd        = SIMD_MUL_P(bb, dd);
-      c2[n + i] = cc;
-      d2[n + i] = dd;
-    }
+  // perform forward on incomplete SIMD vector
+  // Loads are guarded with endmask
+  int n = ROUND_DOWN(sys_size - 1, simd_vec_l<REAL>);
+  LOAD_M2(a_reg, a, n, sys_pad, endmask);
+  LOAD_M2(b_reg, b, n, sys_pad, endmask);
+  LOAD_M2(c_reg, c, n, sys_pad, cmask);
+  LOAD_M2(d_reg, d, n, sys_pad, endmask);
+  for (int i = 0; (n + i) < sys_size; i++) {
+    aa = a_reg[i];
+    bb = b_reg[i] - aa * cc;
+    dd = d_reg[i] - aa * dd;
+    bb        = ones / bb;
+    cc        = bb * c_reg[i];
+    dd        = bb * dd;
+    c2[n + i] = cc;
+    d2[n + i] = dd;
   }
 
   // backward on last chunk
-  int n = ROUND_DOWN(sys_size, sys_pad);
+  n = ROUND_DOWN(sys_size, sys_pad);
   if (sys_size != sys_pad) {
     d_reg[sys_size - 1 - n] = dd;
     for (int i = sys_size - n - 2; i >= 0; i--) {
-      dd       = SIMD_SUB_P(d2[n + i], SIMD_MUL_P(c2[n + i], dd));
+      dd       = d2[n + i] - c2[n + i] * dd;
       d_reg[i] = dd;
     }
     if (INC) {
-      LOAD(u_reg, u, n, sys_pad);
+      LOAD_M2(u_reg, u, n, sys_pad, endmask);
       for (int j = 0; j < sys_size; j++)
-        u_reg[j] = SIMD_ADD_P(u_reg[j], d_reg[j]);
-      STORE(u, u_reg, n, sys_pad);
+        u_reg[j] = u_reg[j] + d_reg[j];
+      STORE_M2(u, u_reg, n, sys_pad, endmask);
     } else {
-      STORE(d, d_reg, n, sys_pad);
+      STORE_M2(d, d_reg, n, sys_pad, endmask);
     }
   } else {
-    d_reg[SIMD_VEC - 1] = dd;
-    n -= SIMD_VEC;
-    for (int i = SIMD_VEC - 2; i >= 0; i--) {
-      dd       = SIMD_SUB_P(d2[n + i], SIMD_MUL_P(c2[n + i], dd));
+    d_reg[simd_vec_l<REAL> - 1] = dd;
+    n -= simd_vec_l<REAL>;
+    for (int i = simd_vec_l<REAL> - 2; i >= 0; i--) {
+      dd       = d2[n + i] - c2[n + i] * dd;
       d_reg[i] = dd;
     }
     if (INC) {
       LOAD(u_reg, u, n, sys_pad);
-      for (int j = 0; j < SIMD_VEC; j++)
-        u_reg[j] = SIMD_ADD_P(u_reg[j], d_reg[j]);
+      for (int j = 0; j < simd_vec_l<REAL>; j++)
+        u_reg[j] = u_reg[j] + d_reg[j];
       STORE(u, u_reg, n, sys_pad);
     } else {
       STORE(d, d_reg, n, sys_pad);
     }
   }
-  n -= SIMD_VEC;
+  n -= simd_vec_l<REAL>;
 
   //
   // backward pass
   //
 
-  for (; n >= 0; n -= SIMD_VEC) {
-    for (int i = (SIMD_VEC - 1); i >= 0; i--) {
-      dd       = SIMD_SUB_P(d2[n + i], SIMD_MUL_P(c2[n + i], dd));
+  for (; n >= 0; n -= simd_vec_l<REAL>) {
+    for (int i = (simd_vec_l<REAL> - 1); i >= 0; i--) {
+      dd       = d2[n + i] - c2[n + i] * dd;
       d_reg[i] = dd;
     }
     if (INC) {
       LOAD(u_reg, u, n, sys_pad);
-      for (int j = 0; j < SIMD_VEC; j++)
-        u_reg[j] = SIMD_ADD_P(u_reg[j], d_reg[j]);
+      for (int j = 0; j < simd_vec_l<REAL>; j++)
+        u_reg[j] = u_reg[j] + d_reg[j];
       STORE(u, u_reg, n, sys_pad);
     } else {
       STORE(d, d_reg, n, sys_pad);
@@ -258,50 +339,60 @@ void trid_x_transpose(const REAL *__restrict a, const REAL *__restrict b,
 // tridiagonal solver; vectorised solution where the system dimension is not
 // the same as the vectorisation dimension
 //
-template <typename REAL, typename VECTOR, bool INC>
+template <typename REAL, bool INC>
 void trid_scalar_vec(const REAL *__restrict h_a, const REAL *__restrict h_b,
                      const REAL *__restrict h_c, REAL *__restrict h_d,
                      REAL *__restrict h_u, int N, int stride) {
 
-  int i, ind = 0;
-  VECTOR aa, bb, cc, dd, c2[N_MAX], d2[N_MAX];
+  int ind = 0;
+  simd_reg_t<REAL> aa, bb, cc, dd, c2[N_MAX], d2[N_MAX];
 
-  VECTOR ones = SIMD_SET1_P(1.0f);
+  simd_reg_t<REAL> ones = simd_set1_p<REAL>(1.0f);
 
   //
   // forward pass
   //
-  bb    = ones / SIMD_LOAD_P(&h_b[0]);
-  cc    = bb * SIMD_LOAD_P(&h_c[0]);
-  dd    = bb * SIMD_LOAD_P(&h_d[0]);
+  bb    = ones / simd_load_p(&h_b[0]);
+  cc    = bb * simd_load_p(&h_c[0]);
+  dd    = bb * simd_load_p(&h_d[0]);
   c2[0] = cc;
   d2[0] = dd;
 
-  for (i = 1; i < N; i++) {
+  for (int i = 1; i < N - 1; i++) {
     ind   = ind + stride;
-    aa    = SIMD_LOAD_P(&h_a[ind]);
-    bb    = SIMD_LOAD_P(&h_b[ind]) - aa * cc;
-    dd    = SIMD_LOAD_P(&h_d[ind]) - aa * dd;
+    aa    = simd_load_p(&h_a[ind]);
+    bb    = simd_load_p(&h_b[ind]) - aa * cc;
+    dd    = simd_load_p(&h_d[ind]) - aa * dd;
     bb    = ones / bb;
-    cc    = bb * SIMD_LOAD_P(&h_c[ind]);
+    cc    = bb * simd_load_p(&h_c[ind]);
     dd    = bb * dd;
     c2[i] = cc;
     d2[i] = dd;
+  }
+
+  {
+    // last iteration access to c leads to segfault
+    ind = ind + stride;
+    aa  = simd_load_p(&h_a[ind]);
+    bb  = simd_load_p(&h_b[ind]) - aa * cc;
+    dd  = simd_load_p(&h_d[ind]) - aa * dd;
+    bb  = ones / bb;
+    dd  = bb * dd;
   }
   //
   // reverse pass
   //
   if (INC)
-    SIMD_STORE_P(&h_u[ind], SIMD_LOAD_P(&h_u[ind]) + dd);
+    simd_store_p(&h_u[ind], simd_load_p(&h_u[ind]) + dd);
   else
-    SIMD_STORE_P(&h_d[ind], dd);
-  for (i = N - 2; i >= 0; i--) {
+    simd_store_p(&h_d[ind], dd);
+  for (int i = N - 2; i >= 0; i--) {
     ind = ind - stride;
     dd  = d2[i] - c2[i] * dd;
     if (INC)
-      SIMD_STORE_P(&h_u[ind], SIMD_LOAD_P(&h_u[ind]) + dd);
+      simd_store_p(&h_u[ind], simd_load_p(&h_u[ind]) + dd);
     else
-      SIMD_STORE_P(&h_d[ind], dd);
+      simd_store_p(&h_d[ind], dd);
   }
 }
 
@@ -312,7 +403,7 @@ template <typename REAL, bool INC>
 void trid_scalar(const REAL *__restrict a, const REAL *__restrict b,
                  const REAL *__restrict c, REAL *__restrict d,
                  REAL *__restrict u, int N, int stride) {
-  int i, ind = 0;
+  int ind = 0;
   REAL aa, bb, cc, dd, c2[N_MAX], d2[N_MAX];
   //
   // forward pass
@@ -323,7 +414,7 @@ void trid_scalar(const REAL *__restrict a, const REAL *__restrict b,
   c2[0] = cc;
   d2[0] = dd;
 
-  for (i = 1; i < N; i++) {
+  for (int i = 1; i < N - 1; i++) {
     ind   = ind + stride;
     aa    = a[ind];
     bb    = b[ind] - aa * cc;
@@ -334,6 +425,16 @@ void trid_scalar(const REAL *__restrict a, const REAL *__restrict b,
     c2[i] = cc;
     d2[i] = dd;
   }
+  {
+    // last iteration access to c leads to segfault
+    ind = ind + stride;
+    aa  = a[ind];
+    bb  = b[ind] - aa * cc;
+    dd  = d[ind] - aa * dd;
+    bb  = 1.0F / bb;
+    dd  = bb * dd;
+  }
+
   //
   // reverse pass
   //
@@ -341,7 +442,7 @@ void trid_scalar(const REAL *__restrict a, const REAL *__restrict b,
     u[ind] += dd;
   else
     d[ind] = dd;
-  for (i = N - 2; i >= 0; i--) {
+  for (int i = N - 2; i >= 0; i--) {
     ind = ind - stride;
     dd  = d2[i] - c2[i] * dd;
     if (INC)
@@ -370,20 +471,23 @@ void tridMultiDimBatchSolve(const REAL *a, const REAL *b, const REAL *c,
     int sys_size   = dims[0]; // Size (length) of a system
     int sys_pads = pads[0]; // Padded sizes along each ndim number of dimensions
 
-    if (sys_pads % SIMD_VEC == 0) {
+    if (sys_pads % simd_vec_l<REAL> == 0) {
+      simd_mask_t<REAL> endmask = create_endmask<REAL>(sys_size);
+      simd_mask_t<REAL> cmask   = create_cmask<REAL>(sys_size);
 #pragma omp parallel for collapse(2)
       for (int k = 0; k < dims[2]; k++) {
-        for (int j = 0; j < ROUND_DOWN(dims[1], SIMD_VEC); j += SIMD_VEC) {
+        for (int j = 0; j < ROUND_DOWN(dims[1], simd_vec_l<REAL>); j += simd_vec_l<REAL>) {
           int ind = k * pads[0] * pads[1] + j * pads[0];
           trid_x_transpose<REAL, INC>(&a[ind], &b[ind], &c[ind], &d[ind],
-                                      &u[ind], sys_size, sys_pads);
+                                      &u[ind], sys_size, sys_pads, endmask,
+                                      cmask);
         }
       }
-      if (ROUND_DOWN(dims[1], SIMD_VEC) <
+      if (ROUND_DOWN(dims[1], simd_vec_l<REAL>) <
           dims[1]) { // If there is leftover, fork threads an compute it
 #pragma omp parallel for collapse(2)
         for (int k = 0; k < dims[2]; k++) {
-          for (int j = ROUND_DOWN(dims[1], SIMD_VEC); j < dims[1]; j++) {
+          for (int j = ROUND_DOWN(dims[1], simd_vec_l<REAL>); j < dims[1]; j++) {
             int ind = k * pads[0] * pads[1] + j * pads[0];
             trid_scalar<REAL, INC>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
                                    sys_size, sys_stride);
@@ -407,17 +511,17 @@ void tridMultiDimBatchSolve(const REAL *a, const REAL *b, const REAL *c,
 
 #pragma omp parallel for collapse(2)
     for (int k = 0; k < dims[2]; k++) {
-      for (int i = 0; i < ROUND_DOWN(dims[0], SIMD_VEC); i += SIMD_VEC) {
+      for (int i = 0; i < ROUND_DOWN(dims[0], simd_vec_l<REAL>); i += simd_vec_l<REAL>) {
         int ind = k * pads[0] * pads[1] + i;
-        trid_scalar_vec<REAL, VECTOR, INC>(&a[ind], &b[ind], &c[ind], &d[ind],
+        trid_scalar_vec<REAL, INC>(&a[ind], &b[ind], &c[ind], &d[ind],
                                            &u[ind], sys_size, sys_stride);
       }
     }
-    if (ROUND_DOWN(dims[0], SIMD_VEC) <
+    if (ROUND_DOWN(dims[0], simd_vec_l<REAL>) <
         dims[0]) { // If there is leftover, fork threads an compute it
 #pragma omp parallel for collapse(2)
       for (int k = 0; k < dims[2]; k++) {
-        for (int i = ROUND_DOWN(dims[0], SIMD_VEC); i < dims[0]; i++) {
+        for (int i = ROUND_DOWN(dims[0], simd_vec_l<REAL>); i < dims[0]; i++) {
           int ind = k * pads[0] * pads[1] + i;
           trid_scalar<REAL, INC>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
                                  sys_size, sys_stride);
@@ -433,17 +537,17 @@ void tridMultiDimBatchSolve(const REAL *a, const REAL *b, const REAL *c,
 #pragma omp parallel for collapse(2) // Interleaved scheduling for better data
                                      // locality and thus lower TLB miss rate
     for (int j = 0; j < dims[1]; j++) {
-      for (int i = 0; i < ROUND_DOWN(dims[0], SIMD_VEC); i += SIMD_VEC) {
+      for (int i = 0; i < ROUND_DOWN(dims[0], simd_vec_l<REAL>); i += simd_vec_l<REAL>) {
         int ind = j * pads[0] + i;
-        trid_scalar_vec<REAL, VECTOR, INC>(&a[ind], &b[ind], &c[ind], &d[ind],
+        trid_scalar_vec<REAL, INC>(&a[ind], &b[ind], &c[ind], &d[ind],
                                            &u[ind], sys_size, sys_stride);
       }
     }
-    if (ROUND_DOWN(dims[0], SIMD_VEC) <
+    if (ROUND_DOWN(dims[0], simd_vec_l<REAL>) <
         dims[0]) { // If there is leftover, fork threads an compute it
 #pragma omp parallel for collapse(2)
       for (int j = 0; j < dims[1]; j++) {
-        for (int i = ROUND_DOWN(dims[0], SIMD_VEC); i < dims[0]; i++) {
+        for (int i = ROUND_DOWN(dims[0], simd_vec_l<REAL>); i < dims[0]; i++) {
           int ind = j * pads[0] + i;
           trid_scalar<REAL, INC>(&a[ind], &b[ind], &c[ind], &d[ind], &u[ind],
                                  sys_size, sys_stride);
@@ -452,8 +556,6 @@ void tridMultiDimBatchSolve(const REAL *a, const REAL *b, const REAL *c,
     }
   }
 }
-
-#if FPPREC == 0
 
 tridStatus_t tridSmtsvStridedBatch(const float *a, const float *b,
                                    const float *c, float *d, float *u, int ndim,
@@ -483,25 +585,25 @@ void trid_scalarS(const float *__restrict a, const float *__restrict b,
 void trid_x_transposeS(const float *__restrict a, const float *__restrict b,
                        const float *__restrict c, float *__restrict d,
                        float *__restrict u, int sys_size, int sys_pad) {
-
-  trid_x_transpose<float, false>(a, b, c, d, u, sys_size, sys_pad);
+  simd_mask_t<float> endmask = create_endmask<double>(sys_size);
+  simd_mask_t<float> cmask   = create_cmask<double>(sys_size);
+  trid_x_transpose<float, false>(a, b, c, d, u, sys_size, sys_pad, endmask,
+                                 cmask);
 }
 
 void trid_scalar_vecS(const float *__restrict a, const float *__restrict b,
                       const float *__restrict c, float *__restrict d,
                       float *__restrict u, int N, int stride) {
 
-  trid_scalar_vec<FP, VECTOR, false>(a, b, c, d, u, N, stride);
+  trid_scalar_vec<float, false>(a, b, c, d, u, N, stride);
 }
 
 void trid_scalar_vecSInc(const float *__restrict a, const float *__restrict b,
                          const float *__restrict c, float *__restrict d,
                          float *__restrict u, int N, int stride) {
 
-  trid_scalar_vec<FP, VECTOR, true>(a, b, c, d, u, N, stride);
+  trid_scalar_vec<float, true>(a, b, c, d, u, N, stride);
 }
-
-#elif FPPREC == 1
 
 tridStatus_t tridDmtsvStridedBatch(const double *a, const double *b,
                                    const double *c, double *d, double *u,
@@ -532,20 +634,22 @@ void trid_x_transposeD(const double *__restrict a, const double *__restrict b,
                        const double *__restrict c, double *__restrict d,
                        double *__restrict u, int sys_size, int sys_pad) {
 
-  trid_x_transpose<double, false>(a, b, c, d, u, sys_size, sys_pad);
+  simd_mask_t<double> endmask = create_endmask<double>(sys_size);
+  simd_mask_t<double> cmask   = create_cmask<double>(sys_size);
+  trid_x_transpose<double, false>(a, b, c, d, u, sys_size, sys_pad, endmask,
+                                  cmask);
 }
 
 void trid_scalar_vecD(const double *__restrict a, const double *__restrict b,
                       const double *__restrict c, double *__restrict d,
                       double *__restrict u, int N, int stride) {
 
-  trid_scalar_vec<FP, VECTOR, false>(a, b, c, d, u, N, stride);
+  trid_scalar_vec<double, false>(a, b, c, d, u, N, stride);
 }
 
 void trid_scalar_vecDInc(const double *__restrict a, const double *__restrict b,
                          const double *__restrict c, double *__restrict d,
                          double *__restrict u, int N, int stride) {
 
-  trid_scalar_vec<FP, VECTOR, true>(a, b, c, d, u, N, stride);
+  trid_scalar_vec<double, true>(a, b, c, d, u, N, stride);
 }
-#endif

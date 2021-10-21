@@ -3,7 +3,6 @@
 #include "catch_utils.hpp"
 
 #include <trid_cpu.h>
-#include <trid_simd.h>
 
 #include <memory>
 
@@ -121,15 +120,15 @@ void test_from_file_padded_shifted(const std::string &file_name) {
   std::vector<Float> c_p_s(c_p.begin(), c_p.begin() + c_p.size() -
                                             offset_to_first_element - 1);
   const tridStatus_t status = tridStridedBatchWrapper<Float>(
-      a_p_s.data() - 1,                       // a
-      b_p.data() + offset_to_first_element,   // b
-      c_p_s.data() + offset_to_first_element, // c
-      d_p.data() + offset_to_first_element,   // d
-      nullptr,                                // u
-      mesh.dims().size(),                     // ndim
-      mesh.solve_dim(),                       // solvedim
-      mesh.dims().data(),                     // dims
-      padded_dims.data());                    // pads
+      a_p_s.data() + offset_to_first_element - 1, // a
+      b_p.data() + offset_to_first_element,       // b
+      c_p_s.data() + offset_to_first_element,     // c
+      d_p.data() + offset_to_first_element,       // d
+      nullptr,                                    // u
+      mesh.dims().size(),                         // ndim
+      mesh.solve_dim(),                           // solvedim
+      mesh.dims().data(),                         // dims
+      padded_dims.data());                        // pads
 
   CHECK(status == TRID_STATUS_SUCCESS);
   require_allclose(u_p, d_p);

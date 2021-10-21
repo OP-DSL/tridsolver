@@ -36,35 +36,7 @@
 #ifndef TRID_SIMD_H_INCLUDED
 #define TRID_SIMD_H_INCLUDED
 
-#ifdef __AVX512F__
-#  if FPPREC == 0
-// Xeon Phi float
-#    define FBYTE      4
-#    define SIMD_WIDTH (64) // Width of SIMD vector unit in bytes
-#    define SIMD_VEC                                                           \
-      (SIMD_WIDTH / FBYTE) // Number of 4 byte floats in a SIMD vector unit
-#  elif FPPREC == 1
-// Xeon Phi double
-#    define FBYTE      8
-#    define SIMD_WIDTH (64) // Width of SIMD vector unit in bytes
-#    define SIMD_VEC                                                           \
-      (SIMD_WIDTH / FBYTE) // Number of 4 byte floats in a SIMD vector unit
-#  endif
-#else
-#  if FPPREC == 0
-// AVX float
-#    define FBYTE      4
-#    define SIMD_WIDTH (32) // Width of SIMD vector unit in bytes
-#    define SIMD_VEC                                                           \
-      (SIMD_WIDTH / FBYTE) // Number of 4 byte floats in a SIMD vector unit
-#  elif FPPREC == 1
-// AVX double
-#    define FBYTE      8
-#    define SIMD_WIDTH (32) // Width of SIMD vector unit in bytes
-#    define SIMD_VEC                                                           \
-      (SIMD_WIDTH / FBYTE) // Number of 8 byte floats in a SIMD vector unit
-#  endif
-#endif
+#include <type_traits>
 
 #include "x86intrin.h"
 #ifndef __INTEL_COMPILER
@@ -72,104 +44,193 @@
 #endif
 
 #ifdef __AVX512F__
-#  if FPPREC == 0
-// Xeon Phi float
-#    ifdef __INTEL_COMPILER
-#      define VECTOR F32vec16
-#    else // if defined(__GNUC__)
-#      define VECTOR __m512
-#    endif
-#    define SIMD_REG    __m512          // Name of Packed Register
-#    define SIMD_REGI   __m512i         // Name of Packed integer Register
-#    define SIMD_LOAD_P _mm512_loadu_ps // Unaligned load for packed registers
-#    define SIMD_STORE_P                                                       \
-      _mm512_storeu_ps // Unaligned store for packed registers
-#    define SIMD_PACKSTORELO_P _mm512_packstorelo_ps
-#    define SIMD_SET1_P        _mm512_set1_ps
-#    define SIMD_SET_EPI       _mm512_set_epi32
-#    define SIMD_SET1_EPI      _mm512_set1_epi32
-#    define SIMD_I32GATHER_P   _mm512_i32gather_ps
-#    define SIMD_I32SCATTER_P  _mm512_i32scatter_ps
-#    define SIMD_ADD_P         _mm512_add_ps
-#    define SIMD_FMADD_P       _mm512_fmadd_ps
-#    define SIMD_FNMADD_P      _mm512_fnmadd_ps
-#    define SIMD_ADD_EPI       _mm512_add_epi32
-#    define SIMD_SUB_P         _mm512_sub_ps
-#    define SIMD_SUB_EPI       _mm512_sub_epi32
-#    define SIMD_MUL_P         _mm512_mul_ps
-#    define SIMD_DIV_P         _mm512_div_ps
-#    define SIMD_RCP_P         _mm512_rcp14_ps
-#  elif FPPREC == 1
-// Xeon Phi double
-#    ifdef __INTEL_COMPILER
-#      define VECTOR F64vec8
-#    else // if defined(__GNUC__)
-#      define VECTOR __m512d
-#    endif
-#    define SIMD_REG    __m512d         // Name of Packed Register
-#    define SIMD_REGI   __m512i         // Name of Packed integer Register
-#    define SIMD_LOAD_P _mm512_loadu_pd // Unaligned load for packed registers
-#    define SIMD_STORE_P                                                       \
-      _mm512_storeu_pd // Unaligned store for packed registers
-#    define SIMD_PACKSTORELO_P _mm512_packstorelo_pd
-#    define SIMD_SET1_P        _mm512_set1_pd
-#    define SIMD_SET_EPI       _mm512_set_epi32
-#    define SIMD_SET1_EPI      _mm512_set1_epi32
-#    define SIMD_I32GATHER_P   _mm512_i32logather_pd
-#    define SIMD_I32SCATTER_P  _mm512_i32loscatter_pd
-#    define SIMD_ADD_P         _mm512_add_pd
-#    define SIMD_FMADD_P       _mm512_fmadd_pd
-#    define SIMD_FNMADD_P      _mm512_fnmadd_pd
-#    define SIMD_ADD_EPI       _mm512_add_epi32
-#    define SIMD_SUB_P         _mm512_sub_pd
-#    define SIMD_SUB_EPI       _mm512_sub_epi32
-#    define SIMD_MUL_P         _mm512_mul_pd
-#    define SIMD_DIV_P         _mm512_div_pd
-#    define SIMD_RCP_P         _mm512_rcp14_pd
-#  else
-#    error "Macro definition FPPREC unrecognized for Xeon/Xeon Phi processors"
-#  endif
+#  define SIMD_WIDTH              (64) // Width of SIMD vector unit in bytes
+#  define SIMD_REG_D              __m512d
+#  define SIMD_REG_S              __m512
+#  define SIMD_MASK_D             __mmask8
+#  define SIMD_MASK_S             __mmask16
+#  define SIMD_LOAD_P_D           _mm512_loadu_pd
+#  define SIMD_LOAD_P_S           _mm512_loadu_ps
+#  define SIMD_LOAD_P_M_D(src, m) _mm512_maskz_loadu_pd(m, src)
+#  define SIMD_LOAD_P_M_S(src, m) _mm512_maskz_loadu_ps(m, src)
+#  define SIMD_STORE_P_D          _mm512_storeu_pd
+#  define SIMD_STORE_P_S          _mm512_storeu_ps
+#  define SIMD_STORE_P_M_D        _mm512_mask_storeu_pd
+#  define SIMD_STORE_P_M_S        _mm512_mask_storeu_ps
+#  define MASK_FIRST_D            _cvtu32_mask8(0b11111110)
+#  define MASK_FIRST_S            _cvtu32_mask16(0b1111111111111110)
+#  define CREATE_MASK_D           _cvtu32_mask8
+#  define CREATE_MASK_S           _cvtu32_mask16
+#  define SIMD_AND_MASK_D         _kand_mask8
+#  define SIMD_AND_MASK_S         _kand_mask16
+#  define SIMD_SET1_P_D           _mm512_set1_pd
+#  define SIMD_SET1_P_S           _mm512_set1_ps
 #elif defined(__AVX__)
-#  if FPPREC == 0
-// AVX float
-#    ifdef __INTEL_COMPILER
-#      define VECTOR F32vec8
-#    else // if defined(__GNUC__)
-#      define VECTOR __m256
-#    endif
-#    define SIMD_REG    __m256          // Name of Packed Register
-#    define SIMD_LOAD_P _mm256_loadu_ps // Unaligned load for packed registers
-#    define SIMD_STREAM_P                                                      \
-      _mm256_stream_ps // Aligned stream store for packed registers
-#    define SIMD_STORE_P                                                       \
-      _mm256_storeu_ps                 // Unaligned store for packed registers
-#    define SIMD_SET1_P _mm256_set1_ps // Set Packed register
-#    define SIMD_ADD_P  _mm256_add_ps
-#    define SIMD_SUB_P  _mm256_sub_ps
-#    define SIMD_MUL_P  _mm256_mul_ps
-#    define SIMD_DIV_P  _mm256_div_ps
-#    define SIMD_RCP_P  _mm256_rcp_ps
-#  elif FPPREC == 1
-// AVX double
-#    ifdef __INTEL_COMPILER
-#      define VECTOR F64vec4
-#    else // if defined(__GNUC__)
-#      define VECTOR __m256d
-#    endif
-#    define SIMD_REG    __m256d         // Name of Packed Register
-#    define SIMD_LOAD_P _mm256_loadu_pd // Unaligned load for packed registers
-#    define SIMD_STORE_P                                                       \
-      _mm256_storeu_pd                 // Unaligned store for packed registers
-#    define SIMD_SET1_P _mm256_set1_pd // Set Packed register
-#    define SIMD_ADD_P  _mm256_add_pd
-#    define SIMD_SUB_P  _mm256_sub_pd
-#    define SIMD_MUL_P  _mm256_mul_pd
-#    define SIMD_DIV_P  _mm256_div_pd
-#  else
-#    error "Macro definition FPPREC unrecognized for AVX-based processor"
-#  endif
+#  define SIMD_WIDTH       (32) // Width of SIMD vector unit in bytes
+#  define SIMD_REG_D       __m256d
+#  define SIMD_REG_S       __m256
+#  define SIMD_MASK_D      __m256i
+#  define SIMD_MASK_S      __m256i
+#  define SIMD_LOAD_P_D    _mm256_loadu_pd
+#  define SIMD_LOAD_P_S    _mm256_loadu_ps
+#  define SIMD_LOAD_P_M_D  _mm256_maskload_pd
+#  define SIMD_LOAD_P_M_S  _mm256_maskload_ps
+#  define SIMD_STORE_P_D   _mm256_storeu_pd
+#  define SIMD_STORE_P_S   _mm256_storeu_ps
+#  define SIMD_STORE_P_M_D _mm256_maskstore_pd
+#  define SIMD_STORE_P_M_S _mm256_maskstore_ps
+#  define MASK_FIRST_D     _mm256_setr_epi64x(1, -1, -1, -1)
+#  define MASK_FIRST_S     _mm256_setr_epi32(1, -1, -1, -1, -1, -1, -1, -1)
+#  define SIMD_AND_MASK_D  _mm256_and_si256
+#  define SIMD_AND_MASK_S  _mm256_and_si256
+#  define CREATE_MASK_D(mask)                                                  \
+    _mm256_setr_epi64x(mask[0], mask[1], mask[2], mask[3]);
+#  define CREATE_MASK_S(mask)                                                  \
+    _mm256_setr_epi32(mask[0], mask[1], mask[2], mask[3], mask[4], mask[5],    \
+                      mask[6], mask[7]);
+#  define SIMD_SET1_P_D           _mm256_set1_pd
+#  define SIMD_SET1_P_S           _mm256_set1_ps
 #else
 #  error "No vector ISA intrinsics are defined. "
 #endif
+
+#define ROUND_DOWN(N, step) (((N) / (step)) * step)
+
+namespace {
+template <typename REAL> constexpr int simd_vec_l = SIMD_WIDTH / sizeof(REAL);
+template <typename REAL>
+using simd_reg_t = typename std::conditional_t<std::is_same<REAL, double>::value,
+                                          SIMD_REG_D, SIMD_REG_S>;
+template <typename REAL>
+using simd_mask_t = typename std::conditional_t<std::is_same<REAL, double>::value,
+                                          SIMD_MASK_D, SIMD_MASK_S>;
+
+// Reg Creation
+
+template <typename REAL>
+simd_reg_t<REAL> simd_set1_p(const REAL &val) {
+  if constexpr (std::is_same_v<REAL, double>) {
+    return SIMD_SET1_P_D(val);
+  } else {
+    return SIMD_SET1_P_S(val);
+  }
+}
+
+// Load operations
+template <typename REAL>
+simd_reg_t<REAL> simd_load_p(const REAL *__restrict__ src) {
+  if constexpr (std::is_same_v<REAL, double>) {
+    return SIMD_LOAD_P_D(src);
+  } else {
+    return SIMD_LOAD_P_S(src);
+  }
+}
+
+template <typename REAL>
+simd_reg_t<REAL> simd_load_p_m(const REAL *__restrict__ src,
+                               const simd_mask_t<REAL> &m) {
+  if constexpr (std::is_same_v<REAL, double>) {
+    return SIMD_LOAD_P_M_D(src, m);
+  } else {
+    return SIMD_LOAD_P_M_S(src, m);
+  }
+}
+
+// Store operations
+template <typename REAL>
+void simd_store_p(REAL *__restrict__ dst, const simd_reg_t<REAL> &src) {
+  if constexpr (std::is_same_v<REAL, double>) {
+    return SIMD_STORE_P_D(dst, src);
+  } else {
+    return SIMD_STORE_P_S(dst, src);
+  }
+}
+
+template <typename REAL>
+void simd_store_p_m(REAL *__restrict__ dst, const simd_mask_t<REAL> &m,
+                  const simd_reg_t<REAL> &src) {
+  if constexpr (std::is_same_v<REAL, double>) {
+    return SIMD_STORE_P_M_D(dst, m, src);
+  } else {
+    return SIMD_STORE_P_M_S(dst, m, src);
+  }
+}
+// Masking functions
+template <typename REAL>
+simd_mask_t<REAL> simd_mask_and(const simd_mask_t<REAL> &m,
+                                const simd_mask_t<REAL> &m2) {
+  if constexpr (std::is_same_v<REAL, double>) {
+    return SIMD_AND_MASK_D(m, m2);
+  } else {         
+    return SIMD_AND_MASK_S(m, m2);
+  }
+}
+
+template <typename REAL>
+constexpr simd_mask_t<REAL> mask_first() {
+  if constexpr (std::is_same_v<REAL, double>) {
+    return MASK_FIRST_D;
+  } else {         
+    return MASK_FIRST_S;
+  }
+}
+
+#ifdef __AVX512F__
+template <typename REAL> simd_mask_t<REAL> create_endmask(int sys_size) {
+  unsigned mask = 0;
+  for (int i = 0; i < simd_vec_l<REAL>; ++i) {
+    mask += (ROUND_DOWN(sys_size - 1, simd_vec_l<REAL>) + i) < sys_size ? 1 << i
+                                                                        : 0;
+  }
+
+  if constexpr (std::is_same_v<REAL, double>) {
+    return CREATE_MASK_D(mask);
+  } else {
+    return CREATE_MASK_S(mask);
+  }
+}
+template <typename REAL> simd_mask_t<REAL> create_cmask(int sys_size) {
+  unsigned mask = 0;
+  for (int i = 0; i < simd_vec_l<REAL>; ++i) {
+    mask += (ROUND_DOWN(sys_size - 1, simd_vec_l<REAL>) + i) < sys_size - 1
+                ? 1 << i
+                : 0;
+  }
+
+  if constexpr (std::is_same_v<REAL, double>) {
+    return CREATE_MASK_D(mask);
+  } else {
+    return CREATE_MASK_S(mask);
+  }
+}
+#else
+template <typename REAL> simd_mask_t<REAL> create_endmask(int sys_size) {
+  int mask[simd_vec_l<REAL>] = {};
+  for (int i = 0; i < simd_vec_l<REAL>; ++i) {
+    mask[i] =
+        (ROUND_DOWN(sys_size - 1, simd_vec_l<REAL>) + i) < sys_size ? -1 : 0;
+  }
+  if constexpr (std::is_same_v<REAL, double>) {
+    return CREATE_MASK_D(mask);
+  } else {
+    return CREATE_MASK_S(mask);
+  }
+}
+template <typename REAL> simd_mask_t<REAL> create_cmask(int sys_size) {
+  int mask[simd_vec_l<REAL>] = {};
+  for (int i = 0; i < simd_vec_l<REAL>; ++i) {
+    mask[i] = (ROUND_DOWN(sys_size - 1, simd_vec_l<REAL>) + i) < sys_size - 1
+                  ? -1
+                  : 0;
+  }
+  if constexpr (std::is_same_v<REAL, double>) {
+    return CREATE_MASK_D(mask);
+  } else {
+    return CREATE_MASK_S(mask);
+  }
+}
+#endif
+
+} // namespace
 
 #endif
