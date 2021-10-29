@@ -91,27 +91,29 @@ __global__ void trid_linear_forward_aligned(
       load_array_reg(c, &l_c, n, woffset, sys_pads);
       load_array_reg(d, &l_d, n, woffset, sys_pads);
 
-      for (int i = 0; i < 2; i++) {
-        bb        = 1.0 / l_b.f[i];
-        d2        = bb * l_d.f[i];
-        a2        = bb * l_a.f[i];
-        c2        = bb * l_c.f[i];
-        l_dd.f[i] = d2;
-        l_aa.f[i] = a2;
-        l_cc.f[i] = c2;
+      if(!padded_sys) {
+        for (int i = 0; i < 2; i++) {
+          bb        = 1.0 / l_b.f[i];
+          d2        = bb * l_d.f[i];
+          a2        = bb * l_a.f[i];
+          c2        = bb * l_c.f[i];
+          l_d.f[i]  = d2;
+          l_aa.f[i] = a2;
+          l_cc.f[i] = c2;
+        }
+
+        for (int i = 2; i < vec_length<REAL>; i++) {
+          bb        = 1.0 / (l_b.f[i] - l_a.f[i] * c2);
+          d2        = (l_d.f[i] - l_a.f[i] * d2) * bb;
+          a2        = (-l_a.f[i] * a2) * bb;
+          c2        = l_c.f[i] * bb;
+          l_d.f[i]  = d2;
+          l_aa.f[i] = a2;
+          l_cc.f[i] = c2;
+        }
       }
 
-      for (int i = 2; i < vec_length<REAL>; i++) {
-        bb        = 1.0 / (l_b.f[i] - l_a.f[i] * c2);
-        d2        = (l_d.f[i] - l_a.f[i] * d2) * bb;
-        a2        = (-l_a.f[i] * a2) * bb;
-        c2        = l_c.f[i] * bb;
-        l_dd.f[i] = d2;
-        l_aa.f[i] = a2;
-        l_cc.f[i] = c2;
-      }
-
-      store_array_reg(d, &l_dd, n, woffset, sys_pads);
+      store_array_reg(d, &l_d, n, woffset, sys_pads);
       store_array_reg(cc, &l_cc, n, woffset, sys_pads);
       store_array_reg(aa, &l_aa, n, woffset, sys_pads);
 
@@ -122,28 +124,34 @@ __global__ void trid_linear_forward_aligned(
         load_array_reg(b, &l_b, n, woffset, sys_pads);
         load_array_reg(c, &l_c, n, woffset, sys_pads);
         load_array_reg(d, &l_d, n, woffset, sys_pads);
-#pragma unroll
-        for (int i = 0; i < vec_length<REAL>; i++) {
-          bb        = 1.0 / (l_b.f[i] - l_a.f[i] * c2);
-          d2        = (l_d.f[i] - l_a.f[i] * d2) * bb;
-          a2        = (-l_a.f[i] * a2) * bb;
-          c2        = l_c.f[i] * bb;
-          l_dd.f[i] = d2;
-          l_aa.f[i] = a2;
-          l_cc.f[i] = c2;
+
+        if(!padded_sys) {
+          #pragma unroll
+          for (int i = 0; i < vec_length<REAL>; i++) {
+            bb        = 1.0 / (l_b.f[i] - l_a.f[i] * c2);
+            d2        = (l_d.f[i] - l_a.f[i] * d2) * bb;
+            a2        = (-l_a.f[i] * a2) * bb;
+            c2        = l_c.f[i] * bb;
+            l_d.f[i]  = d2;
+            l_aa.f[i] = a2;
+            l_cc.f[i] = c2;
+          }
         }
-        store_array_reg(d, &l_dd, n, woffset, sys_pads);
+
+        store_array_reg(d, &l_d, n, woffset, sys_pads);
         store_array_reg(cc, &l_cc, n, woffset, sys_pads);
         store_array_reg(aa, &l_aa, n, woffset, sys_pads);
       }
 
-      // Finish off last part that may not fill an entire vector
-      for (int i = n; i < sys_size; i++) {
-        int loc_ind = ind + i;
-        bb          = 1.0 / (b[loc_ind] - a[loc_ind] * cc[loc_ind - 1]);
-        d[loc_ind]  = (d[loc_ind] - a[loc_ind] * d[loc_ind - 1]) * bb;
-        aa[loc_ind] = (-a[loc_ind] * aa[loc_ind - 1]) * bb;
-        cc[loc_ind] = c[loc_ind] * bb;
+      if(!padded_sys) {
+        // Finish off last part that may not fill an entire vector
+        for (int i = n; i < sys_size; i++) {
+          int loc_ind = ind + i;
+          bb          = 1.0 / (b[loc_ind] - a[loc_ind] * cc[loc_ind - 1]);
+          d[loc_ind]  = (d[loc_ind] - a[loc_ind] * d[loc_ind - 1]) * bb;
+          aa[loc_ind] = (-a[loc_ind] * aa[loc_ind - 1]) * bb;
+          cc[loc_ind] = c[loc_ind] * bb;
+        }
       }
 
       // Backwards pass
@@ -153,15 +161,17 @@ __global__ void trid_linear_forward_aligned(
       c2 = cc[ind + sys_size - 2];
       d2 = d[ind + sys_size - 2];
 
-      // Do part that may not fit in vector
-      for (int i = sys_size - 3; i >= n + vec_length<REAL>; i--) {
-        int loc_ind = ind + i;
-        d2          = d[loc_ind] - cc[loc_ind] * d2;
-        a2          = aa[loc_ind] - cc[loc_ind] * a2;
-        c2          = -cc[loc_ind] * c2;
-        d[loc_ind]  = d2;
-        aa[loc_ind] = a2;
-        cc[loc_ind] = c2;
+      if(!padded_sys) {
+        // Do part that may not fit in vector
+        for (int i = sys_size - 3; i >= n + vec_length<REAL>; i--) {
+          int loc_ind = ind + i;
+          d2          = d[loc_ind] - cc[loc_ind] * d2;
+          a2          = aa[loc_ind] - cc[loc_ind] * a2;
+          c2          = -cc[loc_ind] * c2;
+          d[loc_ind]  = d2;
+          aa[loc_ind] = a2;
+          cc[loc_ind] = c2;
+        }
       }
 
       // Backwards pass using vectors
@@ -170,13 +180,15 @@ __global__ void trid_linear_forward_aligned(
         load_array_reg(cc, &l_cc, n, woffset, sys_pads);
         load_array_reg(d, &l_dd, n, woffset, sys_pads);
 
-        for (int i = vec_length<REAL> - 1; i >= 0; i--) {
-          d2        = l_dd.f[i] - l_cc.f[i] * d2;
-          a2        = l_aa.f[i] - l_cc.f[i] * a2;
-          c2        = -l_cc.f[i] * c2;
-          l_dd.f[i] = d2;
-          l_cc.f[i] = c2;
-          l_aa.f[i] = a2;
+        if(!padded_sys) {
+          for (int i = vec_length<REAL> - 1; i >= 0; i--) {
+            d2        = l_dd.f[i] - l_cc.f[i] * d2;
+            a2        = l_aa.f[i] - l_cc.f[i] * a2;
+            c2        = -l_cc.f[i] * c2;
+            l_dd.f[i] = d2;
+            l_cc.f[i] = c2;
+            l_aa.f[i] = a2;
+          }
         }
 
         store_array_reg(d, &l_dd, n, woffset, sys_pads);
@@ -191,27 +203,31 @@ __global__ void trid_linear_forward_aligned(
       load_array_reg(cc, &l_cc, n, woffset, sys_pads);
       load_array_reg(d, &l_dd, n, woffset, sys_pads);
 
-      for (int i = vec_length<REAL> - 1; i > 0; i--) {
-        d2        = l_dd.f[i] - l_cc.f[i] * d2;
-        a2        = l_aa.f[i] - l_cc.f[i] * a2;
-        c2        = -l_cc.f[i] * c2;
-        l_dd.f[i] = d2;
-        l_cc.f[i] = c2;
-        l_aa.f[i] = a2;
-      }
+      if(!padded_sys) {
+        for (int i = vec_length<REAL> - 1; i > 0; i--) {
+          d2        = l_dd.f[i] - l_cc.f[i] * d2;
+          a2        = l_aa.f[i] - l_cc.f[i] * a2;
+          c2        = -l_cc.f[i] * c2;
+          l_dd.f[i] = d2;
+          l_cc.f[i] = c2;
+          l_aa.f[i] = a2;
+        }
 
-      bb        = 1.0 / (1.0 - l_cc.f[0] * a2);
-      l_dd.f[0] = bb * (l_dd.f[0] - l_cc.f[0] * d2);
-      l_aa.f[0] = bb * l_aa.f[0];
-      l_cc.f[0] = bb * (-l_cc.f[0] * c2);
+        bb        = 1.0 / (1.0 - l_cc.f[0] * a2);
+        l_dd.f[0] = bb * (l_dd.f[0] - l_cc.f[0] * d2);
+        l_aa.f[0] = bb * l_aa.f[0];
+        l_cc.f[0] = bb * (-l_cc.f[0] * c2);
+      }
 
       store_array_reg(d, &l_dd, n, woffset, sys_pads);
       store_array_reg(cc, &l_cc, n, woffset, sys_pads);
       store_array_reg(aa, &l_aa, n, woffset, sys_pads);
 
-      // Store boundary values for communication
-      copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, d, boundaries, tid,
-                                                 ind, sys_size, sys_n);
+      if(!padded_sys) {
+        // Store boundary values for communication
+        copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, d, boundaries, tid,
+                                                   ind, sys_size, sys_n);
+      }
     } else if(!padded_sys) {
       // Normal modified Thomas if not optimized solve
 
@@ -287,26 +303,28 @@ __global__ void trid_linear_forward_unaligned(
       int ind_floor = ((ind + offset) / align<REAL>)*align<REAL> - offset;
       int sys_off   = ind - ind_floor;
 
-      // Handle start of unaligned memory
-      for (int i = 0; i < vec_length<REAL>; i++) {
-        if (i >= sys_off) {
-          int loc_ind = ind_floor + i;
-          if (i - sys_off < 2) {
-            bb          = 1.0 / b[loc_ind];
-            d2          = bb * d[loc_ind];
-            a2          = bb * a[loc_ind];
-            c2          = bb * c[loc_ind];
-            d[loc_ind]  = d2;
-            aa[loc_ind] = a2;
-            cc[loc_ind] = c2;
-          } else {
-            bb          = 1.0 / (b[loc_ind] - a[loc_ind] * c2);
-            d2          = (d[loc_ind] - a[loc_ind] * d2) * bb;
-            a2          = (-a[loc_ind] * a2) * bb;
-            c2          = c[loc_ind] * bb;
-            d[loc_ind]  = d2;
-            aa[loc_ind] = a2;
-            cc[loc_ind] = c2;
+      if(!padded_sys) {
+        // Handle start of unaligned memory
+        for (int i = 0; i < vec_length<REAL>; i++) {
+          if (i >= sys_off) {
+            int loc_ind = ind_floor + i;
+            if (i - sys_off < 2) {
+              bb          = 1.0 / b[loc_ind];
+              d2          = bb * d[loc_ind];
+              a2          = bb * a[loc_ind];
+              c2          = bb * c[loc_ind];
+              d[loc_ind]  = d2;
+              aa[loc_ind] = a2;
+              cc[loc_ind] = c2;
+            } else {
+              bb          = 1.0 / (b[loc_ind] - a[loc_ind] * c2);
+              d2          = (d[loc_ind] - a[loc_ind] * d2) * bb;
+              a2          = (-a[loc_ind] * a2) * bb;
+              c2          = c[loc_ind] * bb;
+              d[loc_ind]  = d2;
+              aa[loc_ind] = a2;
+              cc[loc_ind] = c2;
+            }
           }
         }
       }
@@ -318,17 +336,21 @@ __global__ void trid_linear_forward_unaligned(
         load_array_reg_unaligned(b, &l_b, n, tid, sys_pads, sys_size, offset);
         load_array_reg_unaligned(c, &l_c, n, tid, sys_pads, sys_size, offset);
         load_array_reg_unaligned(d, &l_d, n, tid, sys_pads, sys_size, offset);
-#pragma unroll
-        for (int i = 0; i < vec_length<REAL>; i++) {
-          bb        = 1.0 / (l_b.f[i] - l_a.f[i] * c2);
-          d2        = (l_d.f[i] - l_a.f[i] * d2) * bb;
-          a2        = (-l_a.f[i] * a2) * bb;
-          c2        = l_c.f[i] * bb;
-          l_dd.f[i] = d2;
-          l_aa.f[i] = a2;
-          l_cc.f[i] = c2;
+
+        if(!padded_sys) {
+          #pragma unroll
+          for (int i = 0; i < vec_length<REAL>; i++) {
+            bb        = 1.0 / (l_b.f[i] - l_a.f[i] * c2);
+            d2        = (l_d.f[i] - l_a.f[i] * d2) * bb;
+            a2        = (-l_a.f[i] * a2) * bb;
+            c2        = l_c.f[i] * bb;
+            l_d.f[i]  = d2;
+            l_aa.f[i] = a2;
+            l_cc.f[i] = c2;
+          }
         }
-        store_array_reg_unaligned(d, &l_dd, n, tid, sys_pads, sys_size,
+
+        store_array_reg_unaligned(d, &l_d, n, tid, sys_pads, sys_size,
                                   offset);
         store_array_reg_unaligned(cc, &l_cc, n, tid, sys_pads, sys_size,
                                   offset);
@@ -336,16 +358,18 @@ __global__ void trid_linear_forward_unaligned(
                                   offset);
       }
 
-      // Handle end of unaligned memory
-      for (int i = n; i < sys_size + sys_off; i++) {
-        int loc_ind = ind_floor + i;
-        bb          = 1.0 / (b[loc_ind] - a[loc_ind] * c2);
-        d2          = (d[loc_ind] - a[loc_ind] * d2) * bb;
-        a2          = (-a[loc_ind] * a2) * bb;
-        c2          = c[loc_ind] * bb;
-        d[loc_ind]  = d2;
-        aa[loc_ind] = a2;
-        cc[loc_ind] = c2;
+      if(!padded_sys) {
+        // Handle end of unaligned memory
+        for (int i = n; i < sys_size + sys_off; i++) {
+          int loc_ind = ind_floor + i;
+          bb          = 1.0 / (b[loc_ind] - a[loc_ind] * c2);
+          d2          = (d[loc_ind] - a[loc_ind] * d2) * bb;
+          a2          = (-a[loc_ind] * a2) * bb;
+          c2          = c[loc_ind] * bb;
+          d[loc_ind]  = d2;
+          aa[loc_ind] = a2;
+          cc[loc_ind] = c2;
+        }
       }
 
       // Backwards pass
@@ -355,15 +379,17 @@ __global__ void trid_linear_forward_unaligned(
 
       n -= vec_length<REAL>;
 
-      // Start with end of unaligned memory
-      for (int i = sys_size + sys_off - 3; i >= n; i--) {
-        int loc_ind = ind_floor + i;
-        d2          = d[loc_ind] - cc[loc_ind] * d2;
-        a2          = aa[loc_ind] - cc[loc_ind] * a2;
-        c2          = -cc[loc_ind] * c2;
-        d[loc_ind]  = d2;
-        aa[loc_ind] = a2;
-        cc[loc_ind] = c2;
+      if(!padded_sys) {
+        // Start with end of unaligned memory
+        for (int i = sys_size + sys_off - 3; i >= n; i--) {
+          int loc_ind = ind_floor + i;
+          d2          = d[loc_ind] - cc[loc_ind] * d2;
+          a2          = aa[loc_ind] - cc[loc_ind] * a2;
+          c2          = -cc[loc_ind] * c2;
+          d[loc_ind]  = d2;
+          aa[loc_ind] = a2;
+          cc[loc_ind] = c2;
+        }
       }
 
       n -= vec_length<REAL>;
@@ -374,13 +400,15 @@ __global__ void trid_linear_forward_unaligned(
         load_array_reg_unaligned(cc, &l_cc, n, tid, sys_pads, sys_size, offset);
         load_array_reg_unaligned(d, &l_dd, n, tid, sys_pads, sys_size, offset);
 
-        for (int i = vec_length<REAL> - 1; i >= 0; i--) {
-          d2        = l_dd.f[i] - l_cc.f[i] * d2;
-          a2        = l_aa.f[i] - l_cc.f[i] * a2;
-          c2        = -l_cc.f[i] * c2;
-          l_dd.f[i] = d2;
-          l_cc.f[i] = c2;
-          l_aa.f[i] = a2;
+        if(!padded_sys) {
+          for (int i = vec_length<REAL> - 1; i >= 0; i--) {
+            d2        = l_dd.f[i] - l_cc.f[i] * d2;
+            a2        = l_aa.f[i] - l_cc.f[i] * a2;
+            c2        = -l_cc.f[i] * c2;
+            l_dd.f[i] = d2;
+            l_cc.f[i] = c2;
+            l_aa.f[i] = a2;
+          }
         }
 
         store_array_reg_unaligned(d, &l_dd, n, tid, sys_pads, sys_size,
@@ -391,24 +419,26 @@ __global__ void trid_linear_forward_unaligned(
                                   offset);
       }
 
-      for (int i = n + vec_length<REAL> - 1; i > sys_off; i--) {
-        int loc_ind = ind_floor + i;
-        d2          = d[loc_ind] - cc[loc_ind] * d2;
-        a2          = aa[loc_ind] - cc[loc_ind] * a2;
-        c2          = -cc[loc_ind] * c2;
-        d[loc_ind]  = d2;
-        aa[loc_ind] = a2;
-        cc[loc_ind] = c2;
+      if(!padded_sys) {
+        for (int i = n + vec_length<REAL> - 1; i > sys_off; i--) {
+          int loc_ind = ind_floor + i;
+          d2          = d[loc_ind] - cc[loc_ind] * d2;
+          a2          = aa[loc_ind] - cc[loc_ind] * a2;
+          c2          = -cc[loc_ind] * c2;
+          d[loc_ind]  = d2;
+          aa[loc_ind] = a2;
+          cc[loc_ind] = c2;
+        }
+
+        bb      = 1.0 / (1.0 - cc[ind] * a2);
+        d[ind]  = bb * (d[ind] - cc[ind] * d2);
+        aa[ind] = bb * aa[ind];
+        cc[ind] = bb * (-cc[ind] * c2);
+
+        // Store boundary values for communication
+        copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, d, boundaries, tid,
+                                                   ind, sys_size, sys_n);
       }
-
-      bb      = 1.0 / (1.0 - cc[ind] * a2);
-      d[ind]  = bb * (d[ind] - cc[ind] * d2);
-      aa[ind] = bb * aa[ind];
-      cc[ind] = bb * (-cc[ind] * c2);
-
-      // Store boundary values for communication
-      copy_boundaries_linear<REAL, boundary_SOA>(aa, cc, d, boundaries, tid,
-                                                 ind, sys_size, sys_n);
     } else if(!padded_sys) {
       // Normal modified Thomas if not optimized solve
 
