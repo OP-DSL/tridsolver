@@ -178,7 +178,6 @@ void trid_x_transpose(const REAL *__restrict a, const REAL *__restrict b,
     // perform a noncomplete forward
     // Loads are safe since sys_pads must be a multiple of SIMD_WIDTH, and we
     // don't use data in paddings
-    assert(sys_pad % SIMD_VEC == 0);
 
     int n = ROUND_DOWN(sys_size, SIMD_VEC);
     LOAD(a_reg, a, n, sys_pad);
@@ -203,7 +202,7 @@ void trid_x_transpose(const REAL *__restrict a, const REAL *__restrict b,
   }
 
   // backward on last chunk
-  int n = ROUND_DOWN(sys_size, sys_pad);
+  int n = ROUND_DOWN(sys_size, SIMD_VEC);
   if (sys_size != sys_pad) {
     d_reg[sys_size - 1 - n] = dd;
     for (int i = sys_size - n - 2; i >= 0; i--) {
@@ -212,7 +211,7 @@ void trid_x_transpose(const REAL *__restrict a, const REAL *__restrict b,
     }
     if (INC) {
       LOAD(u_reg, u, n, sys_pad);
-      for (int j = 0; j < sys_size; j++)
+      for (int j = 0; j < sys_size - n; j++)
         u_reg[j] = SIMD_ADD_P(u_reg[j], d_reg[j]);
       STORE(u, u_reg, n, sys_pad);
     } else {
