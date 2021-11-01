@@ -225,6 +225,12 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
     case 3:
       app.params = new MpiSolverParams(app.comm, 3, app.pdims, batchSize, MpiSolverParams::LATENCY_HIDING_INTERLEAVED);
       break;
+    case 4:
+      app.params = new MpiSolverParams(app.comm, 3, app.pdims, batchSize, MpiSolverParams::JACOBI);
+      break;
+    case 5:
+      app.params = new MpiSolverParams(app.comm, 3, app.pdims, batchSize, MpiSolverParams::PCR);
+      break;
     default:
       exit(-1);
   }
@@ -369,9 +375,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatch(&trid_params, app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.size);
+    tridSmtsvStridedBatch(&trid_params, app.a, app.b, app.c, app.d, 3, 0, app.size, app.size);
 #else
-    tridDmtsvStridedBatch(&trid_params, app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.size);
+    tridDmtsvStridedBatch(&trid_params, app.a, app.b, app.c, app.d, 3, 0, app.size, app.size);
 #endif
 
     timing_end(&timer, &elapsed_trid_x);
@@ -381,9 +387,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatch(&trid_params, app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.size);
+    tridSmtsvStridedBatch(&trid_params, app.a, app.b, app.c, app.d, 3, 1, app.size, app.size);
 #else
-    tridDmtsvStridedBatch(&trid_params, app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.size);
+    tridDmtsvStridedBatch(&trid_params, app.a, app.b, app.c, app.d, 3, 1, app.size, app.size);
 #endif
     timing_end(&timer, &elapsed_trid_y);
 

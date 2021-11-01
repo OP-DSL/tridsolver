@@ -249,6 +249,16 @@ int init(app_handle &app, preproc_handle<FP> &pre_handle, int &iter, int argc, c
       app.params_y = new MpiSolverParams(app.comm, 3, app.pdims, by, MpiSolverParams::LATENCY_HIDING_INTERLEAVED);
       app.params_z = new MpiSolverParams(app.comm, 3, app.pdims, bz, MpiSolverParams::LATENCY_HIDING_INTERLEAVED);
       break;
+    case 4:
+      app.params_x = new MpiSolverParams(app.comm, 3, app.pdims, bx, MpiSolverParams::JACOBI);
+      app.params_y = new MpiSolverParams(app.comm, 3, app.pdims, by, MpiSolverParams::JACOBI);
+      app.params_z = new MpiSolverParams(app.comm, 3, app.pdims, bz, MpiSolverParams::JACOBI);
+      break;
+    case 5:
+      app.params_x = new MpiSolverParams(app.comm, 3, app.pdims, bx, MpiSolverParams::PCR);
+      app.params_y = new MpiSolverParams(app.comm, 3, app.pdims, by, MpiSolverParams::PCR);
+      app.params_z = new MpiSolverParams(app.comm, 3, app.pdims, bz, MpiSolverParams::PCR);
+      break;
     default:
       exit(-1);
   }
@@ -419,9 +429,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatch(&trid_params_x, app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.pads);
+    tridSmtsvStridedBatch(&trid_params_x, app.a, app.b, app.c, app.d, 3, 0, app.size, app.pads);
 #else
-    tridDmtsvStridedBatch(&trid_params_x, app.a, app.b, app.c, app.d, app.u, 3, 0, app.size, app.pads);
+    tridDmtsvStridedBatch(&trid_params_x, app.a, app.b, app.c, app.d, 3, 0, app.size, app.pads);
 #endif
     timing_end(&timer, &elapsed_trid_x);
 
@@ -430,9 +440,9 @@ int main(int argc, char* argv[]) {
     //
     timing_start(&timer);
 #if FPPREC == 0
-    tridSmtsvStridedBatch(&trid_params_y, app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.pads);
+    tridSmtsvStridedBatch(&trid_params_y, app.a, app.b, app.c, app.d, 3, 1, app.size, app.pads);
 #else
-    tridDmtsvStridedBatch(&trid_params_y, app.a, app.b, app.c, app.d, app.u, 3, 1, app.size, app.pads);
+    tridDmtsvStridedBatch(&trid_params_y, app.a, app.b, app.c, app.d, 3, 1, app.size, app.pads);
 #endif
     timing_end(&timer, &elapsed_trid_y);
 

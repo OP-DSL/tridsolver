@@ -34,18 +34,18 @@
 // specifies any padding used in the arrays (the total length of each dimension
 // including padding).
 //
-// The result is written to 'd'. 'u' is unused.
+// The result is written to 'd'.
 EXTERN_C
 tridStatus_t tridDmtsvStridedBatch(const TridParams *ctx, const double *a,
                                    const double *b, const double *c, double *d,
-                                   double *u, int ndim, int solvedim,
-                                   const int *dims, const int *pads);
+                                   int ndim, int solvedim, const int *dims,
+                                   const int *pads);
 
 EXTERN_C
 tridStatus_t tridSmtsvStridedBatch(const TridParams *ctx, const float *a,
                                    const float *b, const float *c, float *d,
-                                   float *u, int ndim, int solvedim,
-                                   const int *dims, const int *pads);
+                                   int ndim, int solvedim, const int *dims,
+                                   const int *pads);
 
 // Solve a batch of tridiagonal systems along a specified axis ('solvedim').
 // 'a', 'b', 'c', 'd' are the parameters of the tridiagonal systems which must

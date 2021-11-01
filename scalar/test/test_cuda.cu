@@ -6,34 +6,33 @@
 
 template <typename Float>
 tridStatus_t tridStridedBatchWrapper(const Float *a, const Float *b,
-                                     const Float *c, Float *d, Float *u,
-                                     int ndim, int solvedim, int *dims,
-                                     int *pads);
+                                     const Float *c, Float *d, int ndim,
+                                     int solvedim, int *dims, int *pads);
 
 template <>
 tridStatus_t tridStridedBatchWrapper<float>(const float *a, const float *b,
-                                            const float *c, float *d, float *u,
-                                            int ndim, int solvedim, int *dims,
+                                            const float *c, float *d, int ndim,
+                                            int solvedim, int *dims,
                                             int *pads) {
   TridParams trid_params;
   trid_params.opts[0] = ndim == 1 ? 1 : 0;
   trid_params.opts[1] = 0;
   trid_params.opts[2] = 0;
-  return tridSmtsvStridedBatch(&trid_params, a, b, c, d, u, ndim, solvedim,
-                               dims, pads);
+  return tridSmtsvStridedBatch(&trid_params, a, b, c, d, ndim, solvedim, dims,
+                               pads);
 }
 
 template <>
 tridStatus_t tridStridedBatchWrapper<double>(const double *a, const double *b,
                                              const double *c, double *d,
-                                             double *u, int ndim, int solvedim,
-                                             int *dims, int *pads) {
+                                             int ndim, int solvedim, int *dims,
+                                             int *pads) {
   TridParams trid_params;
   trid_params.opts[0] = ndim == 1 ? 1 : 0;
   trid_params.opts[1] = 0;
   trid_params.opts[2] = 0;
-  return tridDmtsvStridedBatch(&trid_params, a, b, c, d, u, ndim, solvedim,
-                               dims, pads);
+  return tridDmtsvStridedBatch(&trid_params, a, b, c, d, ndim, solvedim, dims,
+                               pads);
 }
 
 template <typename Float> void test_from_file(const std::string &file_name) {
@@ -49,7 +48,6 @@ template <typename Float> void test_from_file(const std::string &file_name) {
                                      device_mesh.b().data(), // b
                                      device_mesh.c().data(), // c
                                      device_mesh.d().data(), // d
-                                     nullptr,                // u
                                      mesh.dims().size(),     // ndim
                                      mesh.solve_dim(),       // solvedim
                                      dims.data(),            // dims
@@ -109,7 +107,6 @@ void test_from_file_padded(const std::string &file_name) {
                                      b_d + offset_to_first_element, // b
                                      c_d + offset_to_first_element, // c
                                      d_d + offset_to_first_element, // d
-                                     nullptr,                       // u
                                      mesh.dims().size(),            // ndim
                                      mesh.solve_dim(),              // solvedim
                                      dims.data(),                   // dims

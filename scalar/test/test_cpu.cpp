@@ -10,59 +10,59 @@
 
 template <typename Float>
 tridStatus_t tridStridedBatchWrapper(const Float *a, const Float *b,
-                                     const Float *c, Float *d, Float *u,
-                                     int ndim, int solvedim, const int *dims,
+                                     const Float *c, Float *d, int ndim,
+                                     int solvedim, const int *dims,
                                      const int *pads);
 
 template <>
 tridStatus_t tridStridedBatchWrapper<float>(const float *a, const float *b,
-                                            const float *c, float *d, float *u,
-                                            int ndim, int solvedim,
-                                            const int *dims, const int *pads) {
-  return tridSmtsvStridedBatch(nullptr, a, b, c, d, u, ndim, solvedim, dims, pads);
+                                            const float *c, float *d, int ndim,
+                                            int solvedim, const int *dims,
+                                            const int *pads) {
+  return tridSmtsvStridedBatch(nullptr, a, b, c, d, ndim, solvedim, dims, pads);
 }
 
 template <>
 tridStatus_t tridStridedBatchWrapper<double>(const double *a, const double *b,
                                              const double *c, double *d,
-                                             double *u, int ndim, int solvedim,
+                                             int ndim, int solvedim,
                                              const int *dims, const int *pads) {
-  return tridDmtsvStridedBatch(nullptr, a, b, c, d, u, ndim, solvedim, dims, pads);
+  return tridDmtsvStridedBatch(nullptr, a, b, c, d, ndim, solvedim, dims, pads);
 }
 
 template <typename Float>
 void trid_scalar_wrapper(const Float *a, const Float *b, const Float *c,
-                         Float *d, Float *u, int N, int stride);
+                         Float *d, int N, int stride);
 
 template <>
 void trid_scalar_wrapper<float>(const float *a, const float *b, const float *c,
-                                float *d, float *u, int N, int stride) {
-  trid_scalarS(a, b, c, d, u, N, stride);
+                                float *d, int N, int stride) {
+  trid_scalarS(a, b, c, d, N, stride);
 }
 
 template <>
 void trid_scalar_wrapper<double>(const double *a, const double *b,
-                                 const double *c, double *d, double *u, int N,
+                                 const double *c, double *d, int N,
                                  int stride) {
-  trid_scalarD(a, b, c, d, u, N, stride);
+  trid_scalarD(a, b, c, d, N, stride);
 }
 
 template <typename Float>
 void trid_scalar_vec_wrapper(const Float *a, const Float *b, const Float *c,
-                             Float *d, Float *u, int N, int stride);
+                             Float *d, int N, int stride);
 
 template <>
 void trid_scalar_vec_wrapper<float>(const float *a, const float *b,
-                                    const float *c, float *d, float *u, int N,
+                                    const float *c, float *d, int N,
                                     int stride) {
-  trid_scalar_vecS(a, b, c, d, u, N, stride);
+  trid_scalar_vecS(a, b, c, d, N, stride);
 }
 
 template <>
 void trid_scalar_vec_wrapper<double>(const double *a, const double *b,
-                                     const double *c, double *d, double *u,
-                                     int N, int stride) {
-  trid_scalar_vecD(a, b, c, d, u, N, stride);
+                                     const double *c, double *d, int N,
+                                     int stride) {
+  trid_scalar_vecD(a, b, c, d, N, stride);
 }
 
 template <typename Float> void test_from_file(const std::string &file_name) {
@@ -74,7 +74,6 @@ template <typename Float> void test_from_file(const std::string &file_name) {
                                      mesh.b().data(),     // b
                                      mesh.c().data(),     // c
                                      d.data(),            // d
-                                     nullptr,             // u
                                      mesh.dims().size(),  // ndim
                                      mesh.solve_dim(),    // solvedim
                                      mesh.dims().data(),  // dims
@@ -119,7 +118,6 @@ void test_from_file_padded(const std::string &file_name) {
                                      b_p.data() + offset_to_first_element, // b
                                      c_p.data() + offset_to_first_element, // c
                                      d_p.data() + offset_to_first_element, // d
-                                     nullptr,                              // u
                                      mesh.dims().size(),  // ndim
                                      mesh.solve_dim(),    // solvedim
                                      mesh.dims().data(),  // dims
@@ -144,7 +142,6 @@ void test_from_file_scalar(const std::string &file_name) {
                              mesh.b().data(), // b
                              mesh.c().data(), // c
                              d.data(),        // d
-                             nullptr,         // u
                              N,               // N
                              stride);         // stride
 
@@ -169,7 +166,6 @@ void test_from_file_scalar_vec(const std::string &file_name) {
                                  b.data(), // b
                                  c.data(), // c
                                  d.data(), // d
-                                 nullptr,  // u
                                  N,        // N
                                  stride);  // stride
 

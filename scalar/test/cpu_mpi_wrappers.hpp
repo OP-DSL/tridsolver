@@ -7,32 +7,32 @@
 template <typename Float>
 tridStatus_t tridStridedBatchWrapper(const MpiSolverParams *params,
                                      const Float *a, const Float *b,
-                                     const Float *c, Float *d, Float *u,
-                                     int ndim, int solvedim, const int *dims,
+                                     const Float *c, Float *d, int ndim,
+                                     int solvedim, const int *dims,
                                      const int *pads);
 
 template <>
 tridStatus_t tridStridedBatchWrapper<float>(const MpiSolverParams *params,
                                             const float *a, const float *b,
-                                            const float *c, float *d, float *u,
-                                            int ndim, int solvedim,
-                                            const int *dims, const int *pads) {
+                                            const float *c, float *d, int ndim,
+                                            int solvedim, const int *dims,
+                                            const int *pads) {
   TridParams trid_params;
   trid_params.mpi_params = (void *)params;
-  return tridSmtsvStridedBatch(&trid_params, a, b, c, d, u, ndim, solvedim,
-                               dims, pads);
+  return tridSmtsvStridedBatch(&trid_params, a, b, c, d, ndim, solvedim, dims,
+                               pads);
 }
 
 template <>
 tridStatus_t tridStridedBatchWrapper<double>(const MpiSolverParams *params,
                                              const double *a, const double *b,
                                              const double *c, double *d,
-                                             double *u, int ndim, int solvedim,
+                                             int ndim, int solvedim,
                                              const int *dims, const int *pads) {
   TridParams trid_params;
   trid_params.mpi_params = (void *)params;
-  return tridDmtsvStridedBatch(&trid_params, a, b, c, d, u, ndim, solvedim,
-                               dims, pads);
+  return tridDmtsvStridedBatch(&trid_params, a, b, c, d, ndim, solvedim, dims,
+                               pads);
 }
 
 

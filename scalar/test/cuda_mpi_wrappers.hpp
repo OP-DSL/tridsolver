@@ -18,7 +18,7 @@ tridStatus_t tridmtsvStridedBatchMPIWrapper<float>(
     const int *pads) {
   TridParams trid_params;
   trid_params.mpi_params = (void *)params;
-  return tridSmtsvStridedBatch(&trid_params, a, b, c, d, u, ndim, solvedim,
+  return tridSmtsvStridedBatch(&trid_params, a, b, c, d, ndim, solvedim,
                                dims, pads);
 }
 
@@ -29,7 +29,7 @@ tridStatus_t tridmtsvStridedBatchMPIWrapper<double>(
     const int *dims, const int *pads) {
   TridParams trid_params;
   trid_params.mpi_params = (void *)params;
-  return tridDmtsvStridedBatch(&trid_params, a, b, c, d, u, ndim, solvedim,
+  return tridDmtsvStridedBatch(&trid_params, a, b, c, d, ndim, solvedim,
                                dims, pads);
 }
 
