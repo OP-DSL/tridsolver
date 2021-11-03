@@ -830,7 +830,7 @@ __global__ void trid_linear_backward_pass_unaligned(
       int ind_floor = ((ind + offset) / align<REAL>)*align<REAL> - offset;
       int sys_off   = ind - ind_floor;
       int end_remainder =
-          ((sys_size - offset) / vec_length<REAL>) * vec_length<REAL> - sys_off;
+          sys_size / vec_length<REAL> * vec_length<REAL> - sys_off;
 
       if (!padded_sys && end_remainder < sys_size) {
         // i = n-1
@@ -867,7 +867,7 @@ __global__ void trid_linear_backward_pass_unaligned(
 
         if (!padded_sys) {
           for (int i = vec_length<REAL> - 1; i >= 0; i--) {
-            if (n + i == sys_size - 1) {
+            if (n + i - sys_off == sys_size - 1) {
               if (rank != nproc - 1)
                 dd_p1 = l_d.f[i] - dd_p1 * l_cc.f[i];
               else
