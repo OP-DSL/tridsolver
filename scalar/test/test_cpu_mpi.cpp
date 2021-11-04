@@ -77,7 +77,7 @@ void test_solver_from_file(const std::string &file_name) {
                local_sizes.size() - 1);
   // Solve the equations
   tridStridedBatchWrapper<Float>(&params, a.data(), b.data(), c.data(), d.data(),
-                                 nullptr, mesh.dims().size(), mesh.solve_dim(),
+                                 mesh.dims().size(), mesh.solve_dim(),
                                  local_sizes.data(), local_sizes.data());
 
   // Check result
@@ -174,7 +174,7 @@ void test_solver_from_file_padded(const std::string &file_name) {
   tridStridedBatchWrapper<Float>(&params, a_p.data() + offset_to_first_element,
                                  b_p.data() + offset_to_first_element,
                                  c_p.data() + offset_to_first_element,
-                                 d_p.data() + offset_to_first_element, nullptr,
+                                 d_p.data() + offset_to_first_element,
                                  mesh.dims().size(), mesh.solve_dim(),
                                  local_sizes.data(), padded_dims.data());
 

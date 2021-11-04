@@ -190,21 +190,24 @@ __global__ void trid_linear_forward_pass_aligned(
       REAL b_0 = l_b.f[0];
       REAL c_0 = l_c.f[0];
       REAL d_0 = l_d.f[0];
-      // i = 1
-      forward_linear_process_row1<REAL, shift_c0_on_rank0>(
-          l_a.f[1], a_m1, l_b.f[1], l_c.f[1], c_m1, l_d.f[1], d_m1, b_0, c_0,
-          d_0, sys_size, rank, nproc);
-      l_d.f[1]  = d_m1;
-      l_aa.f[1] = a_m1;
-      l_cc.f[1] = c_m1;
 
-      for (int i = 2; i < vec_length<REAL>; i++) {
-        forward_linear_process_line<REAL, shift_c0_on_rank0>(
-            l_a.f[i], a_m1, l_b.f[i], l_c.f[i], c_m1, l_d.f[i], d_m1, b_0, c_0,
-            d_0, sys_size, n + i, rank, nproc);
-        l_d.f[i]  = d_m1;
-        l_aa.f[i] = a_m1;
-        l_cc.f[i] = c_m1;
+      if(!padded_sys) {
+        // i = 1
+        forward_linear_process_row1<REAL, shift_c0_on_rank0>(
+            l_a.f[1], a_m1, l_b.f[1], l_c.f[1], c_m1, l_d.f[1], d_m1, b_0, c_0,
+            d_0, sys_size, rank, nproc);
+        l_d.f[1]  = d_m1;
+        l_aa.f[1] = a_m1;
+        l_cc.f[1] = c_m1;
+
+        for (int i = 2; i < vec_length<REAL>; i++) {
+          forward_linear_process_line<REAL, shift_c0_on_rank0>(
+              l_a.f[i], a_m1, l_b.f[i], l_c.f[i], c_m1, l_d.f[i], d_m1, b_0, c_0,
+              d_0, sys_size, n + i, rank, nproc);
+          l_d.f[i]  = d_m1;
+          l_aa.f[i] = a_m1;
+          l_cc.f[i] = c_m1;
+        }
       }
 
       store_array_reg(d, &l_d, n, woffset, sys_pads);
@@ -218,38 +221,44 @@ __global__ void trid_linear_forward_pass_aligned(
         load_array_reg(b, &l_b, n, woffset, sys_pads);
         load_array_reg(c, &l_c, n, woffset, sys_pads);
         load_array_reg(d, &l_d, n, woffset, sys_pads);
-#pragma unroll
-        for (int i = 0; i < vec_length<REAL>; i++) {
-          forward_linear_process_line<REAL, shift_c0_on_rank0>(
-              l_a.f[i], a_m1, l_b.f[i], l_c.f[i], c_m1, l_d.f[i], d_m1, b_0,
-              c_0, d_0, sys_size, n + i, rank, nproc);
-          l_d.f[i]  = d_m1;
-          l_aa.f[i] = a_m1;
-          l_cc.f[i] = c_m1;
+
+        if(!padded_sys) {
+          #pragma unroll
+          for (int i = 0; i < vec_length<REAL>; i++) {
+            forward_linear_process_line<REAL, shift_c0_on_rank0>(
+                l_a.f[i], a_m1, l_b.f[i], l_c.f[i], c_m1, l_d.f[i], d_m1, b_0,
+                c_0, d_0, sys_size, n + i, rank, nproc);
+            l_d.f[i]  = d_m1;
+            l_aa.f[i] = a_m1;
+            l_cc.f[i] = c_m1;
+          }
         }
+
         store_array_reg(d, &l_d, n, woffset, sys_pads);
         store_array_reg(cc, &l_cc, n, woffset, sys_pads);
         store_array_reg(aa, &l_aa, n, woffset, sys_pads);
       }
 
-      // Finish off last part that may not fill an entire vector
-      for (int i = n; i < sys_size; i++) {
-        int loc_ind = ind + i;
-        forward_linear_process_line<REAL, shift_c0_on_rank0>(
-            a[loc_ind], a_m1, b[loc_ind], c[loc_ind], c_m1, d[loc_ind], d_m1,
-            b_0, c_0, d_0, sys_size, i, rank, nproc);
-        aa[loc_ind] = a_m1;
-        cc[loc_ind] = c_m1;
-        d[loc_ind]  = d_m1;
+      if(!padded_sys) {
+        // Finish off last part that may not fill an entire vector
+        for (int i = n; i < sys_size; i++) {
+          int loc_ind = ind + i;
+          forward_linear_process_line<REAL, shift_c0_on_rank0>(
+              a[loc_ind], a_m1, b[loc_ind], c[loc_ind], c_m1, d[loc_ind], d_m1,
+              b_0, c_0, d_0, sys_size, i, rank, nproc);
+          aa[loc_ind] = a_m1;
+          cc[loc_ind] = c_m1;
+          d[loc_ind]  = d_m1;
+        }
+        // i = 0
+        if (0 == rank) {
+          aa[ind] = 0;
+        } else {
+          aa[ind] = a[ind] / b_0;
+        }
+        cc[ind] = c_0 / b_0;
+        d[ind]  = d_0 / b_0;
       }
-      // i = 0
-      if (0 == rank) {
-        aa[ind] = 0;
-      } else {
-        aa[ind] = a[ind] / b_0;
-      }
-      cc[ind] = c_0 / b_0;
-      d[ind]  = d_0 / b_0;
     } else if (!padded_sys) {
       trid_linear_forward_single_system<REAL, shift_c0_on_rank0>(
           a, b, c, d, aa, cc, sys_size, ind, rank, nproc);
@@ -302,22 +311,24 @@ __global__ void trid_linear_forward_pass_unaligned(
       REAL b_0 = b[ind];
       REAL c_0 = c[ind];
       REAL d_0 = d[ind];
-      // i = 1 : idx = sys_off +1
-      if (sys_off + 1 < vec_length<REAL>) {
-        forward_linear_process_row1<REAL, shift_c0_on_rank0>(
-            a[ind + 1], a_m1, b[ind + 1], c[ind + 1], c_m1, d[ind + 1], d_m1,
-            b_0, c_0, d_0, sys_size, rank, nproc);
-        aa[ind + 1] = a_m1;
-        cc[ind + 1] = c_m1;
-        d[ind + 1]  = d_m1;
+      if(!padded_sys) {
+        // i = 1 : idx = sys_off +1
+        if (sys_off + 1 < vec_length<REAL>) {
+          forward_linear_process_row1<REAL, shift_c0_on_rank0>(
+              a[ind + 1], a_m1, b[ind + 1], c[ind + 1], c_m1, d[ind + 1], d_m1,
+              b_0, c_0, d_0, sys_size, rank, nproc);
+          aa[ind + 1] = a_m1;
+          cc[ind + 1] = c_m1;
+          d[ind + 1]  = d_m1;
 
-        for (int i = 2; i + sys_off < vec_length<REAL>; i++) {
-          forward_linear_process_line<REAL, shift_c0_on_rank0>(
-              a[ind + i], a_m1, b[ind + i], c[ind + i], c_m1, d[ind + i], d_m1,
-              b_0, c_0, d_0, sys_size, i - sys_off, rank, nproc);
-          d[ind + i]  = d_m1;
-          aa[ind + i] = a_m1;
-          cc[ind + i] = c_m1;
+          for (int i = 2; i + sys_off < vec_length<REAL>; i++) {
+            forward_linear_process_line<REAL, shift_c0_on_rank0>(
+                a[ind + i], a_m1, b[ind + i], c[ind + i], c_m1, d[ind + i], d_m1,
+                b_0, c_0, d_0, sys_size, i - sys_off, rank, nproc);
+            d[ind + i]  = d_m1;
+            aa[ind + i] = a_m1;
+            cc[ind + i] = c_m1;
+          }
         }
       }
 
@@ -328,22 +339,26 @@ __global__ void trid_linear_forward_pass_unaligned(
         load_array_reg_unaligned(b, &l_b, n, tid, sys_pads, sys_size, offset);
         load_array_reg_unaligned(c, &l_c, n, tid, sys_pads, sys_size, offset);
         load_array_reg_unaligned(d, &l_d, n, tid, sys_pads, sys_size, offset);
-#pragma unroll
-        for (int i = 0; i < vec_length<REAL>; i++) {
-          if (i == 0 && n + i - sys_off == 1) {
-            // i = 1 iteration
-            forward_linear_process_row1<REAL, shift_c0_on_rank0>(
-                l_a.f[i], a_m1, l_b.f[i], l_c.f[i], c_m1, l_d.f[i], d_m1, b_0,
-                c_0, d_0, sys_size, rank, nproc);
-          } else {
-            forward_linear_process_line<REAL, shift_c0_on_rank0>(
-                l_a.f[i], a_m1, l_b.f[i], l_c.f[i], c_m1, l_d.f[i], d_m1, b_0,
-                c_0, d_0, sys_size, n + i - sys_off, rank, nproc);
+
+        if(!padded_sys) {
+          #pragma unroll
+          for (int i = 0; i < vec_length<REAL>; i++) {
+            if (i == 0 && n + i - sys_off == 1) {
+              // i = 1 iteration
+              forward_linear_process_row1<REAL, shift_c0_on_rank0>(
+                  l_a.f[i], a_m1, l_b.f[i], l_c.f[i], c_m1, l_d.f[i], d_m1, b_0,
+                  c_0, d_0, sys_size, rank, nproc);
+            } else {
+              forward_linear_process_line<REAL, shift_c0_on_rank0>(
+                  l_a.f[i], a_m1, l_b.f[i], l_c.f[i], c_m1, l_d.f[i], d_m1, b_0,
+                  c_0, d_0, sys_size, n + i - sys_off, rank, nproc);
+            }
+            l_d.f[i]  = d_m1;
+            l_aa.f[i] = a_m1;
+            l_cc.f[i] = c_m1;
           }
-          l_d.f[i]  = d_m1;
-          l_aa.f[i] = a_m1;
-          l_cc.f[i] = c_m1;
         }
+
         store_array_reg_unaligned(d, &l_d, n, tid, sys_pads, sys_size, offset);
         store_array_reg_unaligned(cc, &l_cc, n, tid, sys_pads, sys_size,
                                   offset);
@@ -351,24 +366,26 @@ __global__ void trid_linear_forward_pass_unaligned(
                                   offset);
       }
 
-      // Handle end of unaligned memory
-      for (int i = n; i < sys_size + sys_off; i++) {
-        int loc_ind = ind_floor + i;
-        forward_linear_process_line<REAL, shift_c0_on_rank0>(
-            a[loc_ind], a_m1, b[loc_ind], c[loc_ind], c_m1, d[loc_ind], d_m1,
-            b_0, c_0, d_0, sys_size, i - sys_off, rank, nproc);
-        d[loc_ind]  = d_m1;
-        aa[loc_ind] = a_m1;
-        cc[loc_ind] = c_m1;
+      if(!padded_sys) {
+        // Handle end of unaligned memory
+        for (int i = n; i < sys_size + sys_off; i++) {
+          int loc_ind = ind_floor + i;
+          forward_linear_process_line<REAL, shift_c0_on_rank0>(
+              a[loc_ind], a_m1, b[loc_ind], c[loc_ind], c_m1, d[loc_ind], d_m1,
+              b_0, c_0, d_0, sys_size, i - sys_off, rank, nproc);
+          d[loc_ind]  = d_m1;
+          aa[loc_ind] = a_m1;
+          cc[loc_ind] = c_m1;
+        }
+        // i = 0
+        if (0 == rank) {
+          aa[ind] = 0;
+        } else {
+          aa[ind] = a[ind] / b_0;
+        }
+        cc[ind] = c_0 / b_0;
+        d[ind]  = d_0 / b_0;
       }
-      // i = 0
-      if (0 == rank) {
-        aa[ind] = 0;
-      } else {
-        aa[ind] = a[ind] / b_0;
-      }
-      cc[ind] = c_0 / b_0;
-      d[ind]  = d_0 / b_0;
     } else if (!padded_sys) {
       trid_linear_forward_single_system<REAL, shift_c0_on_rank0>(
           a, b, c, d, aa, cc, sys_size, ind, rank, nproc);
@@ -850,7 +867,7 @@ __global__ void trid_linear_backward_pass_unaligned(
 
         if (!padded_sys) {
           for (int i = vec_length<REAL> - 1; i >= 0; i--) {
-            if (n + i == sys_size - 1) {
+            if (n + i - sys_off == sys_size - 1) {
               if (rank != nproc - 1)
                 dd_p1 = l_d.f[i] - dd_p1 * l_cc.f[i];
               else

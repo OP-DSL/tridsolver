@@ -178,7 +178,6 @@ void trid_x_transpose(const REAL *__restrict a, const REAL *__restrict b,
     // perform a noncomplete forward
     // Loads are safe since sys_pads must be a multiple of SIMD_WIDTH, and we
     // don't use data in paddings
-    assert(sys_pad % SIMD_VEC == 0);
 
     int n = ROUND_DOWN(sys_size, SIMD_VEC);
     LOAD(a_reg, a, n, sys_pad);
@@ -203,7 +202,7 @@ void trid_x_transpose(const REAL *__restrict a, const REAL *__restrict b,
   }
 
   // backward on last chunk
-  int n = ROUND_DOWN(sys_size, sys_pad);
+  int n = ROUND_DOWN(sys_size, SIMD_VEC);
   if (sys_size != sys_pad) {
     d_reg[sys_size - 1 - n] = dd;
     for (int i = sys_size - n - 2; i >= 0; i--) {
@@ -212,7 +211,7 @@ void trid_x_transpose(const REAL *__restrict a, const REAL *__restrict b,
     }
     if (INC) {
       LOAD(u_reg, u, n, sys_pad);
-      for (int j = 0; j < sys_size; j++)
+      for (int j = 0; j < sys_size - n; j++)
         u_reg[j] = SIMD_ADD_P(u_reg[j], d_reg[j]);
       STORE(u, u_reg, n, sys_pad);
     } else {
@@ -459,10 +458,10 @@ void tridMultiDimBatchSolve(const REAL *a, const REAL *b, const REAL *c,
 
 tridStatus_t tridSmtsvStridedBatch(const TridParams *, const float *a,
                                    const float *b, const float *c, float *d,
-                                   float *u, int ndim, int solvedim,
-                                   const int *dims, const int *pads) {
-  tridMultiDimBatchSolve<float, false>(a, b, c, d, u, ndim, solvedim, dims,
-                                       pads);
+                                   int ndim, int solvedim, const int *dims,
+                                   const int *pads) {
+  tridMultiDimBatchSolve<float, false>(a, b, c, d, nullptr, ndim, solvedim,
+                                       dims, pads);
   return TRID_STATUS_SUCCESS;
 }
 
@@ -477,23 +476,23 @@ tridStatus_t tridSmtsvStridedBatchInc(const TridParams *, const float *a,
 
 void trid_scalarS(const float *__restrict a, const float *__restrict b,
                   const float *__restrict c, float *__restrict d,
-                  float *__restrict u, int N, int stride) {
+                  int N, int stride) {
 
-  trid_scalar<float, false>(a, b, c, d, u, N, stride);
+  trid_scalar<float, false>(a, b, c, d, nullptr, N, stride);
 }
 
 void trid_x_transposeS(const float *__restrict a, const float *__restrict b,
                        const float *__restrict c, float *__restrict d,
-                       float *__restrict u, int sys_size, int sys_pad) {
+                       int sys_size, int sys_pad) {
 
-  trid_x_transpose<float, false>(a, b, c, d, u, sys_size, sys_pad);
+  trid_x_transpose<float, false>(a, b, c, d, nullptr, sys_size, sys_pad);
 }
 
 void trid_scalar_vecS(const float *__restrict a, const float *__restrict b,
                       const float *__restrict c, float *__restrict d,
-                      float *__restrict u, int N, int stride) {
+                      int N, int stride) {
 
-  trid_scalar_vec<FP, VECTOR, false>(a, b, c, d, u, N, stride);
+  trid_scalar_vec<FP, VECTOR, false>(a, b, c, d, nullptr, N, stride);
 }
 
 void trid_scalar_vecSInc(const float *__restrict a, const float *__restrict b,
@@ -507,10 +506,10 @@ void trid_scalar_vecSInc(const float *__restrict a, const float *__restrict b,
 
 tridStatus_t tridDmtsvStridedBatch(const TridParams *, const double *a,
                                    const double *b, const double *c, double *d,
-                                   double *u, int ndim, int solvedim,
-                                   const int *dims, const int *pads) {
-  tridMultiDimBatchSolve<double, false>(a, b, c, d, u, ndim, solvedim, dims,
-                                        pads);
+                                   int ndim, int solvedim, const int *dims,
+                                   const int *pads) {
+  tridMultiDimBatchSolve<double, false>(a, b, c, d, nullptr, ndim, solvedim,
+                                        dims, pads);
   return TRID_STATUS_SUCCESS;
 }
 
@@ -526,23 +525,23 @@ tridStatus_t tridDmtsvStridedBatchInc(const TridParams *, const double *a,
 
 void trid_scalarD(const double *__restrict a, const double *__restrict b,
                   const double *__restrict c, double *__restrict d,
-                  double *__restrict u, int N, int stride) {
+                  int N, int stride) {
 
-  trid_scalar<double, false>(a, b, c, d, u, N, stride);
+  trid_scalar<double, false>(a, b, c, d, nullptr, N, stride);
 }
 
 void trid_x_transposeD(const double *__restrict a, const double *__restrict b,
                        const double *__restrict c, double *__restrict d,
-                       double *__restrict u, int sys_size, int sys_pad) {
+                       int sys_size, int sys_pad) {
 
-  trid_x_transpose<double, false>(a, b, c, d, u, sys_size, sys_pad);
+  trid_x_transpose<double, false>(a, b, c, d, nullptr, sys_size, sys_pad);
 }
 
 void trid_scalar_vecD(const double *__restrict a, const double *__restrict b,
                       const double *__restrict c, double *__restrict d,
-                      double *__restrict u, int N, int stride) {
+                      int N, int stride) {
 
-  trid_scalar_vec<FP, VECTOR, false>(a, b, c, d, u, N, stride);
+  trid_scalar_vec<FP, VECTOR, false>(a, b, c, d, nullptr, N, stride);
 }
 
 void trid_scalar_vecDInc(const double *__restrict a, const double *__restrict b,

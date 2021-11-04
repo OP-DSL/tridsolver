@@ -769,22 +769,24 @@ void tridMultiDimBatchSolveMPI(const MpiSolverParams *params, const REAL *a,
 // specifies any padding used in the arrays (the total length of each dimension
 // including padding).
 //
-// The result is written to 'd'. 'u' is unused.
+// The result is written to 'd'.
 tridStatus_t tridDmtsvStridedBatch(const TridParams *ctx, const double *a,
                                    const double *b, const double *c, double *d,
-                                   double *u, int ndim, int solvedim,
-                                   const int *dims, const int *pads) {
+                                   int ndim, int solvedim, const int *dims,
+                                   const int *pads) {
   tridMultiDimBatchSolveMPI<double, 0>((MpiSolverParams *)ctx->mpi_params, a, b,
-                                       c, d, u, ndim, solvedim, dims, pads);
+                                       c, d, nullptr, ndim, solvedim, dims,
+                                       pads);
   return TRID_STATUS_SUCCESS;
 }
 
 tridStatus_t tridSmtsvStridedBatch(const TridParams *ctx, const float *a,
                                    const float *b, const float *c, float *d,
-                                   float *u, int ndim, int solvedim,
-                                   const int *dims, const int *pads) {
+                                   int ndim, int solvedim, const int *dims,
+                                   const int *pads) {
   tridMultiDimBatchSolveMPI<float, 0>((MpiSolverParams *)ctx->mpi_params, a, b,
-                                      c, d, u, ndim, solvedim, dims, pads);
+                                      c, d, nullptr, ndim, solvedim, dims,
+                                      pads);
   return TRID_STATUS_SUCCESS;
 }
 
