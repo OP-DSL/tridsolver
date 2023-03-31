@@ -8,7 +8,6 @@
 // CUDA headers
 #include <cuda.h>
 #include <cufft.h>
-#include <cublas.h>
 #include <cuda_runtime_api.h>
 #include <math_constants.h>
 
@@ -19,7 +18,6 @@
 
 #define cudaSafeCall(err)  __cudaSafeCall(err,__FILE__,__LINE__)
 #define cufftSafeCall(err)  __cufftSafeCall(err,__FILE__,__LINE__)
-#define cublasSafeCall(err) __cublasSafeCall(err,__FILE__,__LINE__)
 #define cudaCheckMsg(msg)  __cudaCheckMsg(msg,__FILE__,__LINE__)
 
 inline void __cudaSafeCall(cudaError err,
@@ -39,13 +37,6 @@ inline void __cufftSafeCall(cufftResult err,
   }
 }
 
-inline void __cublasSafeCall(cublasStatus err,
-                            const char *file, const int line){
-  if(CUBLAS_STATUS_SUCCESS != err) {
-    printf("%s(%i) : cublasSafeCall() CUBLAS error.\n", file, line);
-    exit(-1);
-  }
-}
 
 inline void __cudaCheckMsg(const char *errorMessage,
                             const char *file, const int line) {
